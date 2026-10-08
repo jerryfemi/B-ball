@@ -16,7 +16,10 @@ class Basketball extends BodyComponent with DragCallbacks {
   double _pitch = 0.0;
   double _yaw = 0.0;
 
-  Basketball({required this.initialPosition, this.radius = 2.5});
+  Basketball({
+    required this.initialPosition,
+    this.radius = 2.5,
+  }) : super(priority: 2);
 
   @override
   Future<void> onLoad() async {
