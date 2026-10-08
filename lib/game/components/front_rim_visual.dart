@@ -11,11 +11,11 @@ class FrontRimVisual extends PositionComponent {
 
   FrontRimVisual({
     required Vector2 position,
-    this.hoopWidth = 6.0,
-    this.hoopDepth = 1.6,
+    this.hoopWidth = 1.4,
+    this.hoopDepth = 0.35,
   }) : super(
           position: position,
-          size: Vector2(20.0, 20.0),
+          size: Vector2(4.0, 4.0),
           anchor: Anchor.center,
           priority: 3,
         );
@@ -42,17 +42,17 @@ class FrontRimVisual extends PositionComponent {
 
     // Small mounting flange connecting rim to backboard
     final bracketRect = Rect.fromCenter(
-      center: const Offset(0, -0.6),
-      width: 1.2,
-      height: 0.8,
+      center: const Offset(0, -0.15),
+      width: 0.3,
+      height: 0.2,
     );
     canvas.drawRect(bracketRect, bracketPaint);
 
     final boltPaint = Paint()
-      ..color = const Color(0xFF212121)
+      ..color = const Color(0xFF1E293B)
       ..style = PaintingStyle.fill;
-    canvas.drawCircle(const Offset(-0.35, -0.6), 0.1, boltPaint);
-    canvas.drawCircle(const Offset(0.35, -0.6), 0.1, boltPaint);
+    canvas.drawCircle(const Offset(-0.08, -0.15), 0.025, boltPaint);
+    canvas.drawCircle(const Offset(0.08, -0.15), 0.025, boltPaint);
   }
 
   void _renderFrontRim(Canvas canvas) {
@@ -67,7 +67,7 @@ class FrontRimVisual extends PositionComponent {
       ..color = const Color(0xFFFF5722)
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
-      ..strokeWidth = 0.38;
+      ..strokeWidth = 0.08;
 
     canvas.drawArc(
       rimRect,
@@ -82,11 +82,11 @@ class FrontRimVisual extends PositionComponent {
       ..color = const Color(0xFFFFAB91)
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
-      ..strokeWidth = 0.14;
+      ..strokeWidth = 0.03;
 
     final highlightRect = Rect.fromCenter(
-      center: const Offset(0, -0.06),
-      width: hoopWidth - 0.2,
+      center: const Offset(0, -0.015),
+      width: hoopWidth - 0.06,
       height: hoopDepth,
     );
 
@@ -103,23 +103,23 @@ class FrontRimVisual extends PositionComponent {
       ..color = const Color(0xFFFF5722)
       ..style = PaintingStyle.fill;
 
-    canvas.drawCircle(Offset(-hoopWidth / 2, 0), 0.2, pivotPaint);
-    canvas.drawCircle(Offset(hoopWidth / 2, 0), 0.2, pivotPaint);
+    canvas.drawCircle(Offset(-hoopWidth / 2, 0), 0.045, pivotPaint);
+    canvas.drawCircle(Offset(hoopWidth / 2, 0), 0.045, pivotPaint);
   }
 
   void _renderFrontNet(Canvas canvas) {
     final netCordPaint = Paint()
-      ..color = const Color(0xF5FFFFFF)
+      ..color = const Color(0xF2FFFFFF)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.15;
+      ..strokeWidth = 0.035;
 
     final knotPaint = Paint()
-      ..color = const Color(0xFFCFD8DC)
+      ..color = const Color(0xFFE2E8F0)
       ..style = PaintingStyle.fill;
 
     const cordCount = 8;
-    const netDepth = 4.0;
-    const bottomWidthRatio = 0.6;
+    const netDepth = 0.9;
+    const bottomWidthRatio = 0.55;
 
     final topPoints = <Offset>[];
     final bottomPoints = <Offset>[];
@@ -139,9 +139,7 @@ class FrontRimVisual extends PositionComponent {
 
     // 1. Draw cross-hatched cord mesh
     for (int i = 0; i < cordCount; i++) {
-      // Diagonal down-right
       canvas.drawLine(topPoints[i], bottomPoints[i + 1], netCordPaint);
-      // Diagonal down-left
       canvas.drawLine(topPoints[i + 1], bottomPoints[i], netCordPaint);
     }
 
@@ -171,7 +169,7 @@ class FrontRimVisual extends PositionComponent {
         final angle = t * math.pi;
         final kx = (curWidth / 2) * math.cos(angle);
         final ky = curY + (curDepth / 2) * math.sin(angle);
-        canvas.drawCircle(Offset(kx, ky), 0.08, knotPaint);
+        canvas.drawCircle(Offset(kx, ky), 0.02, knotPaint);
       }
     }
   }
