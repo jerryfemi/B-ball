@@ -1,28 +1,28 @@
 import 'package:flame/components.dart';
 
-class GameBackground extends Component with HasGameRef {
+class GameBackground extends Component with HasGameReference {
   late SpriteComponent brickWall;
   late SpriteComponent woodenFloor;
 
   @override
   Future<void> onLoad() async {
     // Load images
-    final brickImage = await gameRef.images.load('brick_wall.jpg');
-    final floorImage = await gameRef.images.load('wooden_floor.jpg');
+    final brickImage = await game.images.load('brick_wall.jpg');
+    final floorImage = await game.images.load('wooden_floor.jpg');
 
     // The brick wall takes the top 2/3 of the screen
-    final brickHeight = gameRef.size.y * 0.66;
+    final brickHeight = game.size.y * 0.66;
     brickWall = SpriteComponent(
       sprite: Sprite(brickImage),
-      size: Vector2(gameRef.size.x, brickHeight),
+      size: Vector2(game.size.x, brickHeight),
       position: Vector2(0, 0),
     );
 
     // The wooden floor takes the bottom 1/3 of the screen
-    final floorHeight = gameRef.size.y - brickHeight;
+    final floorHeight = game.size.y - brickHeight;
     woodenFloor = SpriteComponent(
       sprite: Sprite(floorImage),
-      size: Vector2(gameRef.size.x, floorHeight),
+      size: Vector2(game.size.x, floorHeight),
       position: Vector2(0, brickHeight),
     );
 
