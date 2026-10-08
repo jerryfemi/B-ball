@@ -11,7 +11,7 @@ class HoopPhysics extends BodyComponent {
 
   HoopPhysics({
     required this.hoopCenterInMeters,
-    this.hoopWidthInMeters = 1.4,
+    this.hoopWidthInMeters = 1.8,
   });
 
   @override
@@ -42,10 +42,10 @@ class HoopPhysics extends BodyComponent {
 
     // 3. Backboard Deflector (stops high overshots above the rim)
     final backboardDeflector = Polygon([
-      Vector2(-1.3, -1.0),
-      Vector2(1.3, -1.0),
-      Vector2(1.3, -0.92),
-      Vector2(-1.3, -0.92),
+      Vector2(-1.7, -1.0),
+      Vector2(1.7, -1.0),
+      Vector2(1.7, -0.92),
+      Vector2(-1.7, -0.92),
     ]);
     body.createShape(
       backboardDeflector,
