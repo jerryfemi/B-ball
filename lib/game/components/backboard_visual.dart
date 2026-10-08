@@ -10,11 +10,11 @@ class BackboardVisual extends PositionComponent {
 
   BackboardVisual({
     required Vector2 position,
-    this.hoopWidth = 6.0,
-    this.hoopDepth = 1.6,
+    this.hoopWidth = 1.4,
+    this.hoopDepth = 0.35,
   }) : super(
           position: position,
-          size: Vector2(20.0, 20.0),
+          size: Vector2(4.0, 4.0),
           anchor: Anchor.center,
           priority: 1,
         );
@@ -37,62 +37,64 @@ class BackboardVisual extends PositionComponent {
 
   void _renderMountingPole(Canvas canvas) {
     final polePaint = Paint()
-      ..color = const Color(0xFF263238)
+      ..color = const Color(0xFF1E293B)
       ..style = PaintingStyle.fill;
 
     // Heavy-duty steel arm behind the backboard
-    final poleRect = Rect.fromLTWH(-0.5, -9.0, 1.0, 6.0);
+    final poleRect = Rect.fromLTWH(-0.1, -2.4, 0.2, 1.4);
     canvas.drawRect(poleRect, polePaint);
   }
 
   void _renderBackboard(Canvas canvas) {
-    const boardWidth = 13.0;
-    const boardHeight = 8.0;
-    final boardCenter = const Offset(0, -4.2);
+    const boardWidth = 2.6;
+    const boardHeight = 1.8;
+    const boardCenter = Offset(0, -1.0);
 
     final boardRect = Rect.fromCenter(
       center: boardCenter,
       width: boardWidth,
       height: boardHeight,
     );
-    final boardRRect = RRect.fromRectAndRadius(boardRect, const Radius.circular(0.4));
+    final boardRRect =
+        RRect.fromRectAndRadius(boardRect, const Radius.circular(0.08));
 
-    // 1. Backboard glass/acrylic background
+    // 1. Backboard glass/acrylic plate
     final glassPaint = Paint()
-      ..color = const Color(0xF5FFFFFF)
+      ..color = const Color(0xF2FFFFFF)
       ..style = PaintingStyle.fill;
     canvas.drawRRect(boardRRect, glassPaint);
 
     // 2. Outer dark border
     final borderPaint = Paint()
-      ..color = const Color(0xFF102027)
+      ..color = const Color(0xFF0F172A)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.25;
+      ..strokeWidth = 0.06;
     canvas.drawRRect(boardRRect, borderPaint);
 
     // 3. Outer red perimeter line
     final outerRedRect = Rect.fromCenter(
       center: boardCenter,
-      width: boardWidth - 0.6,
-      height: boardHeight - 0.6,
+      width: boardWidth - 0.14,
+      height: boardHeight - 0.14,
     );
-    final outerRedRRect = RRect.fromRectAndRadius(outerRedRect, const Radius.circular(0.3));
+    final outerRedRRect =
+        RRect.fromRectAndRadius(outerRedRect, const Radius.circular(0.06));
     final outerRedPaint = Paint()
       ..color = const Color(0xFFD32F2F)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.25;
+      ..strokeWidth = 0.05;
     canvas.drawRRect(outerRedRRect, outerRedPaint);
 
     // 4. Inner target square (regulation red box above rim)
     final targetRect = Rect.fromCenter(
-      center: const Offset(0, -2.6),
-      width: 4.8,
-      height: 3.6,
+      center: const Offset(0, -0.65),
+      width: 1.0,
+      height: 0.75,
     );
     final targetPaint = Paint()
       ..color = const Color(0xFFD32F2F)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.3;
+      ..strokeWidth = 0.06;
     canvas.drawRect(targetRect, targetPaint);
   }
 
@@ -105,10 +107,10 @@ class BackboardVisual extends PositionComponent {
 
     // Top half of rim ellipse (from pi to 2*pi): curves upwards/away
     final rearRimPaint = Paint()
-      ..color = const Color(0xFFBF360C) // Shaded burnt orange
+      ..color = const Color(0xFFC2410C) // Shaded burnt orange
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
-      ..strokeWidth = 0.35;
+      ..strokeWidth = 0.08;
 
     canvas.drawArc(
       rimRect,
@@ -121,18 +123,17 @@ class BackboardVisual extends PositionComponent {
 
   void _renderRearNet(Canvas canvas) {
     final rearNetPaint = Paint()
-      ..color = const Color(0x4490A4AE) // Translucent rear cords
+      ..color = const Color(0x4494A3B8) // Translucent rear cords
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.12;
+      ..strokeWidth = 0.025;
 
     const cordCount = 7;
-    const netDepth = 4.0;
-    const bottomWidthRatio = 0.6;
+    const netDepth = 0.9;
+    const bottomWidthRatio = 0.55;
 
     // Draw rear vertical cords tapering downwards
     for (int i = 0; i <= cordCount; i++) {
       final t = i / cordCount;
-      // Elliptical top points along back rim
       final angle = math.pi + t * math.pi;
       final topX = (hoopWidth / 2) * math.cos(angle);
       final topY = (hoopDepth / 2) * math.sin(angle);
@@ -147,7 +148,7 @@ class BackboardVisual extends PositionComponent {
       );
     }
 
-    // Rear horizontal loop ribs
+    // Rear horizontal ribs
     for (double yFrac = 0.25; yFrac <= 0.85; yFrac += 0.25) {
       final curY = netDepth * yFrac;
       final curWidth = hoopWidth * (1.0 - (1.0 - bottomWidthRatio) * yFrac);
