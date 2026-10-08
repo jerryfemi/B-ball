@@ -2,7 +2,8 @@ import 'dart:math' as math;
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 
-/// Renders the backboard, mounting pole, rear rim arc, and back net mesh.
+/// Renders the GamePigeon scooped-shield backboard, 3D cylindrical pole,
+/// wall drop shadows, rear rim arc, and back net mesh.
 /// Configured with priority = 1 so it renders behind the basketball (priority = 2).
 class BackboardVisual extends PositionComponent {
   final double hoopWidth;
@@ -14,7 +15,7 @@ class BackboardVisual extends PositionComponent {
     this.hoopDepth = 0.35,
   }) : super(
           position: position,
-          size: Vector2(4.0, 4.0),
+          size: Vector2(6.0, 20.0),
           anchor: Anchor.center,
           priority: 1,
         );
@@ -27,75 +28,191 @@ class BackboardVisual extends PositionComponent {
     // Shift origin so (0, 0) corresponds to the hoop center
     canvas.translate(size.x / 2, size.y / 2);
 
-    _renderMountingPole(canvas);
-    _renderBackboard(canvas);
+    _renderWallDropShadow(canvas);
+    _renderCylindricalPole(canvas);
+    _renderScoopedBackboard(canvas);
     _renderRearRim(canvas);
     _renderRearNet(canvas);
 
     canvas.restore();
   }
 
-  void _renderMountingPole(Canvas canvas) {
-    final polePaint = Paint()
-      ..color = const Color(0xFF1E293B)
-      ..style = PaintingStyle.fill;
+  void _renderWallDropShadow(Canvas canvas) {
+    // Soft blurred ambient drop shadow cast onto the brick wall behind the backboard
+    final shadowPaint = Paint()
+      ..color = const Color(0x60000000)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
 
-    // Heavy-duty steel arm behind the backboard
-    final poleRect = Rect.fromLTWH(-0.1, -2.4, 0.2, 1.4);
+    final shadowPath = _buildBackboardPath(2.8, 1.9, const Offset(0.08, -0.92));
+    canvas.drawPath(shadowPath, shadowPaint);
+
+    // Pole drop shadow on wall
+    final poleShadowPaint = Paint()
+      ..color = const Color(0x40000000)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+    canvas.drawRect(
+      const Rect.fromLTWH(0.12, -1.8, 0.16, 16.0),
+      poleShadowPaint,
+    );
+  }
+
+  void _renderCylindricalPole(Canvas canvas) {
+    const poleWidth = 0.20;
+    const poleTopY = -1.8;
+    const poleBottomY = 14.5; // Extends down to the court floor
+
+    final poleRect = Rect.fromLTWH(
+      -poleWidth / 2,
+      poleTopY,
+      poleWidth,
+      poleBottomY - poleTopY,
+    );
+
+    // 3D cylindrical specular lighting across the pole
+    final polePaint = Paint()
+      ..shader = const LinearGradient(
+        colors: [
+          Color(0xFF94A3B8), // Left shadow edge
+          Color(0xFFE2E8F0),
+          Color(0xFFFFFFFF), // Bright specular highlight along center
+          Color(0xFFCBD5E1), // Right shadow edge
+        ],
+        stops: [0.0, 0.25, 0.55, 1.0],
+      ).createShader(poleRect);
+
     canvas.drawRect(poleRect, polePaint);
   }
 
-  void _renderBackboard(Canvas canvas) {
-    const boardWidth = 2.6;
-    const boardHeight = 1.8;
-    const boardCenter = Offset(0, -1.0);
+  void _renderScoopedBackboard(Canvas canvas) {
+    const boardWidth = 2.8;
+    const boardHeight = 1.9;
+    const boardCenter = Offset(0, -1.02);
 
-    final boardRect = Rect.fromCenter(
-      center: boardCenter,
-      width: boardWidth,
-      height: boardHeight,
-    );
-    final boardRRect =
-        RRect.fromRectAndRadius(boardRect, const Radius.circular(0.08));
+    final outerPath = _buildBackboardPath(boardWidth, boardHeight, boardCenter);
+    final innerPath = _buildBackboardPath(boardWidth * 0.90, boardHeight * 0.90, boardCenter);
 
-    // 1. Backboard glass/acrylic plate
-    final glassPaint = Paint()
-      ..color = const Color(0xF2FFFFFF)
+    // 1. Glossy white backboard face plate
+    final facePaint = Paint()
+      ..color = const Color(0xFFFAFAFA)
       ..style = PaintingStyle.fill;
-    canvas.drawRRect(boardRRect, glassPaint);
+    canvas.drawPath(outerPath, facePaint);
 
-    // 2. Outer dark border
-    final borderPaint = Paint()
-      ..color = const Color(0xFF0F172A)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.06;
-    canvas.drawRRect(boardRRect, borderPaint);
+    // Subtle gloss gradient sheen across backboard
+    final sheenPaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          const Color(0x25FFFFFF),
+          Colors.transparent,
+          const Color(0x10000000),
+        ],
+        stops: const [0.0, 0.5, 1.0],
+      ).createShader(
+        Rect.fromCenter(
+          center: boardCenter,
+          width: boardWidth,
+          height: boardHeight,
+        ),
+      );
+    canvas.drawPath(outerPath, sheenPaint);
 
-    // 3. Outer red perimeter line
-    final outerRedRect = Rect.fromCenter(
-      center: boardCenter,
-      width: boardWidth - 0.14,
-      height: boardHeight - 0.14,
-    );
-    final outerRedRRect =
-        RRect.fromRectAndRadius(outerRedRect, const Radius.circular(0.06));
+    // 2. Outer bold red contour line
     final outerRedPaint = Paint()
-      ..color = const Color(0xFFD32F2F)
+      ..color = const Color(0xFFDC2626)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.05;
-    canvas.drawRRect(outerRedRRect, outerRedPaint);
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..strokeWidth = 0.08;
+    canvas.drawPath(outerPath, outerRedPaint);
 
-    // 4. Inner target square (regulation red box above rim)
+    // 3. Inner parallel red accent line (signature GamePigeon double border)
+    final innerRedPaint = Paint()
+      ..color = const Color(0xFFDC2626)
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..strokeWidth = 0.035;
+    canvas.drawPath(innerPath, innerRedPaint);
+
+    // 4. Regulation target rectangle directly above the rim
     final targetRect = Rect.fromCenter(
       center: const Offset(0, -0.65),
       width: 1.0,
       height: 0.75,
     );
     final targetPaint = Paint()
-      ..color = const Color(0xFFD32F2F)
+      ..color = const Color(0xFFDC2626)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 0.06;
     canvas.drawRect(targetRect, targetPaint);
+  }
+
+  Path _buildBackboardPath(double w, double h, Offset center) {
+    final path = Path();
+    final hw = w / 2;
+    final hh = h / 2;
+
+    // Symmetric scooped-shield fan contour
+    path.moveTo(center.dx, center.dy - hh);
+    // Top-right shoulder notch
+    path.lineTo(center.dx + hw * 0.40, center.dy - hh);
+    path.quadraticBezierTo(
+      center.dx + hw * 0.65,
+      center.dy - hh * 0.95,
+      center.dx + hw * 0.70,
+      center.dy - hh * 0.75,
+    );
+    path.quadraticBezierTo(
+      center.dx + hw * 0.75,
+      center.dy - hh * 0.60,
+      center.dx + hw,
+      center.dy - hh * 0.48,
+    );
+    // Right side curve down to lower corner
+    path.quadraticBezierTo(
+      center.dx + hw * 1.02,
+      center.dy + hh * 0.05,
+      center.dx + hw * 0.90,
+      center.dy + hh * 0.65,
+    );
+    path.quadraticBezierTo(
+      center.dx + hw * 0.82,
+      center.dy + hh,
+      center.dx + hw * 0.55,
+      center.dy + hh,
+    );
+    // Bottom edge to bottom-left corner
+    path.lineTo(center.dx - hw * 0.55, center.dy + hh);
+    path.quadraticBezierTo(
+      center.dx - hw * 0.82,
+      center.dy + hh,
+      center.dx - hw * 0.90,
+      center.dy + hh * 0.65,
+    );
+    // Left side curve up to shoulder
+    path.quadraticBezierTo(
+      center.dx - hw * 1.02,
+      center.dy + hh * 0.05,
+      center.dx - hw,
+      center.dy - hh * 0.48,
+    );
+    // Top-left shoulder notch
+    path.quadraticBezierTo(
+      center.dx - hw * 0.75,
+      center.dy - hh * 0.60,
+      center.dx - hw * 0.70,
+      center.dy - hh * 0.75,
+    );
+    path.quadraticBezierTo(
+      center.dx - hw * 0.65,
+      center.dy - hh * 0.95,
+      center.dx - hw * 0.40,
+      center.dy - hh,
+    );
+    path.close();
+
+    return path;
   }
 
   void _renderRearRim(Canvas canvas) {
@@ -123,7 +240,7 @@ class BackboardVisual extends PositionComponent {
 
   void _renderRearNet(Canvas canvas) {
     final rearNetPaint = Paint()
-      ..color = const Color(0x4494A3B8) // Translucent rear cords
+      ..color = const Color(0x5094A3B8) // Translucent rear cords
       ..style = PaintingStyle.stroke
       ..strokeWidth = 0.025;
 
