@@ -143,6 +143,7 @@ class Basketball extends BodyComponent with DragCallbacks {
       shader.setFloat(2, physicalRadius); // u_radius
       shader.setFloat(3, _yaw); // u_rotation.x
       shader.setFloat(4, _pitch); // u_rotation.y
+      shader.setFloat(5, radius); // u_local_radius
 
       final paint = Paint()..shader = shader;
       // Draw a rect covering the ball bounds with padding for anti-aliasing
