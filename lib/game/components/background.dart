@@ -167,64 +167,26 @@ class GameBackground extends Component with HasGameReference {
       ).createShader(floorRect);
     canvas.drawPath(keyPath, keyPaint);
 
-    // Solid dark key border line
     final keyBorderPaint = Paint()
-      ..color = const Color(0xFF1E1E1E)
+      ..color = const Color(0xFFFACC15) // Yellow arcade border line instead of dark
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.5;
+      ..strokeWidth = 3.0;
     canvas.drawPath(keyPath, keyBorderPaint);
 
     // 3. Free-Throw Markings
     _renderCourtMarkings(canvas, width, height, wallHeight, floorHeight);
 
-    // 4. Pole floor anchor collar plate
-    final collarRect = Rect.fromCenter(
-      center: Offset(centerX, wallHeight + 5.0),
-      width: 32.0,
-      height: 12.0,
-    );
-    final collarPaint = Paint()
-      ..color = const Color(0xFFF1F5F9)
-      ..style = PaintingStyle.fill;
-    final collarBorder = Paint()
-      ..color = const Color(0xFF475569)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
-    canvas.drawOval(collarRect, collarPaint);
-    canvas.drawOval(collarRect, collarBorder);
-
-    // 5. THE MAGIC POLE REFLECTION STREAK (Signature GamePigeon gloss effect)
-    final reflectionRect = Rect.fromLTWH(
-      centerX - 8.0,
-      wallHeight + 6.0,
-      16.0,
-      floorHeight * 0.80,
-    );
-    final poleReflectionPaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          const Color(0x75FFFFFF), // Crisp white highlight at base of pole
-          const Color(0x35FFFFFF),
-          const Color(0x10FFFFFF),
-          Colors.transparent,
-        ],
-        stops: const [0.0, 0.25, 0.6, 1.0],
-      ).createShader(reflectionRect);
-    canvas.drawRect(reflectionRect, poleReflectionPaint);
-
-    // 6. Overall floor gloss sheen overlay
+    // 4. Overall floor gloss sheen overlay
     final floorGlossPaint = Paint()
       ..shader = LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: [
-          const Color(0x20FFFFFF),
-          const Color(0x06FFFFFF),
+          const Color(0x30FFFFFF),
+          const Color(0x05FFFFFF),
           Colors.transparent,
         ],
-        stops: const [0.0, 0.35, 1.0],
+        stops: const [0.0, 0.4, 1.0],
       ).createShader(floorRect);
     canvas.drawRect(floorRect, floorGlossPaint);
   }
@@ -251,16 +213,16 @@ class GameBackground extends Component with HasGameReference {
 
     // Solid front arc (facing player)
     final solidArcPaint = Paint()
-      ..color = const Color(0xFF1E1E1E)
+      ..color = const Color(0xFFFACC15) // Yellow arcade markings
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.0;
+      ..strokeWidth = 3.0;
     canvas.drawArc(arcRect, 0, math.pi, false, solidArcPaint);
 
     // Dashed back arc (receding toward basket)
     final dashedArcPaint = Paint()
-      ..color = const Color(0xCC1E1E1E)
+      ..color = const Color(0xCCFACC15)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.0;
+      ..strokeWidth = 3.0;
 
     for (double a = math.pi; a < 2 * math.pi; a += 0.35) {
       canvas.drawArc(arcRect, a, 0.18, false, dashedArcPaint);
