@@ -3,14 +3,22 @@
 uniform vec2 u_center; // center of the ball in screen pixels
 uniform float u_radius; // radius of the ball in screen pixels
 uniform vec2 u_rotation; // x = yaw (spin around Y), y = pitch (spin around X)
+uniform float u_local_radius; // radius in local canvas coordinates
 
 out vec4 fragColor;
 
 void main() {
-    // Normalize pixel coordinates using the physical screen position
-    vec2 uv = (FlutterFragCoord().xy - u_center) / u_radius;
+    vec2 coord = FlutterFragCoord().xy;
+    vec2 uv;
 
-    
+    // Detect if FlutterFragCoord is in local coordinates (Impeller engine)
+    // or global screen pixels (Skia / CanvasKit engine):
+    if (abs(coord.x) <= u_local_radius * 2.5 && abs(coord.y) <= u_local_radius * 2.5 && length(u_center) > u_radius * 2.0) {
+        uv = coord / u_local_radius;
+    } else {
+        uv = (coord - u_center) / u_radius;
+    }
+
     float radius = length(uv);
     if (radius > 1.0) {
         // Outside the sphere, return transparent
