@@ -71,7 +71,29 @@ class Basketball extends BodyComponent with DragCallbacks {
   @override
   void render(Canvas canvas) {
     final currentY = body.position.y;
-    // Perspective scaling: slightly smaller as it travels up towards the hoop
+
+    // 1. Dynamic Floor Drop Shadow (Spatial Height Perception)
+    const floorY = 19.2;
+    final distToFloor = floorY - currentY;
+    if (distToFloor > 0 && distToFloor < 15.0) {
+      final shadowAlpha = (1.0 - (distToFloor / 15.0)).clamp(0.0, 0.45);
+      final shadowScale = (1.0 + (distToFloor / 12.0)).clamp(1.0, 2.0);
+      final shadowPaint = Paint()
+        ..color = Color.fromRGBO(0, 0, 0, shadowAlpha)
+        ..maskFilter = MaskFilter.blur(
+          BlurStyle.normal,
+          (1.0 + distToFloor * 0.35).clamp(1.0, 5.0),
+        );
+
+      final shadowRect = Rect.fromCenter(
+        center: Offset(0, distToFloor),
+        width: radius * 2.2 * shadowScale,
+        height: radius * 0.65 * shadowScale,
+      );
+      canvas.drawOval(shadowRect, shadowPaint);
+    }
+
+    // 2. Perspective scaling: slightly smaller as it travels up towards the hoop
     final scaleFactor = (0.75 + (currentY / 20.0) * 0.25).clamp(0.7, 1.0);
 
     canvas.save();
