@@ -17,7 +17,7 @@ class Basketball extends BodyComponent with DragCallbacks {
 
   Basketball({
     required this.initialPosition,
-    this.radius = 2.5,
+    this.radius = 0.5,
   }) : super(priority: 2);
 
   @override
@@ -71,7 +71,8 @@ class Basketball extends BodyComponent with DragCallbacks {
   @override
   void render(Canvas canvas) {
     final currentY = body.position.y;
-    final scaleFactor = (currentY / 80.0).clamp(0.4, 1.0);
+    // Perspective scaling: slightly smaller as it travels up towards the hoop
+    final scaleFactor = (0.75 + (currentY / 20.0) * 0.25).clamp(0.7, 1.0);
 
     canvas.save();
     canvas.scale(scaleFactor);
@@ -79,15 +80,16 @@ class Basketball extends BodyComponent with DragCallbacks {
     if (_program != null) {
       final shader = _program!.fragmentShader();
 
-      // Calculate screen position for the shader's FlutterFragCoord math manually
-      final screenPos =
-          (body.position - game.camera.viewfinder.position) *
-          game.camera.viewfinder.zoom;
-      final screenRadius = radius * game.camera.viewfinder.zoom * scaleFactor;
+      // Read exact screen pixels and scale directly from Flutter's Canvas transform matrix!
+      final transform = canvas.getTransform();
+      final screenX = transform[12];
+      final screenY = transform[13];
+      final pixelScale = transform[0];
+      final screenRadius = radius * pixelScale;
 
       // Pass Uniforms
-      shader.setFloat(0, screenPos.x); // u_center.x
-      shader.setFloat(1, screenPos.y); // u_center.y
+      shader.setFloat(0, screenX); // u_center.x
+      shader.setFloat(1, screenY); // u_center.y
       shader.setFloat(2, screenRadius); // u_radius
       shader.setFloat(3, _yaw); // u_rotation.x
       shader.setFloat(4, _pitch); // u_rotation.y
@@ -114,13 +116,13 @@ class Basketball extends BodyComponent with DragCallbacks {
     super.onDragEnd(event);
 
     final velocity = event.velocity;
-    final impulse = velocity / 200.0;
+    final impulse = velocity / 90.0;
 
     body.applyLinearImpulse(impulse);
 
     // Add a natural backspin when swiped upwards!
     if (impulse.y < 0) {
-      body.applyAngularImpulse(impulse.y * 2.0);
+      body.applyAngularImpulse(impulse.y * 0.4);
     }
   }
 }
