@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flame_forge2d/flame_forge2d.dart';
@@ -90,13 +91,17 @@ class Basketball extends BodyComponent with DragCallbacks {
     const floorY = 19.2;
     final distToFloor = floorY - currentY;
     if (distToFloor > 0 && distToFloor < 15.0) {
-      final shadowAlpha = (1.0 - (distToFloor / 15.0)).clamp(0.0, 0.45);
-      final shadowScale = (1.0 + (distToFloor / 12.0)).clamp(1.0, 2.0);
+      final shadowAlpha =
+          (0.55 - (distToFloor / 15.0) * 0.35).clamp(0.15, 0.55);
+      final shadowScale =
+          (1.0 + (distToFloor / 12.0) * 0.5).clamp(1.0, 1.8);
+      // Tight, grounded contact blur in world units (0.06m near floor up to 0.45m high up)
+      final blurRadius = (0.06 + distToFloor * 0.025).clamp(0.06, 0.45);
       final shadowPaint = Paint()
         ..color = Color.fromRGBO(0, 0, 0, shadowAlpha)
         ..maskFilter = MaskFilter.blur(
           BlurStyle.normal,
-          (1.0 + distToFloor * 0.35).clamp(1.0, 5.0),
+          blurRadius,
         );
 
       final shadowRect = Rect.fromCenter(
@@ -116,30 +121,39 @@ class Basketball extends BodyComponent with DragCallbacks {
     if (_program != null) {
       final shader = _program!.fragmentShader();
 
-      // Read exact screen pixels and scale directly from Flutter's Canvas transform matrix!
+      // Read exact screen pixels and scale from Flutter's Canvas transform matrix
       final transform = canvas.getTransform();
-      final screenX = transform[12];
-      final screenY = transform[13];
-      final pixelScale = transform[0];
-      final screenRadius = radius * pixelScale;
+      final logicalCenterX = transform[12];
+      final logicalCenterY = transform[13];
+      // Rotation-invariant scale: sqrt(m00^2 + m10^2)
+      final logicalScale =
+          math.sqrt(transform[0] * transform[0] + transform[1] * transform[1]);
 
-      // Pass Uniforms
-      shader.setFloat(0, screenX); // u_center.x
-      shader.setFloat(1, screenY); // u_center.y
-      shader.setFloat(2, screenRadius); // u_radius
+      // Query hardware device pixel ratio (DPR) to bridge logical canvas to WebGL FlutterFragCoord
+      final dpr =
+          WidgetsBinding.instance.platformDispatcher.views.first.devicePixelRatio;
+
+      final physicalCenterX = logicalCenterX * dpr;
+      final physicalCenterY = logicalCenterY * dpr;
+      final physicalRadius = radius * logicalScale * dpr;
+
+      // Pass Uniforms in exact physical screen space
+      shader.setFloat(0, physicalCenterX); // u_center.x
+      shader.setFloat(1, physicalCenterY); // u_center.y
+      shader.setFloat(2, physicalRadius); // u_radius
       shader.setFloat(3, _yaw); // u_rotation.x
       shader.setFloat(4, _pitch); // u_rotation.y
 
       final paint = Paint()..shader = shader;
-      // Draw a rect covering the ball bounds
+      // Draw a rect covering the ball bounds with padding for anti-aliasing
       final rect = Rect.fromCenter(
         center: Offset.zero,
-        width: radius * 2,
-        height: radius * 2,
+        width: radius * 2.2,
+        height: radius * 2.2,
       );
       canvas.drawRect(rect, paint);
     } else {
-      // Fallback rendering
+      // Fallback rendering while shader compiles/loads
       final paint = Paint()..color = const Color(0xFFFF6F00);
       canvas.drawCircle(Offset.zero, radius, paint);
     }
