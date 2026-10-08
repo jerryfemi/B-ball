@@ -1,14 +1,17 @@
 import 'package:flame_forge2d/flame_forge2d.dart';
 import 'package:forge2d/forge2d.dart' as forge2d;
-import 'package:flutter/material.dart';
 
+/// Static physics colliders for the basketball hoop:
+/// - Circular left/right rim pivots for realistic ball rattling and rim roll.
+/// - Backboard deflector plate.
+/// - Invisible scoring sensor between the rim edges.
 class HoopPhysics extends BodyComponent {
   final Vector2 hoopCenterInMeters;
   final double hoopWidthInMeters;
-  
+
   HoopPhysics({
     required this.hoopCenterInMeters,
-    required this.hoopWidthInMeters,
+    this.hoopWidthInMeters = 6.0,
   });
 
   @override
@@ -20,37 +23,50 @@ class HoopPhysics extends BodyComponent {
 
     final body = world.createBody(bodyDef);
 
-    // High restitution for the rim to make the ball bounce out
-    final rimMaterial = SurfaceMaterial(friction: 0.2, restitution: 0.8);
-    
-    // Backboard (Flat box behind the hoop)
-    final backboardShape = Polygon([
-      Vector2(-hoopWidthInMeters, -1.0),
-      Vector2(hoopWidthInMeters, -1.0),
-      Vector2(hoopWidthInMeters, -0.8),
-      Vector2(-hoopWidthInMeters, -0.8),
-    ]);
-    body.createShape(backboardShape, ShapeDef(material: SurfaceMaterial(friction: 0.2, restitution: 0.4)));
+    // Rim material: high restitution for authentic bounce and rattle
+    final rimMaterial = SurfaceMaterial(friction: 0.25, restitution: 0.85);
 
-    // Left Rim (Small box at offset)
-    final lx = -hoopWidthInMeters / 2;
-    final leftRim = Polygon([
-      Vector2(lx - 0.2, -0.2),
-      Vector2(lx + 0.2, -0.2),
-      Vector2(lx + 0.2, 0.2),
-      Vector2(lx - 0.2, 0.2),
-    ]);
+    // 1. Left Rim Circle Collider (radius 0.22m)
+    final leftRim = forge2d.Circle(
+      radius: 0.22,
+      center: Vector2(-hoopWidthInMeters / 2, 0),
+    );
     body.createShape(leftRim, ShapeDef(material: rimMaterial));
 
-    // Right Rim (Small box at offset)
-    final rx = hoopWidthInMeters / 2;
-    final rightRim = Polygon([
-      Vector2(rx - 0.2, -0.2),
-      Vector2(rx + 0.2, -0.2),
-      Vector2(rx + 0.2, 0.2),
-      Vector2(rx - 0.2, 0.2),
-    ]);
+    // 2. Right Rim Circle Collider (radius 0.22m)
+    final rightRim = forge2d.Circle(
+      radius: 0.22,
+      center: Vector2(hoopWidthInMeters / 2, 0),
+    );
     body.createShape(rightRim, ShapeDef(material: rimMaterial));
+
+    // 3. Backboard Deflector (stops high overshots above the rim)
+    final backboardDeflector = Polygon([
+      Vector2(-hoopWidthInMeters, -4.5),
+      Vector2(hoopWidthInMeters, -4.5),
+      Vector2(hoopWidthInMeters, -4.2),
+      Vector2(-hoopWidthInMeters, -4.2),
+    ]);
+    body.createShape(
+      backboardDeflector,
+      ShapeDef(material: SurfaceMaterial(friction: 0.2, restitution: 0.6)),
+    );
+
+    // 4. Score Detection Sensor (placed inside the rim opening)
+    final scoreSensor = Polygon([
+      Vector2(-hoopWidthInMeters / 2 + 0.4, 0.2),
+      Vector2(hoopWidthInMeters / 2 - 0.4, 0.2),
+      Vector2(hoopWidthInMeters / 2 - 0.4, 0.6),
+      Vector2(-hoopWidthInMeters / 2 + 0.4, 0.6),
+    ]);
+    body.createShape(
+      scoreSensor,
+      ShapeDef(
+        isSensor: true,
+        enableSensorEvents: true,
+        userData: 'hoop_score_sensor',
+      ),
+    );
 
     return body;
   }
