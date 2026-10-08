@@ -20,7 +20,14 @@ In a true 3D game, you shoot up through a hoop. In 2D, the rim blocks upward mov
   - If `velocity.y < 0` (moving UP), the ball ignores the front rim (either via `ContactFilter` or temporarily setting the rim's fixture to `isSensor = true`).
   - If `velocity.y > 0` (falling DOWN), the front rim becomes a solid physical object, allowing the ball to bounce off it realistically.
 
-## 3. Architecture & State decoupling
+## 3. GamePigeon Specific Physics Tricks (From MetaAI Architecture)
+- **Circular Rim Colliders**: The left and right edges of the rim MUST be two small static `CircleShape` bodies (radius ~0.15 - 0.25 meters / 4-6 px), not flat boxes or polygon edges. Circular contacts produce natural, realistic ball rattling, rim-rolling, and dramatic rim-outs instead of sticky polygon corners.
+- **Invisible Sensor for Scoring**: The net is purely visual. Real score detection is handled by an invisible sensor box (`isSensor: true`) placed directly between the rim circles inside the hoop opening.
+  - *Downward Entry Gate*: Only trigger a score if `ball.linearVelocity.y > 0` (moving downwards) when entering the sensor, preventing false scores on upward shots.
+- **Bouncy Arena Boundaries (Chaotic Rebounds)**: Add invisible static walls on the left, right, and top of the screen with restitution ~0.5. When a shot misses or hits hard, it ricochets off the walls — capturing GamePigeon's signature chaotic, lively arcade feel.
+- **Auto-Reset Game Loop**: The ball automatically resets to the shooter position 2-3 seconds after a throw, or once it settles / scores.
+
+## 4. Architecture & State Decoupling
 - **Input to Physics**: Map `onDragEnd` / `onPanEnd` vector velocities directly to `body.applyLinearImpulse()` for 1:1 user-to-game physical interaction. Scale the vector down appropriately for Box2D meters.
 - **State Management**: Keep Flame entirely decoupled from UI State. 
   - Flame handles the Game Loop (physics, collisions, timers).
