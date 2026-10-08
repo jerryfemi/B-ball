@@ -21,35 +21,32 @@ class BasketballGame extends Forge2DGame {
   Future<void> onLoad() async {
     await super.onLoad();
 
-    // 1. Fluid Full-Screen Viewport (No black letterbox bars!)
-    // Camera defaults to full screen view.
+    // 1. Fluid Full-Screen Viewport
     final metersToPixels = size.y / worldHeightInMeters;
 
     final viewfinder = camera.viewfinder as Forge2DViewfinder;
     viewfinder.metersToPixels = metersToPixels;
     viewfinder.zoom = 1.0;
-    viewfinder.anchor = Anchor.topLeft;
+    // Set anchor to topCenter so that x=0 is always the horizontal middle of the screen.
+    viewfinder.anchor = Anchor.topCenter;
     viewfinder.position = Vector2.zero();
 
     // 2. Procedural Arena & Hardwood Court Background
     camera.backdrop.add(GameBackground());
 
-    // World dimensions in physics meters
-    final worldWidthInMeters = size.x / metersToPixels;
-
     // 3. Ground physics floor at the bottom of the court
     final floorYInMeters = 19.2;
     world.add(Ground(
-      groundPosition: Vector2(worldWidthInMeters / 2, floorYInMeters),
-      groundSize: Vector2(worldWidthInMeters * 2, 1.0),
+      groundPosition: Vector2(0, floorYInMeters),
+      groundSize: Vector2(100.0, 1.0), // Arbitrarily wide to cover any screen width
     ));
 
-    // 4. Hoop positioned in world coordinates (25% down, horizontally centered)
-    final hoopCenterInMeters = Vector2(worldWidthInMeters / 2, 5.0);
-    const hoopWidthInMeters = 1.4;
+    // 4. Hoop positioned in world coordinates (25% down, horizontally centered at x=0)
+    final hoopCenterInMeters = Vector2(0, 5.0);
+    const hoopWidthInMeters = 1.8; // Increased from 1.4 to make hoop bigger
 
     // 5. 2.5D Layering Pipeline:
-    // Priority 1: Backboard, pole, rear rim half, and rear net mesh
+    // Priority 1: Backboard, wall mounts, rear rim half, and rear net mesh
     world.add(BackboardVisual(
       position: hoopCenterInMeters,
       hoopWidth: hoopWidthInMeters,
@@ -63,7 +60,7 @@ class BasketballGame extends Forge2DGame {
 
     // Priority 2: Basketball (passes over backboard, behind front rim)
     world.add(Basketball(
-      initialPosition: Vector2(worldWidthInMeters / 2, floorYInMeters - 2.5),
+      initialPosition: Vector2(0, floorYInMeters - 2.5),
       radius: 0.5,
     ));
 
