@@ -36,19 +36,6 @@ class Ground extends BodyComponent {
 
   @override
   void render(Canvas canvas) {
-    // Visible court boundary styling
-    final paint = Paint()..color = const Color(0xFF2E2E48);
-    final borderPaint = Paint()
-      ..color = const Color(0xFF5D5D8A)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.08;
-
-    final rect = Rect.fromCenter(
-      center: Offset.zero,
-      width: groundSize.x,
-      height: groundSize.y,
-    );
-    canvas.drawRect(rect, paint);
-    canvas.drawRect(rect, borderPaint);
+    // Invisible physics collider so procedural court floor shows cleanly
   }
 }
