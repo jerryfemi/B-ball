@@ -11,8 +11,8 @@ class BackboardVisual extends PositionComponent {
 
   BackboardVisual({
     required Vector2 position,
-    this.hoopWidth = 1.4,
-    this.hoopDepth = 0.35,
+    this.hoopWidth = 1.8,
+    this.hoopDepth = 0.45,
   }) : super(
           position: position,
           size: Vector2(6.0, 20.0),
@@ -29,7 +29,7 @@ class BackboardVisual extends PositionComponent {
     canvas.translate(size.x / 2, size.y / 2);
 
     _renderWallDropShadow(canvas);
-    _renderCylindricalPole(canvas);
+    _renderWallMounts(canvas);
     _renderScoopedBackboard(canvas);
     _renderRearRim(canvas);
     _renderRearNet(canvas);
@@ -43,49 +43,52 @@ class BackboardVisual extends PositionComponent {
       ..color = const Color(0x60000000)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
 
-    final shadowPath = _buildBackboardPath(2.8, 1.9, const Offset(0.08, -0.92));
+    final shadowPath = _buildBackboardPath(3.6, 2.4, const Offset(0.08, -0.92));
     canvas.drawPath(shadowPath, shadowPaint);
 
-    // Pole drop shadow on wall
-    final poleShadowPaint = Paint()
+    // Mount drop shadow on wall
+    final mountShadowPaint = Paint()
       ..color = const Color(0x40000000)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
     canvas.drawRect(
-      const Rect.fromLTWH(0.12, -1.8, 0.16, 16.0),
-      poleShadowPaint,
+      const Rect.fromLTWH(-0.8, -1.1, 0.15, 2.5),
+      mountShadowPaint,
+    );
+    canvas.drawRect(
+      const Rect.fromLTWH(0.85, -1.1, 0.15, 2.5),
+      mountShadowPaint,
     );
   }
 
-  void _renderCylindricalPole(Canvas canvas) {
-    const poleWidth = 0.20;
-    const poleTopY = -1.8;
-    const poleBottomY = 14.5; // Extends down to the court floor
+  void _renderWallMounts(Canvas canvas) {
+    // Renders heavy-duty steel wall mounts behind the backboard
+    final mountPaint = Paint()
+      ..color = const Color(0xFF475569) // Dark slate metal
+      ..style = PaintingStyle.fill;
+      
+    final highlightPaint = Paint()
+      ..color = const Color(0xFF64748B) // Highlight edge
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.05;
 
-    final poleRect = Rect.fromLTWH(
-      -poleWidth / 2,
-      poleTopY,
-      poleWidth,
-      poleBottomY - poleTopY,
-    );
-
-    // 3D cylindrical specular lighting across the pole
-    final polePaint = Paint()
-      ..shader = const LinearGradient(
-        colors: [
-          Color(0xFF94A3B8), // Left shadow edge
-          Color(0xFFE2E8F0),
-          Color(0xFFFFFFFF), // Bright specular highlight along center
-          Color(0xFFCBD5E1), // Right shadow edge
-        ],
-        stops: [0.0, 0.25, 0.55, 1.0],
-      ).createShader(poleRect);
-
-    canvas.drawRect(poleRect, polePaint);
+    // Left and right mounting struts
+    final leftStrut = Rect.fromLTWH(-0.9, -1.2, 0.15, 2.5);
+    final rightStrut = Rect.fromLTWH(0.75, -1.2, 0.15, 2.5);
+    
+    canvas.drawRect(leftStrut, mountPaint);
+    canvas.drawRect(leftStrut, highlightPaint);
+    canvas.drawRect(rightStrut, mountPaint);
+    canvas.drawRect(rightStrut, highlightPaint);
+    
+    // Crossbeam
+    final crossbeam = Rect.fromCenter(center: const Offset(0, -0.2), width: 2.0, height: 0.2);
+    canvas.drawRect(crossbeam, mountPaint);
+    canvas.drawRect(crossbeam, highlightPaint);
   }
 
   void _renderScoopedBackboard(Canvas canvas) {
-    const boardWidth = 2.8;
-    const boardHeight = 1.9;
+    const boardWidth = 3.6;
+    const boardHeight = 2.4;
     const boardCenter = Offset(0, -1.02);
 
     final outerPath = _buildBackboardPath(boardWidth, boardHeight, boardCenter);
