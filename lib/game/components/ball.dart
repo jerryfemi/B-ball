@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 class Basketball extends BodyComponent with DragCallbacks {
   final Vector2 initialPosition;
   final double radius;
+  final VoidCallback? onLaunched;
 
   ui.FragmentProgram? _program;
 
@@ -15,9 +16,13 @@ class Basketball extends BodyComponent with DragCallbacks {
   double _pitch = 0.0;
   double _yaw = 0.0;
 
+  bool isLaunched = false;
+  double timeSinceLaunch = 0.0;
+
   Basketball({
     required this.initialPosition,
     this.radius = 0.5,
+    this.onLaunched,
   }) : super(priority: 2);
 
   @override
@@ -33,7 +38,7 @@ class Basketball extends BodyComponent with DragCallbacks {
   @override
   Body createBody() {
     final bodyDef = BodyDef(
-      type: BodyType.dynamic,
+      type: BodyType.kinematic, // Start kinematic so it hovers in the ready position
       position: initialPosition,
       linearDamping: 0.1,
       angularDamping: 0.2, // Adds some natural spin friction
@@ -56,6 +61,15 @@ class Basketball extends BodyComponent with DragCallbacks {
   @override
   void update(double dt) {
     super.update(dt);
+
+    if (isLaunched) {
+      timeSinceLaunch += dt;
+      // Garbage collection: remove balls 4 seconds after they are shot
+      if (timeSinceLaunch > 4.0) {
+        removeFromParent();
+        return;
+      }
+    }
 
     // Fake 3D rotation based on actual 2D velocity and angular velocity!
     // If it moves up/down (Y velocity), it spins around X axis (pitch)
@@ -134,18 +148,36 @@ class Basketball extends BodyComponent with DragCallbacks {
   }
 
   @override
+  bool containsPoint(Vector2 point) {
+    if (isLaunched) return false;
+    // Generous touch target (2.5x radius) so quick swipe gestures never miss
+    final dist = (point - body.position).length;
+    return dist <= radius * 2.5;
+  }
+
+  @override
   void onDragEnd(DragEndEvent event) {
     super.onDragEnd(event);
 
+    if (isLaunched) return;
+
     final velocity = event.velocity;
-    final impulse = velocity / 90.0;
+    // Only launch when swiped upwards toward the hoop
+    if (velocity.y >= 0) return;
+
+    isLaunched = true;
+    body.type = BodyType.dynamic; // Become physical!
+    onLaunched?.call(); // Notify the game to spawn the next ball
+
+    // Scale swipe velocity to world physics impulse (calibrated for 20m arena height)
+    final impulseX = (velocity.x / 45.0).clamp(-18.0, 18.0);
+    final impulseY = (velocity.y / 42.0).clamp(-35.0, -12.0);
+    final impulse = Vector2(impulseX, impulseY);
 
     body.applyLinearImpulse(impulse);
 
     // Add a natural backspin when swiped upwards!
-    if (impulse.y < 0) {
-      body.applyAngularImpulse(impulse.y * 0.4);
-    }
+    body.applyAngularImpulse(impulse.y * 0.4);
   }
 }
 
