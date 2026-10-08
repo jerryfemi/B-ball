@@ -1,5 +1,4 @@
 import 'package:flame/components.dart';
-import 'package:flutter/painting.dart';
 
 class GameBackground extends Component with HasGameRef {
   late SpriteComponent brickWall;
@@ -37,7 +36,7 @@ class GameBackground extends Component with HasGameRef {
     if (isLoaded) {
       final brickHeight = size.y * 0.66;
       brickWall.size = Vector2(size.x, brickHeight);
-      
+
       final floorHeight = size.y - brickHeight;
       woodenFloor.size = Vector2(size.x, floorHeight);
       woodenFloor.position = Vector2(0, brickHeight);
