@@ -13,62 +13,74 @@ import 'components/ground.dart';
 class BasketballGame extends Forge2DGame {
   BasketballGame() : super(gravity: Vector2(0, 30.0));
 
+  static const double worldHeightInMeters = 20.0;
+
   @override
-  Color backgroundColor() => const Color(0xFF161622);
+  Color backgroundColor() => const Color(0xFF090D16);
 
   @override
   Future<void> onLoad() async {
     await super.onLoad();
 
-    // Lock the logical resolution to a mobile portrait ratio (400x800).
-    // This ensures the game scales perfectly on ANY screen size (desktop or mobile).
-    camera.viewport = FixedResolutionViewport(resolution: Vector2(400, 800));
+    // 1. Fluid Full-Screen Viewport (No black letterbox bars!)
+    // Camera defaults to full screen view.
+    final metersToPixels = size.y / worldHeightInMeters;
 
-    // The camera defaults to top-left (0,0) world coordinates.
-    camera.viewfinder.anchor = Anchor.topLeft;
-    // Standard 10x zoom: 1 meter = 10 pixels.
-    camera.viewfinder.zoom = 10.0;
+    final viewfinder = camera.viewfinder as Forge2DViewfinder;
+    viewfinder.metersToPixels = metersToPixels;
+    viewfinder.zoom = 1.0;
+    viewfinder.anchor = Anchor.topLeft;
+    viewfinder.position = Vector2.zero();
 
-    // 1. Court background (renders in backdrop behind all World elements)
+    // 2. Procedural Arena & Hardwood Court Background
     camera.backdrop.add(GameBackground());
 
-    // Convert screen dimensions to world meter coordinates
-    final screenWidthInMeters = size.x / camera.viewfinder.zoom; // 40.0 meters
-    final floorYInMeters = size.y / camera.viewfinder.zoom; // 80.0 meters
+    // World dimensions in physics meters
+    final worldWidthInMeters = size.x / metersToPixels;
 
-    // Physics floor at the base of the viewport
+    // 3. Ground physics floor at the bottom of the court
+    final floorYInMeters = 19.2;
     world.add(Ground(
-      groundPosition: Vector2(screenWidthInMeters / 2, floorYInMeters),
-      groundSize: Vector2(screenWidthInMeters, 2.0),
+      groundPosition: Vector2(worldWidthInMeters / 2, floorYInMeters),
+      groundSize: Vector2(worldWidthInMeters * 2, 1.0),
     ));
 
-    // Hoop positioning in World coordinates
-    final hoopCenterInMeters = Vector2(screenWidthInMeters / 2, 20.0);
-    const hoopWidthInMeters = 6.0;
+    // 4. Hoop positioned in world coordinates (25% down, horizontally centered)
+    final hoopCenterInMeters = Vector2(worldWidthInMeters / 2, 5.0);
+    const hoopWidthInMeters = 1.4;
 
-    // 2. 2.5D Layering pipeline:
+    // 5. 2.5D Layering Pipeline:
     // Priority 1: Backboard, pole, rear rim half, and rear net mesh
     world.add(BackboardVisual(
       position: hoopCenterInMeters,
       hoopWidth: hoopWidthInMeters,
     ));
 
-    // Physics colliders (circles for rims, backboard deflector, score sensor)
+    // Physics colliders (circles for rims, deflector plate, score sensor)
     world.add(HoopPhysics(
       hoopCenterInMeters: hoopCenterInMeters,
       hoopWidthInMeters: hoopWidthInMeters,
     ));
 
-    // Priority 2: Basketball (passes over backboard, under front rim)
+    // Priority 2: Basketball (passes over backboard, behind front rim)
     world.add(Basketball(
-      initialPosition: Vector2(screenWidthInMeters / 2, floorYInMeters - 10),
-      radius: 2.5,
+      initialPosition: Vector2(worldWidthInMeters / 2, floorYInMeters - 2.5),
+      radius: 0.5,
     ));
 
-    // Priority 3: Front rim half (highlighted orange) and front net cords
+    // Priority 3: Front rim half and front net cords
     world.add(FrontRimVisual(
       position: hoopCenterInMeters,
       hoopWidth: hoopWidthInMeters,
     ));
+  }
+
+  @override
+  void onGameResize(Vector2 size) {
+    super.onGameResize(size);
+    if (isLoaded) {
+      final viewfinder = camera.viewfinder as Forge2DViewfinder;
+      viewfinder.metersToPixels = size.y / worldHeightInMeters;
+    }
   }
 }
