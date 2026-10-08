@@ -59,16 +59,26 @@ class BasketballGame extends Forge2DGame {
     ));
 
     // Priority 2: Basketball (passes over backboard, behind front rim)
-    world.add(Basketball(
-      initialPosition: Vector2(0, floorYInMeters - 2.5),
-      radius: 0.5,
-    ));
+    _spawnReadyBall();
 
     // Priority 3: Front rim half and front net cords
     world.add(FrontRimVisual(
       position: hoopCenterInMeters,
       hoopWidth: hoopWidthInMeters,
     ));
+  }
+
+  void _spawnReadyBall() {
+    final ball = Basketball(
+      // Spawn at a fixed floating position at the bottom of the screen
+      initialPosition: Vector2(0, 18.0),
+      radius: 0.5,
+      onLaunched: () {
+        // The instant the ball is swiped, spawn a new one!
+        _spawnReadyBall();
+      },
+    );
+    world.add(ball);
   }
 
   @override
