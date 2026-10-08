@@ -11,7 +11,7 @@ class HoopPhysics extends BodyComponent {
 
   HoopPhysics({
     required this.hoopCenterInMeters,
-    this.hoopWidthInMeters = 6.0,
+    this.hoopWidthInMeters = 1.4,
   });
 
   @override
@@ -26,26 +26,26 @@ class HoopPhysics extends BodyComponent {
     // Rim material: high restitution for authentic bounce and rattle
     final rimMaterial = SurfaceMaterial(friction: 0.25, restitution: 0.85);
 
-    // 1. Left Rim Circle Collider (radius 0.22m)
+    // 1. Left Rim Circle Collider
     final leftRim = forge2d.Circle(
-      radius: 0.22,
+      radius: 0.05,
       center: Vector2(-hoopWidthInMeters / 2, 0),
     );
     body.createShape(leftRim, ShapeDef(material: rimMaterial));
 
-    // 2. Right Rim Circle Collider (radius 0.22m)
+    // 2. Right Rim Circle Collider
     final rightRim = forge2d.Circle(
-      radius: 0.22,
+      radius: 0.05,
       center: Vector2(hoopWidthInMeters / 2, 0),
     );
     body.createShape(rightRim, ShapeDef(material: rimMaterial));
 
     // 3. Backboard Deflector (stops high overshots above the rim)
     final backboardDeflector = Polygon([
-      Vector2(-hoopWidthInMeters, -4.5),
-      Vector2(hoopWidthInMeters, -4.5),
-      Vector2(hoopWidthInMeters, -4.2),
-      Vector2(-hoopWidthInMeters, -4.2),
+      Vector2(-1.3, -1.0),
+      Vector2(1.3, -1.0),
+      Vector2(1.3, -0.92),
+      Vector2(-1.3, -0.92),
     ]);
     body.createShape(
       backboardDeflector,
@@ -54,10 +54,10 @@ class HoopPhysics extends BodyComponent {
 
     // 4. Score Detection Sensor (placed inside the rim opening)
     final scoreSensor = Polygon([
-      Vector2(-hoopWidthInMeters / 2 + 0.4, 0.2),
-      Vector2(hoopWidthInMeters / 2 - 0.4, 0.2),
-      Vector2(hoopWidthInMeters / 2 - 0.4, 0.6),
-      Vector2(-hoopWidthInMeters / 2 + 0.4, 0.6),
+      Vector2(-hoopWidthInMeters / 2 + 0.1, 0.05),
+      Vector2(hoopWidthInMeters / 2 - 0.1, 0.05),
+      Vector2(hoopWidthInMeters / 2 - 0.1, 0.15),
+      Vector2(-hoopWidthInMeters / 2 + 0.1, 0.15),
     ]);
     body.createShape(
       scoreSensor,
