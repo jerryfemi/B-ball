@@ -23,6 +23,9 @@ class Basketball extends BodyComponent with DragCallbacks {
   bool _hasBankedBackboard = false;
   double _launchPower = 0.0;
 
+  double targetFloorY = 19.2;
+  int _bounceCount = 0;
+
   final bool animateEntrance;
   bool isEntering = false;
   double enterProgress = 0.0;
@@ -37,7 +40,7 @@ class Basketball extends BodyComponent with DragCallbacks {
     this.radius = 0.58,
     this.onLaunched,
     this.animateEntrance = false,
-  }) : super(priority: 2) {
+  }) : super(priority: 5) {
     if (animateEntrance) {
       isEntering = true;
     }
@@ -106,11 +109,16 @@ class Basketball extends BodyComponent with DragCallbacks {
 
     if (isLaunched && body.type == BodyType.dynamic) {
       timeSinceLaunch += dt;
-      // Garbage collection: remove ball 6.0 seconds after shot
-      if (timeSinceLaunch > 6.0) {
+      // Garbage collection: keep made/missed balls lingering on court for 12 seconds
+      if (timeSinceLaunch > 12.0) {
         removeFromParent();
         return;
       }
+
+      // 1. Dynamic 3D Depth Layering:
+      // While ascending (Vy < 0) or above the rim: renders IN FRONT of the front rim (priority 5).
+      // Only when dipping into the rim cylinder: priority 2 (front rim renders in front of ball).
+      _updateRenderPriority();
 
       // DIRECTIONAL PARABOLIC PHASE CHECK:
       // While ascending (Vy < 0): maskBits is 0x0002 (Floor only), bypassing the rim.
@@ -145,10 +153,59 @@ class Basketball extends BodyComponent with DragCallbacks {
         }
       }
 
+      // 2. 2.5D Court Floor Collision & Natural Bouncing
+      if (body.position.y >= targetFloorY) {
+        body.setTransform(
+          Vector2(body.position.x, targetFloorY),
+          const forge2d.Rot.identity(),
+        );
+
+        if (body.linearVelocity.y.abs() > 1.2) {
+          _bounceCount++;
+          // Rebound upward with authentic hardwood floor restitution
+          body.linearVelocity = Vector2(
+            body.linearVelocity.x * 0.82,
+            -body.linearVelocity.y.abs() * 0.62,
+          );
+          body.angularVelocity *= 0.75;
+          // Slight forward progression on each bounce
+          if (targetFloorY < 17.5 && _bounceCount < 4) {
+            targetFloorY += 0.40;
+          }
+        } else {
+          // Settled peacefully to rest on the hardwood court floor
+          body.linearVelocity = Vector2(
+            body.linearVelocity.x * 0.85,
+            0.0,
+          );
+          if (body.linearVelocity.x.abs() < 0.1) {
+            body.linearVelocity = Vector2.zero();
+            body.angularVelocity = 0.0;
+          }
+        }
+      }
+
       // Realistic 3D spin tumbling driven by physical velocity
       _pitch -= body.linearVelocity.y * dt * 0.12;
       _yaw -= body.linearVelocity.x * dt * 0.15;
       _pitch -= body.angularVelocity * dt * 0.45;
+    }
+  }
+
+  void _updateRenderPriority() {
+    // While ascending (Vy < 0) or above the rim (Y < 4.9m):
+    // The ball is in front of the entire hoop apparatus (in foreground)
+    if (body.linearVelocity.y < 0 || body.position.y < 4.9) {
+      priority = 5;
+    } else if (body.position.x.abs() <= 0.95 &&
+        body.position.y >= 4.9 &&
+        body.position.y <= 6.8) {
+      // Dipping through the rim opening and net cylinder:
+      // Front rim (priority 3) wraps in front of the ball, backboard (priority 1) is behind it
+      priority = 2;
+    } else {
+      // Cleared the net or fallen outside the rim: renders in front of the court
+      priority = 5;
     }
   }
 
@@ -157,21 +214,21 @@ class Basketball extends BodyComponent with DragCallbacks {
     final currentY = body.position.y;
 
     // 1. Dynamic Hardwood Floor Drop Shadow
-    // Floor is strictly at Y = 19.2m (at the bottom of the court, NEVER on the wall!)
-    const floorY = 19.2;
-    final distToFloor = floorY - currentY;
+    // Shadow is calculated relative to the ball's natural landing court depth
+    final currentFloorY = isLaunched ? targetFloorY : 19.2;
+    final distToFloor = currentFloorY - currentY;
     final heightAboveFloor = distToFloor - radius;
 
-    // Drop shadow only shows when the ball is grounded or near the floor (< 3.0m)
-    if (heightAboveFloor >= -0.1 && heightAboveFloor < 3.0) {
+    // Drop shadow shows when the ball is within 3.5m of its landing court floor
+    if (heightAboveFloor >= -0.2 && heightAboveFloor < 3.5) {
       final shadowFade =
-          (1.0 - (heightAboveFloor.clamp(0.0, 3.0) / 3.0)).clamp(0.0, 1.0);
+          (1.0 - (heightAboveFloor.clamp(0.0, 3.5) / 3.5)).clamp(0.0, 1.0);
       final shadowAlpha = (0.55 * shadowFade).clamp(0.0, 0.55);
       final shadowScale =
-          (1.0 + (heightAboveFloor.clamp(0.0, 3.0) / 3.0) * 0.4)
+          (1.0 + (heightAboveFloor.clamp(0.0, 3.5) / 3.5) * 0.4)
               .clamp(1.0, 1.4);
       final blurRadius =
-          (0.06 + heightAboveFloor.clamp(0.0, 3.0) * 0.08).clamp(0.06, 0.30);
+          (0.06 + heightAboveFloor.clamp(0.0, 3.5) * 0.08).clamp(0.06, 0.30);
 
       final shadowPaint = Paint()
         ..color = Color.fromRGBO(0, 0, 0, shadowAlpha)
@@ -313,6 +370,13 @@ class Basketball extends BodyComponent with DragCallbacks {
     final powerFactor = ((swipeSpeedY - 250.0) / 1100.0).clamp(0.0, 1.0);
     _launchPower = powerFactor;
     final targetVy = ui.lerpDouble(-27.5, -35.5, powerFactor)!;
+
+    // 2.5D Court Landing Floor based on shot power:
+    // Firm shot to the hoop: lands under the basket in the red key (Y ~ 13.4m)
+    // Short shot / airball: lands near the free-throw circle (Y ~ 14.8m to 16.5m)
+    // Weak swipe in foreground: lands near the feeder (Y ~ 17.5m to 18.2m)
+    targetFloorY = ui.lerpDouble(18.2, 13.4, powerFactor)!;
+    _bounceCount = 0;
 
     // Lateral velocity based on flick angle:
     // Over the ~1.5s flight time to the rim, swipeRatioX directly steers the shot
