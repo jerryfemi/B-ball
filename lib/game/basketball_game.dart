@@ -75,8 +75,12 @@ class BasketballGame extends Forge2DGame {
       radius: 0.78,
       animateEntrance: animate,
       onLaunched: () {
-        // Feeder smoothly slides in the next ball from below!
-        _spawnReadyBall(animate: true);
+        // Wait 1.0 second for the launched ball to clear the key before feeding next ball!
+        Future.delayed(const Duration(milliseconds: 1000), () {
+          if (isLoaded) {
+            _spawnReadyBall(animate: true);
+          }
+        });
       },
     );
     world.add(ball);
