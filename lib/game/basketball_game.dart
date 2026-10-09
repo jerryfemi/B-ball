@@ -81,9 +81,9 @@ class BasketballGame extends Forge2DGame {
 
   void _spawnReadyBall({bool animate = false}) {
     final ball = Basketball(
-      // Rest directly on the hardwood court floor (floor 19.2m - radius 0.78m = 18.42m)
-      initialPosition: Vector2(0, 18.42),
-      radius: 0.78,
+      // Rest directly on the hardwood court floor (floor 19.2m - radius 0.58m = 18.62m)
+      initialPosition: Vector2(0, 18.62),
+      radius: 0.58,
       animateEntrance: animate,
       onLaunched: () {
         // Wait 800ms for launched ball to clear the key before feeding next ball
