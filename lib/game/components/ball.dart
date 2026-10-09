@@ -13,69 +13,34 @@ class Basketball extends BodyComponent with DragCallbacks {
 
   ui.FragmentProgram? _program;
 
-  // Track 3D rotation driven by 2D physics (initialized with organic resting tilt)
+  // 3D rotation driven by physical spin (initialized with natural resting tilt)
   double _pitch = 0.36; // tilted forward toward camera
   double _yaw = -0.42; // tilted sideways
 
   bool isLaunched = false;
   double timeSinceLaunch = 0.0;
+  bool _hasActivatedRimCollision = false;
+  bool _hasBankedBackboard = false;
+  double _launchPower = 0.0;
 
   final bool animateEntrance;
   bool isEntering = false;
   double enterProgress = 0.0;
 
-  // 2.5D Coordinates (in world meters):
-  // x3d: lateral offset from court center (- = left, + = right, 0 = center)
-  // y3d: altitude above hardwood floor (0.0 = grounded on floor)
-  // z3d: depth into gym (0.0 = player hands in foreground, 4.5 = hoop center, 4.85 = backboard)
-  double x3d = 0.0;
-  double y3d = 0.0;
-  double z3d = 0.0;
-
-  double vx3d = 0.0;
-  double vy3d = 0.0;
-  double vz3d = 0.0;
-
-  bool hasScored = false;
-
+  late final forge2d.Shape _shape;
   Vector2? _dragStartPos;
   Vector2? _lastDragPos;
   int? _dragStartTimeMs;
 
   Basketball({
     required this.initialPosition,
-    this.radius = 0.78,
+    this.radius = 0.58,
     this.onLaunched,
     this.animateEntrance = false,
   }) : super(priority: 2) {
     if (animateEntrance) {
       isEntering = true;
     }
-  }
-
-  // Perspective depth scale factor: shrinks organically as depth z increases
-  double getDepthScale(double z) {
-    return 3.2 / (3.2 + z * 0.95);
-  }
-
-  // Hardwood floor Y position in world meters based on depth z
-  // z = 0.0 (player foreground): 19.2m
-  // z = 4.5 (hoop base): 10.0m (50% screen height)
-  double getFloorY(double z) {
-    final t = (z / 4.5).clamp(0.0, 1.3);
-    return 19.2 - t * 9.2;
-  }
-
-  // Project 3D (x, y, z) into 2D world coordinates (projX, projY)
-  Vector2 project3D(double x, double y, double z) {
-    final s = getDepthScale(z);
-    final floorY = getFloorY(z);
-    final projX = x * s;
-    final sRim = getDepthScale(4.5);
-    // At rim (y=3.05, z=4.5), height above floor on screen is 10.0 - 5.0 = 5.0m
-    final heightOnScreen = y * (5.0 / 3.05) * (s / sRim);
-    final projY = floorY - radius * s - heightOnScreen;
-    return Vector2(projX, projY);
   }
 
   @override
@@ -90,18 +55,14 @@ class Basketball extends BodyComponent with DragCallbacks {
 
   @override
   Body createBody() {
-    x3d = 0.0;
-    y3d = 0.0;
-    z3d = 0.0;
-
-    final projPos = project3D(x3d, y3d, z3d);
-    final startY = animateEntrance ? projPos.y + 2.5 : projPos.y;
+    final startY =
+        animateEntrance ? initialPosition.y + 2.5 : initialPosition.y;
 
     final bodyDef = BodyDef(
       type: BodyType.kinematic,
-      position: Vector2(projPos.x, startY),
-      linearDamping: 0.0,
-      angularDamping: 0.0,
+      position: Vector2(initialPosition.x, startY),
+      linearDamping: 0.05,
+      angularDamping: 0.15,
     );
 
     final body = world.createBody(bodyDef);
@@ -113,12 +74,12 @@ class Basketball extends BodyComponent with DragCallbacks {
         restitution: 0.82,
       ),
       filter: forge2d.Filter(
-        categoryBits: 2,
-        maskBits: 0, // Ballistic engine handles 3D depth collisions internally
+        categoryBits: 0x0008, // Basketball category
+        maskBits: 0, // Unlaunched/entering ball collides with nothing
       ),
     );
 
-    body.createShape(forge2d.Circle(radius: radius), shapeDef);
+    _shape = body.createShape(forge2d.Circle(radius: radius), shapeDef);
     return body;
   }
 
@@ -134,133 +95,110 @@ class Basketball extends BodyComponent with DragCallbacks {
         isEntering = false;
       }
       final t = Curves.easeOutCubic.transform(enterProgress);
-      final projPos = project3D(0.0, 0.0, 0.0);
-      final curY = ui.lerpDouble(projPos.y + 2.5, projPos.y, t)!;
+      final curY =
+          ui.lerpDouble(initialPosition.y + 2.5, initialPosition.y, t)!;
       body.setTransform(
-        Vector2(projPos.x, curY),
+        Vector2(initialPosition.x, curY),
         const forge2d.Rot.identity(),
       );
       return;
     }
 
-    if (isLaunched) {
+    if (isLaunched && body.type == BodyType.dynamic) {
       timeSinceLaunch += dt;
-      // Garbage collection: remove ball 5.0 seconds after shot
-      if (timeSinceLaunch > 5.0) {
+      // Garbage collection: remove ball 6.0 seconds after shot
+      if (timeSinceLaunch > 6.0) {
         removeFromParent();
         return;
       }
 
-      // 1. Gravity acting in 3D downward toward the floor
-      const double gravity = 36.0;
-      vy3d -= gravity * dt;
+      // DIRECTIONAL PARABOLIC PHASE CHECK:
+      // While ascending (Vy < 0): maskBits is 0x0002 (Floor only), bypassing the rim.
+      // The moment the ball reaches its apex and starts DIPPING (Vy >= 0), activate full rim collision!
+      if (body.linearVelocity.y >= 0 && !_hasActivatedRimCollision) {
+        _hasActivatedRimCollision = true;
+        _shape.filter = forge2d.Filter(
+          categoryBits: 0x0008,
+          maskBits:
+              forge2d.Filter.allCategories, // Solid collision with hoop pegs and floor!
+        );
+      }
 
-      // 2. Integrate 3D positions
-      x3d += vx3d * dt;
-      y3d += vy3d * dt;
-      z3d += vz3d * dt;
+      // Backboard Glass Bank: descending shot with high power caroms forward/down
+      if (body.linearVelocity.y > 0 &&
+          !_hasBankedBackboard &&
+          _launchPower > 0.60 &&
+          body.position.y >= 3.4 &&
+          body.position.y <= 4.8 &&
+          body.position.x.abs() <= 1.6) {
+        _hasBankedBackboard = true;
+        body.linearVelocity = Vector2(body.linearVelocity.x * 0.45, 8.5);
+      }
 
-      // Subtle aerodynamic drag
-      final dragFactor = math.pow(0.98, dt * 60).toDouble();
-      vx3d *= dragFactor;
-      vz3d *= dragFactor;
-
-      // 3. Backboard interaction (backboard at depth z = 4.85m)
-      if (z3d >= 4.85) {
-        if (x3d.abs() <= 1.8 && y3d >= 2.3 && y3d <= 4.6) {
-          z3d = 4.85;
-          vz3d = -vz3d.abs() * 0.62; // Rebound forward into court!
-          vx3d += (x3d * 0.4); // Bank angle deflection
-          vy3d *= 0.85;
+      // Cotton Net Swish Damping: gently cushions the plunge and centers the ball
+      if (body.position.y >= 5.0 &&
+          body.position.y <= 6.2 &&
+          body.position.x.abs() < 0.65) {
+        body.linearVelocity.x *= 0.92;
+        if (body.linearVelocity.y > 6.5) {
+          body.linearVelocity.y = 6.5;
         }
       }
 
-      // 4. Rim interaction (rim centered at x = 0, y = 3.05m, z = 4.5m)
-      // Only interact when passing through the rim depth zone [4.1m, 4.8m]
-      if (z3d >= 4.1 && z3d <= 4.8) {
-        final distToRimCenter =
-            math.sqrt(x3d * x3d + (z3d - 4.5) * (z3d - 4.5));
-        final altDiff = y3d - 3.05;
-
-        // Ball is descending and in rim plane
-        if (vy3d < 0 && altDiff.abs() < 0.40) {
-          if (distToRimCenter <= 0.45) {
-            // SWISH! Pass cleanly through cylinder
-            if (!hasScored) {
-              hasScored = true;
-            }
-            vx3d *= 0.70;
-            vz3d *= 0.70;
-            vy3d *= 0.85;
-          } else if (distToRimCenter > 0.45 && distToRimCenter <= 0.95) {
-            // RIM HIT: elastic deflection off the ring
-            final angle = math.atan2(z3d - 4.5, x3d);
-            final speed = math.sqrt(vx3d * vx3d + vy3d * vy3d + vz3d * vz3d);
-            vx3d = math.cos(angle) * (speed * 0.45);
-            vz3d = math.sin(angle) * (speed * 0.45);
-            vy3d = vy3d.abs() * 0.55; // Bounce up off rim
-          }
-        }
-      }
-
-      // 5. Hardwood court floor bounce (occurs at depth z3d!)
-      if (y3d <= 0.0) {
-        y3d = 0.0;
-        if (vy3d < 0) {
-          vy3d = -vy3d * 0.68; // Floor restitution
-          vx3d *= 0.72;
-          vz3d *= 0.72;
-          if (vy3d < 1.2) {
-            vy3d = 0.0; // Settle on court
-          }
-        }
-      }
-
-      // 6. Natural 3D spin tumbling
-      _pitch -= vy3d * dt * 0.15;
-      _pitch -= vz3d * dt * 0.25;
-      _yaw -= vx3d * dt * 0.20;
-
-      // 7. Update projected 2D position in world
-      final projPos = project3D(x3d, y3d, z3d);
-      body.setTransform(projPos, const forge2d.Rot.identity());
+      // Realistic 3D spin tumbling driven by physical velocity
+      _pitch -= body.linearVelocity.y * dt * 0.12;
+      _yaw -= body.linearVelocity.x * dt * 0.15;
+      _pitch -= body.angularVelocity * dt * 0.45;
     }
   }
 
   @override
   void render(Canvas canvas) {
-    final currentScale = getDepthScale(z3d);
-    final currentFloorY = getFloorY(z3d);
-    final distToFloor = currentFloorY - body.position.y;
+    final currentY = body.position.y;
 
-    // 1. Dynamic Floor Drop Shadow (at the landing depth on the court!)
-    if (y3d < 3.2) {
-      final shadowFade = (1.0 - (y3d / 3.2)).clamp(0.0, 1.0);
+    // 1. Dynamic Hardwood Floor Drop Shadow
+    // Floor is strictly at Y = 19.2m (at the bottom of the court, NEVER on the wall!)
+    const floorY = 19.2;
+    final distToFloor = floorY - currentY;
+    final heightAboveFloor = distToFloor - radius;
+
+    // Drop shadow only shows when the ball is grounded or near the floor (< 3.0m)
+    if (heightAboveFloor >= -0.1 && heightAboveFloor < 3.0) {
+      final shadowFade =
+          (1.0 - (heightAboveFloor.clamp(0.0, 3.0) / 3.0)).clamp(0.0, 1.0);
       final shadowAlpha = (0.55 * shadowFade).clamp(0.0, 0.55);
-      final shadowScale = (currentScale * (1.0 + (y3d / 3.2) * 0.4))
-          .clamp(currentScale, currentScale * 1.5);
-      final blurRadius = (0.05 + y3d * 0.06).clamp(0.05, 0.30);
+      final shadowScale =
+          (1.0 + (heightAboveFloor.clamp(0.0, 3.0) / 3.0) * 0.4)
+              .clamp(1.0, 1.4);
+      final blurRadius =
+          (0.06 + heightAboveFloor.clamp(0.0, 3.0) * 0.08).clamp(0.06, 0.30);
 
       final shadowPaint = Paint()
         ..color = Color.fromRGBO(0, 0, 0, shadowAlpha)
         ..maskFilter = MaskFilter.blur(BlurStyle.normal, blurRadius);
 
       canvas.save();
-      // Counter-rotate so shadow remains horizontally flat on the court
+      // Counter-rotate by physical body roll so the shadow stays strictly flat on the horizontal floor
       canvas.rotate(-body.angle);
 
       final shadowRect = Rect.fromCenter(
         center: Offset(0, distToFloor),
         width: radius * 2.2 * shadowScale,
-        height: radius * 0.55 * shadowScale,
+        height: radius * 0.50 * shadowScale,
       );
       canvas.drawOval(shadowRect, shadowPaint);
       canvas.restore();
     }
 
-    // 2. Perspective Ball Scaling
+    // 2. Natural Perspective Foreshortening:
+    // In foreground hands (Y = 18.62m), scales up to 1.35x (visual radius ~0.78m)
+    // At the rim (Y = 5.0m), scales to 1.0x (visual radius 0.58m, exact 1:1 match with physical Box2D circle)
+    final depthProgress =
+        ((18.62 - currentY) / (18.62 - 5.0)).clamp(0.0, 1.0);
+    final scaleFactor = ui.lerpDouble(1.35, 1.0, depthProgress)!;
+
     canvas.save();
-    canvas.scale(currentScale);
+    canvas.scale(scaleFactor);
 
     if (_program != null) {
       final shader = _program!.fragmentShader();
@@ -303,9 +241,8 @@ class Basketball extends BodyComponent with DragCallbacks {
   @override
   bool containsPoint(Vector2 point) {
     if (isLaunched || isEntering) return false;
-    final currentScale = getDepthScale(z3d);
     final dist = (point - body.position).length;
-    return dist <= radius * currentScale * 2.5;
+    return dist <= radius * 2.5;
   }
 
   @override
@@ -356,20 +293,45 @@ class Basketball extends BodyComponent with DragCallbacks {
     final isUpward = vy <= -40.0 || (delta != null && delta.y <= -25.0);
     if (!isUpward) return;
 
-    final speedY = vy.abs(); // In pixels per second (typically 300 to 1800 px/s)
+    final dtMs = (_dragStartTimeMs != null)
+        ? (DateTime.now().millisecondsSinceEpoch - _dragStartTimeMs!)
+            .clamp(40, 500)
+        : 150;
+    final dtSec = dtMs / 1000.0;
+    final dispX = (delta != null) ? delta.x : vx * dtSec;
+    final dispY = (delta != null) ? delta.y : vy * dtSec;
 
-    // 2.5D Ballistic Velocity Mapping:
-    // Forward depth speed into the gym (4.8 m/s to 7.2 m/s)
-    vz3d = (4.8 + (speedY / 900.0) * 1.8).clamp(4.8, 7.2);
-    // Altitude launch arc speed (15.5 m/s to 19.2 m/s)
-    vy3d = (15.5 + (speedY / 750.0) * 2.6).clamp(15.2, 19.5);
-    // Lateral aim speed (-3.5 m/s to +3.5 m/s)
-    vx3d = (vx / 160.0).clamp(-3.5, 3.5);
+    // Upward swipe velocity in pixels/second
+    final swipeSpeedY = (dispY.abs() / dtSec).clamp(200.0, 2400.0);
+    // Lateral swipe ratio (aim angle)
+    final swipeRatioX = (dispX / dispY.abs()).clamp(-0.8, 0.8);
+
+    // Launch velocity calibration for 20m arena with g = 30 m/s²:
+    // Minimum flick (-27.0 m/s) -> short shot that peaks below the rim (airball)
+    // Medium flick (-31.8 m/s) -> perfect arc that peaks at Y ~ 1.8m and dips cleanly into hoop
+    // Firm flick (-35.5 m/s) -> high rainbow arc that banks off the backboard
+    final powerFactor = ((swipeSpeedY - 250.0) / 1100.0).clamp(0.0, 1.0);
+    _launchPower = powerFactor;
+    final targetVy = ui.lerpDouble(-27.5, -35.5, powerFactor)!;
+
+    // Lateral velocity based on flick angle:
+    // Over the ~1.5s flight time to the rim, swipeRatioX directly steers the shot
+    // A straight flick (swipeRatioX ~ 0) stays centered for a swish.
+    // A slight flick (swipeRatioX ~ 0.12) drifts to ~0.8m to hit the rim peg.
+    final targetVx = swipeRatioX * 4.6;
 
     isLaunched = true;
+    body.type = BodyType.dynamic;
+
+    // Ascending phase: collides ONLY with floor (0x0002), passes freely in front of the rim
+    _shape.filter = forge2d.Filter(
+      categoryBits: 0x0008,
+      maskBits: 0x0002, // Floor only while rising
+    );
+
     onLaunched?.call();
+
+    body.linearVelocity = Vector2(targetVx, targetVy);
+    body.angularVelocity = targetVy * 0.18; // Authentic backspin
   }
 }
-
-/// https://one.google.com/ai?utm_source=gemini&utm_medium=web&utm_campaign=workflow_assist_card_fix_payment&g1_landing_page=75
-/// DO NOT TOUCH I KEPT THE LINK HERE FOR A REASON
