@@ -25,34 +25,32 @@ class HoopPhysics extends BodyComponent {
 
     // Rim material: high restitution for authentic bounce and rattle
     final rimMaterial = SurfaceMaterial(friction: 0.25, restitution: 0.85);
+    final hoopFilter = forge2d.Filter(
+      categoryBits: 0x0004, // Hoop category
+      maskBits: forge2d.Filter.allCategories,
+    );
 
     // 1. Left Rim Circle Collider
     final leftRim = forge2d.Circle(
       radius: 0.05,
       center: Vector2(-hoopWidthInMeters / 2, 0),
     );
-    body.createShape(leftRim, ShapeDef(material: rimMaterial));
+    body.createShape(
+      leftRim,
+      ShapeDef(material: rimMaterial, filter: hoopFilter),
+    );
 
     // 2. Right Rim Circle Collider
     final rightRim = forge2d.Circle(
       radius: 0.05,
       center: Vector2(hoopWidthInMeters / 2, 0),
     );
-    body.createShape(rightRim, ShapeDef(material: rimMaterial));
-
-    // 3. Backboard Deflector (stops high overshots above the rim)
-    final backboardDeflector = Polygon([
-      Vector2(-1.7, -1.0),
-      Vector2(1.7, -1.0),
-      Vector2(1.7, -0.92),
-      Vector2(-1.7, -0.92),
-    ]);
     body.createShape(
-      backboardDeflector,
-      ShapeDef(material: SurfaceMaterial(friction: 0.2, restitution: 0.6)),
+      rightRim,
+      ShapeDef(material: rimMaterial, filter: hoopFilter),
     );
 
-    // 4. Score Detection Sensor (placed inside the rim opening)
+    // 3. Score Detection Sensor (placed inside the rim opening)
     final scoreSensor = Polygon([
       Vector2(-hoopWidthInMeters / 2 + 0.1, 0.05),
       Vector2(hoopWidthInMeters / 2 - 0.1, 0.05),
@@ -65,6 +63,7 @@ class HoopPhysics extends BodyComponent {
         isSensor: true,
         enableSensorEvents: true,
         userData: 'hoop_score_sensor',
+        filter: hoopFilter,
       ),
     );
 
