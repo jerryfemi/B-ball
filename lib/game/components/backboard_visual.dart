@@ -2,12 +2,19 @@ import 'dart:math' as math;
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 
+import 'ball.dart';
+
 /// Renders the GamePigeon scooped-shield backboard, 3D cylindrical pole,
 /// wall drop shadows, rear rim arc, and back net mesh.
 /// Configured with priority = 1 so it renders behind the basketball (priority = 2).
 class BackboardVisual extends PositionComponent {
   final double hoopWidth;
   final double hoopDepth;
+
+  double _currentNetDepth = 0.9;
+  double _currentBottomWidth = 0.55;
+  double _netDepthVelocity = 0.0;
+  double _netWidthVelocity = 0.0;
 
   BackboardVisual({
     required Vector2 position,
@@ -19,6 +26,45 @@ class BackboardVisual extends PositionComponent {
           anchor: Anchor.center,
           priority: 1,
         );
+
+  @override
+  void update(double dt) {
+    super.update(dt);
+    
+    final balls = parent?.children.whereType<Basketball>() ?? [];
+    bool ballInNet = false;
+    double maxDepth = 0.9;
+    double targetWidth = 0.55;
+
+    for (final ball in balls) {
+      if (ball.passedThroughRim && ball.body.position.y > 4.8 && ball.body.position.y < 6.8 && ball.body.linearVelocity.y > 0) {
+        if (ball.body.position.x.abs() < hoopWidth / 2) {
+          ballInNet = true;
+          double stretchDepth = ball.body.position.y - 5.0 + ball.radius * 0.7;
+          if (stretchDepth > maxDepth) maxDepth = stretchDepth;
+          targetWidth = 0.85; 
+        }
+      }
+    }
+
+    if (ballInNet) {
+      _currentNetDepth = maxDepth;
+      _currentBottomWidth = targetWidth;
+      _netDepthVelocity = 0.0;
+      _netWidthVelocity = 0.0;
+    } else {
+      const double kStiffness = 200.0;
+      const double kDamping = 12.0;
+
+      double depthForce = kStiffness * (0.9 - _currentNetDepth) - kDamping * _netDepthVelocity;
+      _netDepthVelocity += depthForce * dt;
+      _currentNetDepth += _netDepthVelocity * dt;
+
+      double widthForce = kStiffness * (0.55 - _currentBottomWidth) - kDamping * _netWidthVelocity;
+      _netWidthVelocity += widthForce * dt;
+      _currentBottomWidth += _netWidthVelocity * dt;
+    }
+  }
 
   @override
   void render(Canvas canvas) {
@@ -248,8 +294,8 @@ class BackboardVisual extends PositionComponent {
       ..strokeWidth = 0.025;
 
     const cordCount = 7;
-    const netDepth = 0.9;
-    const bottomWidthRatio = 0.55;
+    final netDepth = _currentNetDepth;
+    final bottomWidthRatio = _currentBottomWidth;
 
     // Draw rear vertical cords tapering downwards
     for (int i = 0; i <= cordCount; i++) {
