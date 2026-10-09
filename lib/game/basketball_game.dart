@@ -36,10 +36,15 @@ class BasketballGame extends Forge2DGame {
 
     // 3. Ground physics floor at the bottom of the court
     final floorYInMeters = 19.2;
-    world.add(Ground(
-      groundPosition: Vector2(0, floorYInMeters),
-      groundSize: Vector2(100.0, 1.0), // Arbitrarily wide to cover any screen width
-    ));
+    world.add(
+      Ground(
+        groundPosition: Vector2(0, floorYInMeters),
+        groundSize: Vector2(
+          100.0,
+          1.0,
+        ), // Arbitrarily wide to cover any screen width
+      ),
+    );
 
     // 4. Hoop positioned in world coordinates (25% down, horizontally centered at x=0)
     final hoopCenterInMeters = Vector2(0, 5.0);
@@ -47,25 +52,31 @@ class BasketballGame extends Forge2DGame {
 
     // 5. 2.5D Layering Pipeline:
     // Priority 1: Backboard, wall mounts, rear rim half, and rear net mesh
-    world.add(BackboardVisual(
-      position: hoopCenterInMeters,
-      hoopWidth: hoopWidthInMeters,
-    ));
+    world.add(
+      BackboardVisual(
+        position: hoopCenterInMeters,
+        hoopWidth: hoopWidthInMeters,
+      ),
+    );
 
     // Physics colliders (circles for rims, deflector plate, score sensor)
-    world.add(HoopPhysics(
-      hoopCenterInMeters: hoopCenterInMeters,
-      hoopWidthInMeters: hoopWidthInMeters,
-    ));
+    world.add(
+      HoopPhysics(
+        hoopCenterInMeters: hoopCenterInMeters,
+        hoopWidthInMeters: hoopWidthInMeters,
+      ),
+    );
 
     // Priority 2: Basketball (passes over backboard, behind front rim)
     _spawnReadyBall();
 
     // Priority 3: Front rim half and front net cords
-    world.add(FrontRimVisual(
-      position: hoopCenterInMeters,
-      hoopWidth: hoopWidthInMeters,
-    ));
+    world.add(
+      FrontRimVisual(
+        position: hoopCenterInMeters,
+        hoopWidth: hoopWidthInMeters,
+      ),
+    );
   }
 
   void _spawnReadyBall({bool animate = false}) {
@@ -76,7 +87,7 @@ class BasketballGame extends Forge2DGame {
       animateEntrance: animate,
       onLaunched: () {
         // Wait 1.0 second for the launched ball to clear the key before feeding next ball!
-        Future.delayed(const Duration(milliseconds: 1000), () {
+        Future.delayed(const Duration(milliseconds: 800), () {
           if (isLoaded) {
             _spawnReadyBall(animate: true);
           }
