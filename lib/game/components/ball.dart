@@ -109,8 +109,8 @@ class Basketball extends BodyComponent with DragCallbacks {
 
     if (isLaunched && body.type == BodyType.dynamic) {
       timeSinceLaunch += dt;
-      // Garbage collection: keep made/missed balls lingering on court for 12 seconds
-      if (timeSinceLaunch > 12.0) {
+      // Garbage collection: keep made/missed balls lingering on court for 6 seconds
+      if (timeSinceLaunch > 6.0) {
         removeFromParent();
         return;
       }
@@ -211,9 +211,9 @@ class Basketball extends BodyComponent with DragCallbacks {
 
   @override
   void render(Canvas canvas) {
-    // Opacity fade out over the last 5 seconds of the 12 second lifetime
-    final double opacity = timeSinceLaunch > 7.0 
-        ? (1.0 - (timeSinceLaunch - 7.0) / 5.0).clamp(0.0, 1.0) 
+    // Opacity fade out over the last 3 seconds of the 6 second lifetime (solid for 3s, fade for 3s)
+    final double opacity = timeSinceLaunch > 3.0 
+        ? (1.0 - (timeSinceLaunch - 3.0) / 3.0).clamp(0.0, 1.0) 
         : 1.0;
 
     canvas.saveLayer(
