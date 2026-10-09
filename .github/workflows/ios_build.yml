@@ -33,10 +33,10 @@ jobs:
           mkdir -p build/ios/ipa/Payload
           cp -r build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app build/ios/ipa/Payload/
           cd build/ios/ipa
-          zip -r b_ball.ipa Payload
+          zip -r BBall.ipa Payload
           
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: b-ball-ipa
-          path: build/ios/ipa/b_ball.ipa
+          name: BBall-ipa
+          path: build/ios/ipa/BBall.ipa
