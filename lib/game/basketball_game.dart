@@ -68,14 +68,15 @@ class BasketballGame extends Forge2DGame {
     ));
   }
 
-  void _spawnReadyBall() {
+  void _spawnReadyBall({bool animate = false}) {
     final ball = Basketball(
       // Spawn at a fixed floating position at the bottom of the screen
       initialPosition: Vector2(0, 18.0),
-      radius: 0.5,
+      radius: 0.78,
+      animateEntrance: animate,
       onLaunched: () {
-        // The instant the ball is swiped, spawn a new one!
-        _spawnReadyBall();
+        // Feeder smoothly slides in the next ball from below!
+        _spawnReadyBall(animate: true);
       },
     );
     world.add(ball);
