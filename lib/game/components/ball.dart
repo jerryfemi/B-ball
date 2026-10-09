@@ -20,6 +20,7 @@ class Basketball extends BodyComponent with DragCallbacks {
   bool isLaunched = false;
   double timeSinceLaunch = 0.0;
   bool _hasActivatedRimCollision = false;
+  bool _hasPassedApex = false;
   bool _hasBankedBackboard = false;
   bool _hasClankedFrontRim = false;
   double _launchPower = 0.0;
@@ -131,12 +132,15 @@ class Basketball extends BodyComponent with DragCallbacks {
       // DIRECTIONAL PARABOLIC PHASE CHECK:
       // While ascending (Vy < 0): passes freely in front of the rim
       // The moment the ball reaches its apex and starts DIPPING (Vy >= 0), activate rim collision!
-      if (body.linearVelocity.y >= 0 && !_hasActivatedRimCollision) {
-        _hasActivatedRimCollision = true;
-        _shape.filter = forge2d.Filter(
-          categoryBits: 0x0008,
-          maskBits: 0x0004, // Pegs only! Eliminates 19.2m bottom safety floor interception
-        );
+      if (body.linearVelocity.y >= 0) {
+        _hasPassedApex = true;
+        if (!_hasActivatedRimCollision) {
+          _hasActivatedRimCollision = true;
+          _shape.filter = forge2d.Filter(
+            categoryBits: 0x0008,
+            maskBits: 0x0004, // Pegs only! Eliminates 19.2m bottom safety floor interception
+          );
+        }
       }
 
       // Clean Entry into the Rim Cylinder from above:
@@ -199,7 +203,8 @@ class Basketball extends BodyComponent with DragCallbacks {
       }
 
       // 2. 2.5D Court Floor Collision & Natural Bouncing Under the Hoop
-      if (body.position.y >= targetFloorY) {
+      // Only check while falling downwards AFTER reaching apex to prevent launch teleportation
+      if (_hasPassedApex && body.linearVelocity.y > 0 && body.position.y >= targetFloorY) {
         body.setTransform(
           Vector2(body.position.x, targetFloorY),
           const forge2d.Rot.identity(),
@@ -435,6 +440,7 @@ class Basketball extends BodyComponent with DragCallbacks {
     _zDepth = 0.0;
     _bounceCount = 0;
     _hasClankedFrontRim = false;
+    _hasPassedApex = false;
 
     // Lateral velocity based on flick angle:
     // Over the ~1.5s flight time to the rim, swipeRatioX directly steers the shot
