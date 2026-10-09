@@ -75,18 +75,18 @@ void main() {
     vec3 color = isSeam ? seamColor : orangeColor;
     
     // --- 3D Lighting (Phong Shading) ---
-    // The light stays fixed relative to the camera, so we use the unrotated 'normal'
-    vec3 lightDir = normalize(vec3(0.5, 0.8, 1.0)); // Light coming from top-right-front
+    // Overhead arena rafters lighting: slightly top-left and in front
+    vec3 lightDir = normalize(vec3(-0.20, 0.95, 0.65));
     float diff = max(dot(normal, lightDir), 0.0);
     
     // Ambient + Diffuse
-    vec3 finalColor = color * (0.35 + 0.65 * diff);
+    vec3 finalColor = color * (0.38 + 0.62 * diff);
     
-    // Add specular highlight for rubbery shininess
+    // Add soft specular highlight for authentic composite leather texture
     vec3 viewDir = vec3(0.0, 0.0, 1.0);
     vec3 reflectDir = reflect(-lightDir, normal);
-    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 12.0); // 12.0 is shininess factor
-    finalColor += vec3(0.3) * spec; // slight white highlight
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 22.0); // Tighter exponent
+    finalColor += vec3(0.14) * spec; // Dimmed soft sheen
     
     // Final output with anti-aliasing on the edge
     float alpha = smoothstep(1.0, 0.98, radius);
