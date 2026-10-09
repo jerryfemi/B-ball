@@ -159,16 +159,35 @@ class BallPhysics3D {
         final tangentVy = vel.y - normalVy;
         final tangentVz = vel.z - normalVz;
 
-        // High steel rim restitution (e = 0.72) + tangential friction
-        vel.x = -0.72 * normalVx + 0.85 * tangentVx;
-        vel.y = -0.72 * normalVy + 0.85 * tangentVy;
-        vel.z = -0.72 * normalVz + 0.85 * tangentVz;
+        // Determine which part of the rim was contacted
+        final isBackRim = qz > rimCenter.z + 0.03;
+        final isFrontRim = qz < rimCenter.z - 0.03;
+        final isDescending = vel.y < 0;
 
-        hasClankedRim = true;
-
-        // Impart spin deflection on collision
-        angularVel.x *= 0.6;
-        angularVel.y += (tangentVx * 4.0).clamp(-10.0, 10.0);
+        if (isBackRim && isDescending) {
+          // Authentic "Shooter's Touch": backspin absorbs forward momentum on the back iron
+          // and pulls the ball downward through the net cylinder
+          vel.x = -normalVx * 0.28 + tangentVx * 0.60;
+          vel.y = -normalVy * 0.32 + tangentVy * 0.55;
+          vel.z = -normalVz * 0.28 + tangentVz * 0.60;
+          if (vel.y > -1.2) vel.y = -1.2; // Soft downward guide into rim
+          angularVel.x *= 0.4;
+        } else if (isFrontRim && isDescending) {
+          // Front iron clank: firm upward/backward deflection
+          vel.x = -0.65 * normalVx + 0.75 * tangentVx;
+          vel.y = (vel.y.abs() * 0.65).clamp(1.5, 4.5); // Audible upward clank!
+          vel.z = -vel.z.abs() * 0.55; // Pushes back towards court
+          hasClankedRim = true;
+          angularVel.x *= 0.6;
+        } else {
+          // Side rims (rattle) or ascending collision:
+          vel.x = -0.68 * normalVx + 0.80 * tangentVx;
+          vel.y = -0.68 * normalVy + 0.80 * tangentVy;
+          vel.z = -0.68 * normalVz + 0.80 * tangentVz;
+          hasClankedRim = true;
+          angularVel.x *= 0.6;
+          angularVel.y += (tangentVx * 4.0).clamp(-10.0, 10.0);
+        }
       }
     }
   }
@@ -182,11 +201,26 @@ class BallPhysics3D {
           pos.y <= backboardMaxY) {
         if (vel.z > 0) {
           pos.z = backboardZ - radius - 0.001;
-          vel.z = -vel.z * 0.70; // Firm rebound forward towards court
-          vel.x *= 0.85;
-          vel.y *= 0.85;
           hasBankedBackboard = true;
-          angularVel.x *= 0.7;
+
+          // Shooter's square area on backboard: X in [-0.40, 0.40], Y in [3.10, 3.65]
+          final isShootersSquare = pos.x.abs() <= 0.40 &&
+              pos.y >= 3.10 &&
+              pos.y <= 3.65;
+
+          if (isShootersSquare) {
+            // Authentic bank shot: glass absorbs forward energy and guides gently down into the hoop opening
+            vel.z = -1.15; // Soft forward travel back towards rim center (Z_rim = 4.50m)
+            vel.y = -2.2;  // Downward descent towards rim opening (Y_rim = 3.05m)
+            vel.x = -pos.x * 1.5; // Natural center pull towards rim center
+            angularVel.x *= 0.5;
+          } else {
+            // Outside target square: firm miss rebound
+            vel.z = -vel.z * 0.55;
+            vel.x *= 0.80;
+            vel.y *= 0.80;
+            angularVel.x *= 0.7;
+          }
         }
       }
     }
@@ -202,7 +236,7 @@ class BallPhysics3D {
     if (!passedThroughRim &&
         prevY > rimCenter.y &&
         pos.y <= rimCenter.y &&
-        dXZ < rimRadius - 0.015 &&
+        dXZ < rimRadius + 0.02 &&
         vel.y < 0) {
       passedThroughRim = true;
     }
@@ -211,11 +245,11 @@ class BallPhysics3D {
     if (passedThroughRim &&
         pos.y >= netBottomY &&
         pos.y <= rimCenter.y &&
-        dXZ < rimRadius * 1.2) {
-      vel.x *= 0.94;
-      vel.z *= 0.94;
-      if (vel.y < -3.2) {
-        vel.y = -3.2; // Soft cushion through nylon mesh
+        dXZ < rimRadius * 1.3) {
+      vel.x *= 0.88;
+      vel.z = (rimCenter.z - pos.z) * 1.8; // Guides cleanly down through center of net!
+      if (vel.y < -2.6) {
+        vel.y = -2.6; // Soft cushion through nylon mesh
       }
     }
   }

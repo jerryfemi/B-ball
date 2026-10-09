@@ -58,19 +58,20 @@ class LaunchSolver {
     final ref = solveReferenceVelocity(from: from, target: target);
 
     // Natural power curve: power affects both vertical and forward velocity
-    final powerScaleY = (1.0 + (powerRatio - 1.0) * 0.65).clamp(0.25, 1.6);
-    final powerScaleZ = (1.0 + (powerRatio - 1.0) * 0.75).clamp(0.20, 1.7);
+    // Gentle scaling around sweet spot (powerRatio = 1.0)
+    final powerScaleY = (1.0 + (powerRatio - 1.0) * 0.50).clamp(0.30, 1.45);
+    final powerScaleZ = (1.0 + (powerRatio - 1.0) * 0.55).clamp(0.25, 1.45);
 
     final vy = ref.y * powerScaleY;
     final vz = ref.z * powerScaleZ;
 
-    // Lateral velocity based on flick angle
-    // Generous sweet-spot assistance: slight pull towards center when aim is close
+    // Lateral velocity based on flick angle:
+    // Generous sweet-spot assistance for centered flicks
     double lateralAim = aimRatio;
-    if (lateralAim.abs() < 0.08) {
-      lateralAim *= 0.60; // Soft center assist for clean swishes
+    if (lateralAim.abs() < 0.12) {
+      lateralAim *= 0.45; // Soft center assist for clean swishes
     }
-    final vx = lateralAim * 3.5;
+    final vx = lateralAim * 3.2;
 
     return Vector3(vx, vy, vz);
   }

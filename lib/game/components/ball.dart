@@ -315,12 +315,19 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     // Lateral swipe ratio (aim angle dx / |dy|)
     final swipeRatioX = (finalVx / swipeSpeedY).clamp(-0.8, 0.8);
 
-    // Dynamic swipe calibration:
-    // Gentle flick: ~400 - 700 px/s -> powerRatio 0.65 - 0.78 (drops short, airball or front rim clank)
-    // Sweet spot: ~1000 - 1300 px/s -> powerRatio 0.95 - 1.05 (clean arc into rim)
-    // Firm flick: ~1600 - 2400 px/s -> powerRatio 1.15 - 1.40 (bank shot / long)
-    final powerRatio =
-        (0.65 + (swipeSpeedY - 400.0) / 1400.0).clamp(0.40, 1.45);
+    // Dynamic swipe calibration with broad, forgiving sweet spot:
+    // - Under 700 px/s: weak flick -> 0.60 to 0.88 (short arc, front rim clank or key landing)
+    // - 700 to 2200 px/s: natural swipe -> 0.88 to 1.08 (broad sweet spot for swishes & soft bank shots)
+    // - 2200+ px/s: aggressive swipe -> 1.08 to 1.25 (deep backboard bank)
+    double powerRatio;
+    if (swipeSpeedY < 700.0) {
+      powerRatio = 0.60 + (swipeSpeedY / 700.0) * 0.28;
+    } else if (swipeSpeedY <= 2200.0) {
+      powerRatio = 0.88 + ((swipeSpeedY - 700.0) / 1500.0) * 0.20;
+    } else {
+      powerRatio = 1.08 + ((swipeSpeedY - 2200.0) / 1600.0) * 0.17;
+    }
+    powerRatio = powerRatio.clamp(0.45, 1.28);
 
     final launchVel = LaunchSolver.calculateLaunchVelocity(
       powerRatio: powerRatio,
