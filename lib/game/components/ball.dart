@@ -315,17 +315,17 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     // Lateral swipe ratio (aim angle dx / |dy|)
     final swipeRatioX = (finalVx / swipeSpeedY).clamp(-0.8, 0.8);
 
-    // Dynamic swipe calibration with 35% reduced speed threshold:
-    // - Under 450 px/s: weak flick -> 0.60 to 0.88 (short arc, front rim clank or key landing)
-    // - 450 to 1450 px/s: natural swipe -> 0.88 to 1.08 (sweet spot centered at ~1050 px/s for swishes & soft bank shots)
-    // - 1450+ px/s: aggressive swipe -> 1.08 to 1.25 (deep backboard bank)
+    // Dynamic swipe calibration with 50% reduced speed threshold:
+    // - Under 350 px/s: weak flick -> 0.60 to 0.88 (short arc, front rim clank or key landing)
+    // - 350 to 1100 px/s: natural swipe -> 0.88 to 1.08 (sweet spot centered at ~800 px/s for swishes & soft bank shots)
+    // - 1100+ px/s: aggressive swipe -> 1.08 to 1.25 (deep backboard bank)
     double powerRatio;
-    if (swipeSpeedY < 450.0) {
-      powerRatio = 0.60 + (swipeSpeedY / 450.0) * 0.28;
-    } else if (swipeSpeedY <= 1450.0) {
-      powerRatio = 0.88 + ((swipeSpeedY - 450.0) / 1000.0) * 0.20;
+    if (swipeSpeedY < 350.0) {
+      powerRatio = 0.60 + (swipeSpeedY / 350.0) * 0.28;
+    } else if (swipeSpeedY <= 1100.0) {
+      powerRatio = 0.88 + ((swipeSpeedY - 350.0) / 750.0) * 0.20;
     } else {
-      powerRatio = 1.08 + ((swipeSpeedY - 1450.0) / 1000.0) * 0.17;
+      powerRatio = 1.08 + ((swipeSpeedY - 1100.0) / 800.0) * 0.17;
     }
     powerRatio = powerRatio.clamp(0.45, 1.28);
 
