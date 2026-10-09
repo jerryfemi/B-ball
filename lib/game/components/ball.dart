@@ -13,18 +13,27 @@ class Basketball extends BodyComponent with DragCallbacks {
 
   ui.FragmentProgram? _program;
 
-  // Track 3D rotation driven by 2D physics
-  double _pitch = 0.0;
-  double _yaw = 0.0;
+  // Track 3D rotation driven by 2D physics (initialized with organic resting tilt)
+  double _pitch = 0.36; // tilted forward toward camera
+  double _yaw = -0.42; // tilted sideways
 
   bool isLaunched = false;
   double timeSinceLaunch = 0.0;
 
+  final bool animateEntrance;
+  bool isEntering = false;
+  double enterProgress = 0.0;
+
   Basketball({
     required this.initialPosition,
-    this.radius = 0.5,
+    this.radius = 0.78,
     this.onLaunched,
-  }) : super(priority: 2);
+    this.animateEntrance = false,
+  }) : super(priority: 2) {
+    if (animateEntrance) {
+      isEntering = true;
+    }
+  }
 
   @override
   Future<void> onLoad() async {
@@ -38,9 +47,11 @@ class Basketball extends BodyComponent with DragCallbacks {
 
   @override
   Body createBody() {
+    final startY =
+        animateEntrance ? initialPosition.y + 2.5 : initialPosition.y;
     final bodyDef = BodyDef(
       type: BodyType.kinematic, // Start kinematic so it hovers in the ready position
-      position: initialPosition,
+      position: Vector2(initialPosition.x, startY),
       linearDamping: 0.1,
       angularDamping: 0.2, // Adds some natural spin friction
     );
@@ -62,6 +73,22 @@ class Basketball extends BodyComponent with DragCallbacks {
   @override
   void update(double dt) {
     super.update(dt);
+
+    // Smooth Feeder Entrance: glide up from below into the ready position
+    if (isEntering && !isLaunched) {
+      enterProgress += dt / 0.35;
+      if (enterProgress >= 1.0) {
+        enterProgress = 1.0;
+        isEntering = false;
+      }
+      final t = Curves.easeOutCubic.transform(enterProgress);
+      final curY =
+          ui.lerpDouble(initialPosition.y + 2.5, initialPosition.y, t)!;
+      body.setTransform(
+        Vector2(initialPosition.x, curY),
+        const forge2d.Rot.identity(),
+      );
+    }
 
     if (isLaunched) {
       timeSinceLaunch += dt;
@@ -112,8 +139,8 @@ class Basketball extends BodyComponent with DragCallbacks {
       canvas.drawOval(shadowRect, shadowPaint);
     }
 
-    // 2. Perspective scaling: slightly smaller as it travels up towards the hoop
-    final scaleFactor = (0.75 + (currentY / 20.0) * 0.25).clamp(0.7, 1.0);
+    // 2. Perspective scaling: scales down to ~0.73x as it rises up to the hoop (1.8m rim)
+    final scaleFactor = (0.65 + (currentY / 20.0) * 0.35).clamp(0.65, 1.0);
 
     canvas.save();
     canvas.scale(scaleFactor);
@@ -164,7 +191,7 @@ class Basketball extends BodyComponent with DragCallbacks {
 
   @override
   bool containsPoint(Vector2 point) {
-    if (isLaunched) return false;
+    if (isLaunched || isEntering) return false;
     // Generous touch target (2.5x radius) so quick swipe gestures never miss
     final dist = (point - body.position).length;
     return dist <= radius * 2.5;
