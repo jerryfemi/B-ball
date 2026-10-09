@@ -38,9 +38,12 @@ class FrontRimVisual extends PositionComponent {
 
     for (final ball in balls) {
       // Only stretch when a ball that reached the rim is moving downwards through the hoop
-      if (ball.passedThroughRim && ball.body.position.y > 4.8 && ball.body.position.y < 6.8 && ball.body.linearVelocity.y > 0) {
+      if (ball.passedThroughRim &&
+          ball.body.position.y >= 4.9 &&
+          ball.body.position.y <= 6.2 &&
+          ball.body.linearVelocity.y > 0) {
         // Must be horizontally close to the center
-        if (ball.body.position.x.abs() < hoopWidth / 2) {
+        if (ball.body.position.x.abs() < hoopWidth * 0.45) {
           ballInNet = true;
           double stretchDepth = ball.body.position.y - 5.0 + ball.radius * 0.7;
           if (stretchDepth > maxDepth) maxDepth = stretchDepth;
@@ -50,22 +53,27 @@ class FrontRimVisual extends PositionComponent {
     }
 
     if (ballInNet) {
-      _currentNetDepth = maxDepth;
-      _currentBottomWidth = targetWidth;
+      _currentNetDepth = maxDepth.clamp(0.85, 1.35);
+      _currentBottomWidth = targetWidth.clamp(0.55, 0.85);
       _netDepthVelocity = 0.0;
       _netWidthVelocity = 0.0;
     } else {
-      // Bouncy spring physics
-      const double kStiffness = 200.0;
-      const double kDamping = 12.0;
+      // Numerical stability: clamp timestep to prevent explicit Euler divergence
+      final clampedDt = dt.clamp(0.001, 0.02);
+      const double kStiffness = 180.0;
+      const double kDamping = 14.0;
 
-      double depthForce = kStiffness * (0.9 - _currentNetDepth) - kDamping * _netDepthVelocity;
-      _netDepthVelocity += depthForce * dt;
-      _currentNetDepth += _netDepthVelocity * dt;
+      double depthForce =
+          kStiffness * (0.9 - _currentNetDepth) - kDamping * _netDepthVelocity;
+      _netDepthVelocity += depthForce * clampedDt;
+      _currentNetDepth += _netDepthVelocity * clampedDt;
+      _currentNetDepth = _currentNetDepth.clamp(0.75, 1.40);
 
-      double widthForce = kStiffness * (0.55 - _currentBottomWidth) - kDamping * _netWidthVelocity;
-      _netWidthVelocity += widthForce * dt;
-      _currentBottomWidth += _netWidthVelocity * dt;
+      double widthForce =
+          kStiffness * (0.55 - _currentBottomWidth) - kDamping * _netWidthVelocity;
+      _netWidthVelocity += widthForce * clampedDt;
+      _currentBottomWidth += _netWidthVelocity * clampedDt;
+      _currentBottomWidth = _currentBottomWidth.clamp(0.40, 0.90);
     }
   }
 
