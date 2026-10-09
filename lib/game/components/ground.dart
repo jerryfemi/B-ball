@@ -1,4 +1,5 @@
 import 'package:flame_forge2d/flame_forge2d.dart';
+import 'package:forge2d/forge2d.dart' as forge2d;
 import 'package:flutter/material.dart';
 
 class Ground extends BodyComponent {
@@ -22,8 +23,12 @@ class Ground extends BodyComponent {
 
     final shapeDef = ShapeDef(
       material: SurfaceMaterial(
-        friction: 0.5,
-        restitution: 0.6,
+        friction: 0.8,
+        restitution: 0.75,
+      ),
+      filter: forge2d.Filter(
+        categoryBits: 0x0002, // Floor category
+        maskBits: forge2d.Filter.allCategories,
       ),
     );
 
