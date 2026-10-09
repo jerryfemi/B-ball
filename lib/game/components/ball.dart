@@ -211,6 +211,16 @@ class Basketball extends BodyComponent with DragCallbacks {
 
   @override
   void render(Canvas canvas) {
+    // Opacity fade out over the last 5 seconds of the 12 second lifetime
+    final double opacity = timeSinceLaunch > 7.0 
+        ? (1.0 - (timeSinceLaunch - 7.0) / 5.0).clamp(0.0, 1.0) 
+        : 1.0;
+
+    canvas.saveLayer(
+      null,
+      Paint()..color = Color.fromRGBO(255, 255, 255, opacity),
+    );
+
     final currentY = body.position.y;
 
     // 1. Dynamic Hardwood Floor Drop Shadow
@@ -293,6 +303,7 @@ class Basketball extends BodyComponent with DragCallbacks {
     }
 
     canvas.restore();
+    canvas.restore(); // Restore the saveLayer for opacity
   }
 
   @override
@@ -326,50 +337,43 @@ class Basketball extends BodyComponent with DragCallbacks {
 
     if (isLaunched || isEntering) return;
 
-    double vx = event.velocity.x;
-    double vy = event.velocity.y;
+    double finalVx = event.velocity.x;
+    double finalVy = event.velocity.y;
     Vector2? delta;
 
     if (_dragStartPos != null &&
         _lastDragPos != null &&
         _dragStartTimeMs != null) {
       delta = _lastDragPos! - _dragStartPos!;
-      final dtMs =
+      final dtSec =
           (DateTime.now().millisecondsSinceEpoch - _dragStartTimeMs!)
-              .clamp(40, 600);
-      final dispVy = delta.y / (dtMs / 1000.0);
-      final dispVx = delta.x / (dtMs / 1000.0);
+              .clamp(40, 500) / 1000.0;
+      final dispVy = delta.y / dtSec;
+      final dispVx = delta.x / dtSec;
 
-      if (dispVy < vy) {
-        vy = dispVy;
-        vx = dispVx;
+      // Use displacement velocity if it was a faster upward flick
+      if (dispVy < finalVy) {
+        finalVy = dispVy;
+        finalVx = dispVx;
       }
     }
 
     // Only launch when swiped upwards toward the hoop
-    final isUpward = vy <= -40.0 || (delta != null && delta.y <= -25.0);
+    final isUpward = finalVy <= -40.0 || (delta != null && delta.y <= -25.0);
     if (!isUpward) return;
 
-    final dtMs = (_dragStartTimeMs != null)
-        ? (DateTime.now().millisecondsSinceEpoch - _dragStartTimeMs!)
-            .clamp(40, 500)
-        : 150;
-    final dtSec = dtMs / 1000.0;
-    final dispX = (delta != null) ? delta.x : vx * dtSec;
-    final dispY = (delta != null) ? delta.y : vy * dtSec;
-
     // Upward swipe velocity in pixels/second
-    final swipeSpeedY = (dispY.abs() / dtSec).clamp(200.0, 2400.0);
+    final swipeSpeedY = finalVy.abs().clamp(200.0, 3000.0);
     // Lateral swipe ratio (aim angle)
-    final swipeRatioX = (dispX / dispY.abs()).clamp(-0.8, 0.8);
+    final swipeRatioX = (finalVx / finalVy.abs()).clamp(-0.8, 0.8);
 
     // Launch velocity calibration for 20m arena with g = 30 m/s²:
     // Minimum flick (-27.0 m/s) -> short shot that peaks below the rim (airball)
-    // Medium flick (-31.8 m/s) -> perfect arc that peaks at Y ~ 1.8m and dips cleanly into hoop
-    // Firm flick (-35.5 m/s) -> high rainbow arc that banks off the backboard
-    final powerFactor = ((swipeSpeedY - 250.0) / 1100.0).clamp(0.0, 1.0);
+    // Medium flick (-32.0 m/s) -> perfect arc that peaks at Y ~ 1.8m and dips cleanly into hoop
+    // Firm flick (-42.0 m/s) -> high rainbow arc
+    final powerFactor = ((swipeSpeedY - 150.0) / 1500.0).clamp(0.0, 1.0);
     _launchPower = powerFactor;
-    final targetVy = ui.lerpDouble(-27.5, -35.5, powerFactor)!;
+    final targetVy = ui.lerpDouble(-28.0, -42.0, powerFactor)!;
 
     // 2.5D Court Landing Floor based on shot power:
     // Firm shot to the hoop: lands under the basket in the red key (Y ~ 13.4m)
@@ -380,8 +384,6 @@ class Basketball extends BodyComponent with DragCallbacks {
 
     // Lateral velocity based on flick angle:
     // Over the ~1.5s flight time to the rim, swipeRatioX directly steers the shot
-    // A straight flick (swipeRatioX ~ 0) stays centered for a swish.
-    // A slight flick (swipeRatioX ~ 0.12) drifts to ~0.8m to hit the rim peg.
     final targetVx = swipeRatioX * 4.6;
 
     isLaunched = true;
