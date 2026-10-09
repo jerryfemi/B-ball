@@ -24,7 +24,7 @@ class GameBackground extends Component with HasGameReference {
 
     final width = game.size.x;
     final height = game.size.y;
-    final wallHeight = height * 0.60;
+    final wallHeight = height * 0.50; // Expansive court horizon: 50% wall, 50% floor
     final floorHeight = height - wallHeight;
 
     _renderBrickWall(canvas, width, wallHeight);
@@ -144,9 +144,9 @@ class GameBackground extends Component with HasGameReference {
       canvas.drawLine(Offset(0, y), Offset(width, y), plankLinePaint);
     }
 
-    // 2. Terracotta/Crimson painted key court trapezoid in perspective
-    final topKeyWidth = width * 0.52;
-    final bottomKeyWidth = width * 0.82;
+    // 2. Terracotta/Crimson painted key court trapezoid in deep perspective
+    final topKeyWidth = width * 0.40;
+    final bottomKeyWidth = width * 0.88;
 
     final keyPath = Path()
       ..moveTo(centerX - topKeyWidth / 2, wallHeight)
@@ -200,10 +200,10 @@ class GameBackground extends Component with HasGameReference {
   ) {
     final centerX = width / 2;
 
-    // Free-throw circle arc in perspective
-    final circleCenterY = wallHeight + floorHeight * 0.40;
-    final radiusX = width * 0.20;
-    final radiusY = floorHeight * 0.14;
+    // Free-throw circle arc in deep perspective
+    final circleCenterY = wallHeight + floorHeight * 0.38;
+    final radiusX = width * 0.22;
+    final radiusY = floorHeight * 0.12;
 
     final arcRect = Rect.fromCenter(
       center: Offset(centerX, circleCenterY),
