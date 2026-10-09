@@ -22,6 +22,7 @@ class Basketball extends BodyComponent with DragCallbacks {
   bool _hasActivatedRimCollision = false;
   bool _hasBankedBackboard = false;
   double _launchPower = 0.0;
+  bool passedThroughRim = false;
 
   double targetFloorY = 19.2;
   int _bounceCount = 0;
@@ -130,6 +131,11 @@ class Basketball extends BodyComponent with DragCallbacks {
           maskBits:
               forge2d.Filter.allCategories, // Solid collision with hoop pegs and floor!
         );
+      }
+
+      // Mark the ball as having successfully reached the rim area
+      if (body.position.y < 4.9 && body.position.x.abs() < 0.9) {
+        passedThroughRim = true;
       }
 
       // Backboard Glass Bank: descending shot with high power caroms forward/down
