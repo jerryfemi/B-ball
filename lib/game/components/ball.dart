@@ -126,28 +126,30 @@ class Basketball extends BodyComponent with DragCallbacks {
     // 1. Dynamic Floor Drop Shadow (Spatial Height Perception)
     const floorY = 19.2;
     final distToFloor = floorY - currentY;
-    if (distToFloor > 0 && distToFloor < 15.0) {
-      final shadowAlpha =
-          (0.55 - (distToFloor / 15.0) * 0.35).clamp(0.15, 0.55);
+    final heightAboveFloor = distToFloor - radius;
+
+    // Only render floor shadow when the ball is within 3.5m of the ground
+    if (heightAboveFloor >= -0.1 && heightAboveFloor < 3.5) {
+      final shadowFade =
+          (1.0 - (heightAboveFloor.clamp(0.0, 3.5) / 3.5)).clamp(0.0, 1.0);
+      final shadowAlpha = (0.55 * shadowFade).clamp(0.0, 0.55);
       final shadowScale =
-          (1.0 + (distToFloor / 12.0) * 0.5).clamp(1.0, 1.8);
-      // Tight, grounded contact blur in world units (0.06m near floor up to 0.45m high up)
-      final blurRadius = (0.06 + distToFloor * 0.025).clamp(0.06, 0.45);
+          (1.0 + (heightAboveFloor.clamp(0.0, 3.5) / 3.5) * 0.5).clamp(1.0, 1.5);
+      final blurRadius =
+          (0.06 + heightAboveFloor.clamp(0.0, 3.5) * 0.08).clamp(0.06, 0.35);
+
       final shadowPaint = Paint()
         ..color = Color.fromRGBO(0, 0, 0, shadowAlpha)
-        ..maskFilter = MaskFilter.blur(
-          BlurStyle.normal,
-          blurRadius,
-        );
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, blurRadius);
 
       canvas.save();
       // Counter-rotate by physical body roll so the shadow stays strictly flat on the horizontal floor
       canvas.rotate(-body.angle);
 
       final shadowRect = Rect.fromCenter(
-        center: Offset(0, distToFloor),
+        center: Offset(0, distToFloor.clamp(radius, 25.0)),
         width: radius * 2.2 * shadowScale,
-        height: radius * 0.65 * shadowScale,
+        height: radius * 0.50 * shadowScale,
       );
       canvas.drawOval(shadowRect, shadowPaint);
       canvas.restore();
@@ -237,12 +239,13 @@ class Basketball extends BodyComponent with DragCallbacks {
 
     double vx = event.velocity.x;
     double vy = event.velocity.y;
+    Vector2? delta;
 
     // Displacement-based gesture fallback: captures full upward flick even if mouse release lagged
     if (_dragStartPos != null &&
         _lastDragPos != null &&
         _dragStartTimeMs != null) {
-      final delta = _lastDragPos! - _dragStartPos!;
+      delta = _lastDragPos! - _dragStartPos!;
       final dtMs =
           (DateTime.now().millisecondsSinceEpoch - _dragStartTimeMs!)
               .clamp(40, 600);
@@ -256,8 +259,9 @@ class Basketball extends BodyComponent with DragCallbacks {
       }
     }
 
-    // Only launch when swiped upwards toward the hoop
-    if (vy >= -40.0) return;
+    // Only launch when swiped upwards toward the hoop (via speed or displacement)
+    final isUpward = vy <= -40.0 || (delta != null && delta.y <= -25.0);
+    if (!isUpward) return;
 
     isLaunched = true;
     body.type = BodyType.dynamic; // Become physical!
@@ -268,15 +272,16 @@ class Basketball extends BodyComponent with DragCallbacks {
     );
     onLaunched?.call(); // Notify the game to spawn the next ball after delay
 
-    // Scale swipe velocity to world physics impulse (calibrated for 20m arena height)
-    final impulseX = (vx / 45.0).clamp(-18.0, 18.0);
-    final impulseY = (vy / 36.0).clamp(-38.0, -18.0);
-    final impulse = Vector2(impulseX, impulseY);
+    // Scale swipe velocity to world physical velocity calibrated for the 20m arena
+    // vy is negative (upward) in screen pixels/sec
+    final targetVx = (vx / 65.0).clamp(-12.0, 12.0);
+    // Base launch velocity of -24.0 m/s + scaled swipe energy, clamped between -37.0 m/s (high arc/board) and -25.5 m/s (floater/rim)
+    final targetVy = (-24.0 + (vy / 75.0)).clamp(-37.0, -25.5);
 
-    body.applyLinearImpulse(impulse);
+    body.linearVelocity = Vector2(targetVx, targetVy);
 
-    // Add a natural backspin when swiped upwards!
-    body.applyAngularImpulse(impulse.y * 0.4);
+    // Natural backspin proportional to upward launch speed
+    body.angularVelocity = targetVy * 0.22;
   }
 }
 
