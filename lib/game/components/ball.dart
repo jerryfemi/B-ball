@@ -21,6 +21,7 @@ class Basketball extends BodyComponent with DragCallbacks {
   double timeSinceLaunch = 0.0;
   bool _hasActivatedRimCollision = false;
   bool _hasBankedBackboard = false;
+  bool _hasClankedFrontRim = false;
   double _launchPower = 0.0;
   bool passedThroughRim = false;
 
@@ -138,11 +139,37 @@ class Basketball extends BodyComponent with DragCallbacks {
         );
       }
 
-      // Mark the ball as having successfully reached the rim area
-      if (body.position.y < 5.2 && body.position.x.abs() < 1.0) {
+      // Clean Entry into the Rim Cylinder from above:
+      if (!_hasClankedFrontRim &&
+          body.position.y < 4.95 &&
+          body.position.x.abs() < 0.65 &&
+          body.linearVelocity.y > 0) {
         passedThroughRim = true;
         _zDepth = 1.0;
         targetFloorY = 10.4; // Direct under-basket key floor
+      }
+
+      // Front-Iron Clank: descending shot hitting the front iron ellipse
+      if (body.linearVelocity.y > 0 &&
+          !_hasClankedFrontRim &&
+          !passedThroughRim &&
+          body.position.y >= 4.90 &&
+          body.position.y <= 5.45 &&
+          body.position.x.abs() <= 0.85) {
+        final normX = (body.position.x / 0.9).clamp(-1.0, 1.0);
+        final frontRimY = 5.0 + math.sqrt(1.0 - normX * normX) * 0.225;
+        // Hit detection on the front iron curve
+        if ((body.position.y - frontRimY).abs() <= 0.24) {
+          _hasClankedFrontRim = true;
+          // Rebound upward and carom slightly forward/lateral
+          final reboundVy = -body.linearVelocity.y.abs() * 0.70;
+          final lateralPush = body.position.x * 1.5;
+          body.linearVelocity =
+              Vector2(body.linearVelocity.x * 0.55 + lateralPush, reboundVy);
+          body.angularVelocity *= 0.50;
+          targetFloorY = 11.8; // Bounces forward into the paint as a miss
+          _zDepth = 0.95;
+        }
       }
 
       // Backboard Glass Bank: descending shot with high power caroms forward/down
@@ -159,7 +186,8 @@ class Basketball extends BodyComponent with DragCallbacks {
       }
 
       // Cotton Net Swish Damping: gently cushions the plunge and centers the ball
-      if (body.position.y >= 5.0 &&
+      if (passedThroughRim &&
+          body.position.y >= 5.0 &&
           body.position.y <= 6.2 &&
           body.position.x.abs() < 0.65) {
         body.linearVelocity.x *= 0.92;
@@ -214,14 +242,15 @@ class Basketball extends BodyComponent with DragCallbacks {
     // The ball is in front of the entire hoop apparatus (in foreground)
     if (body.linearVelocity.y < 0 || body.position.y < 4.9) {
       priority = 5;
-    } else if (body.position.x.abs() <= 0.95 &&
+    } else if (passedThroughRim &&
+        body.position.x.abs() <= 0.95 &&
         body.position.y >= 4.9 &&
         body.position.y <= 6.8) {
       // Dipping through the rim opening and net cylinder:
       // Front rim (priority 3) wraps in front of the ball, backboard (priority 1) is behind it
       priority = 2;
     } else {
-      // Cleared the net or fallen outside the rim: renders in front of the court
+      // Cleared the net or bounced off front rim: renders in front of the court & rim
       priority = 5;
     }
   }
@@ -405,6 +434,7 @@ class Basketball extends BodyComponent with DragCallbacks {
     }
     _zDepth = 0.0;
     _bounceCount = 0;
+    _hasClankedFrontRim = false;
 
     // Lateral velocity based on flick angle:
     // Over the ~1.5s flight time to the rim, swipeRatioX directly steers the shot
