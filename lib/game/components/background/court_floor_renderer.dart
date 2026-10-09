@@ -59,8 +59,8 @@ class CourtFloorRenderer {
     }
 
     // 4. Terracotta/Crimson Painted Key Trapezoid
-    final topKeyWidth = geom.backWallRect.width * 0.45;
-    final bottomKeyWidth = width * 0.88;
+    final topKeyWidth = width * 0.48;
+    final bottomKeyWidth = width * 0.94;
 
     final keyPath = Path()
       ..moveTo(centerX - topKeyWidth / 2, horizonY)
@@ -74,17 +74,17 @@ class CourtFloorRenderer {
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: [
-          Color(0xFF8B1E1E), // Deeper crimson near back wall
-          Color(0xFFA52A2A), // Vibrant terracotta red center
-          Color(0xFF962323), // Foreground red
+          Color(0xFF7A1416), // Deeper crimson near back wall
+          Color(0xFF9E1B20), // Rich collegiate terracotta red
+          Color(0xFF8B161B), // Warm foreground red
         ],
       ).createShader(floorRect);
     canvas.drawPath(keyPath, keyPaint);
 
     final keyBorderPaint = Paint()
-      ..color = const Color(0xFFFACC15) // Signature yellow arcade border
+      ..color = const Color(0xD8FFFFFF) // Clean regulation white court lines
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 3.0;
+      ..strokeWidth = 2.5;
     canvas.drawPath(keyPath, keyBorderPaint);
 
     // 5. Free-Throw Markings
@@ -96,8 +96,8 @@ class CourtFloorRenderer {
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: const [
-          Color(0x35FFFFFF),
-          Color(0x0AFFFFFF),
+          Color(0x28FFFFFF),
+          Color(0x08FFFFFF),
           Colors.transparent,
         ],
         stops: const [0.0, 0.45, 1.0],
@@ -111,9 +111,9 @@ class CourtFloorRenderer {
     final horizonY = geom.horizonY;
 
     // Free-throw circle arc in deep perspective
-    final circleCenterY = horizonY + floorHeight * 0.38;
-    final radiusX = geom.screenWidth * 0.22;
-    final radiusY = floorHeight * 0.12;
+    final circleCenterY = horizonY + floorHeight * 0.42;
+    final radiusX = geom.screenWidth * 0.28;
+    final radiusY = floorHeight * 0.18;
 
     final arcRect = Rect.fromCenter(
       center: Offset(centerX, circleCenterY),
@@ -123,16 +123,16 @@ class CourtFloorRenderer {
 
     // Solid front arc (facing player)
     final solidArcPaint = Paint()
-      ..color = const Color(0xFFFACC15)
+      ..color = const Color(0xC8FFFFFF)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 3.0;
+      ..strokeWidth = 2.5;
     canvas.drawArc(arcRect, 0, math.pi, false, solidArcPaint);
 
     // Dashed back arc (receding toward basket)
     final dashedArcPaint = Paint()
-      ..color = const Color(0xCCFACC15)
+      ..color = const Color(0x88FFFFFF)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 3.0;
+      ..strokeWidth = 2.5;
 
     for (double a = math.pi; a < 2 * math.pi; a += 0.35) {
       canvas.drawArc(arcRect, a, 0.18, false, dashedArcPaint);

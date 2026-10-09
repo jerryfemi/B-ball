@@ -19,7 +19,7 @@ class FrontRimVisual extends PositionComponent {
   FrontRimVisual({
     required Vector2 position,
     this.hoopWidth = 1.8,
-    this.hoopDepth = 0.45,
+    this.hoopDepth = 0.18,
   }) : super(
           position: position,
           size: Vector2(4.0, 4.0),
@@ -94,22 +94,22 @@ class FrontRimVisual extends PositionComponent {
 
   void _renderMountingBracket(Canvas canvas) {
     final bracketPaint = Paint()
-      ..color = const Color(0xFFD84315)
+      ..color = const Color(0xFF7F1319) // Burnished iron crimson
       ..style = PaintingStyle.fill;
 
     // Small mounting flange connecting rim to backboard
     final bracketRect = Rect.fromCenter(
-      center: const Offset(0, -0.15),
-      width: 0.3,
-      height: 0.2,
+      center: const Offset(0, -0.10),
+      width: 0.28,
+      height: 0.16,
     );
     canvas.drawRect(bracketRect, bracketPaint);
 
     final boltPaint = Paint()
       ..color = const Color(0xFF1E293B)
       ..style = PaintingStyle.fill;
-    canvas.drawCircle(const Offset(-0.08, -0.15), 0.025, boltPaint);
-    canvas.drawCircle(const Offset(0.08, -0.15), 0.025, boltPaint);
+    canvas.drawCircle(const Offset(-0.08, -0.10), 0.022, boltPaint);
+    canvas.drawCircle(const Offset(0.08, -0.10), 0.022, boltPaint);
   }
 
   void _renderFrontRim(Canvas canvas) {
@@ -119,9 +119,24 @@ class FrontRimVisual extends PositionComponent {
       height: hoopDepth,
     );
 
-    // 1. Base vibrant orange rim arc (bottom half from 0 to pi)
+    // 1. Deep underside rim shadow for metallic depth
+    final underRimPaint = Paint()
+      ..color = const Color(0xFF6B1116)
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = 0.09;
+
+    canvas.drawArc(
+      Rect.fromCenter(center: const Offset(0, 0.010), width: hoopWidth, height: hoopDepth),
+      0,
+      math.pi,
+      false,
+      underRimPaint,
+    );
+
+    // 2. Base burnished iron crimson rim arc (bottom half from 0 to pi)
     final frontRimPaint = Paint()
-      ..color = const Color(0xFFFF5722)
+      ..color = const Color(0xFF9E1B22)
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
       ..strokeWidth = 0.08;
@@ -134,15 +149,15 @@ class FrontRimVisual extends PositionComponent {
       frontRimPaint,
     );
 
-    // 2. Specular metallic highlight along the top crest
+    // 3. Specular metallic highlight along the top crest
     final highlightPaint = Paint()
-      ..color = const Color(0xFFFFAB91)
+      ..color = const Color(0xFFEF4444)
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
-      ..strokeWidth = 0.03;
+      ..strokeWidth = 0.022;
 
     final highlightRect = Rect.fromCenter(
-      center: const Offset(0, -0.015),
+      center: const Offset(0, -0.008),
       width: hoopWidth - 0.06,
       height: hoopDepth,
     );
@@ -155,9 +170,9 @@ class FrontRimVisual extends PositionComponent {
       highlightPaint,
     );
 
-    // 3. Circular rim tips at the left and right collision pivots
+    // 4. Circular rim tips at the left and right collision pivots
     final pivotPaint = Paint()
-      ..color = const Color(0xFFFF5722)
+      ..color = const Color(0xFF9E1B22)
       ..style = PaintingStyle.fill;
 
     canvas.drawCircle(Offset(-hoopWidth / 2, 0), 0.045, pivotPaint);

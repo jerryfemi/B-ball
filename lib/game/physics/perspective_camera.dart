@@ -33,17 +33,17 @@ class PerspectiveCamera3D {
     required this.pixelsPerMeter,
   });
 
-  /// Factory calibrated to match the regulation basketball arena and 46% horizon line.
+  /// Factory calibrated to match the grounded arena perspective (59% horizon, edge-on rim POV).
   factory PerspectiveCamera3D.standard(double screenWidth, double screenHeight) {
-    // Horizon line at 46% height (aligned with court back wall)
-    final horizonY = screenHeight * 0.46;
-    final ppm = screenHeight * 0.30;
+    // Horizon line at 59% height (grounded court floor, tall majestic back wall)
+    final horizonY = screenHeight * 0.59;
+    final ppm = screenHeight * 0.335;
 
     return PerspectiveCamera3D(
       screenWidth: screenWidth,
       screenHeight: screenHeight,
       horizonScreenY: horizonY,
-      eyeHeightInMeters: 1.8,
+      eyeHeightInMeters: 1.235,
       focalDistance: 5.7,
       pixelsPerMeter: ppm,
     );

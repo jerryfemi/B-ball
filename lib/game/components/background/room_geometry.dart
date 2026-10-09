@@ -29,14 +29,14 @@ class RoomGeometry {
   });
 
   factory RoomGeometry.fromScreenSize(double width, double height) {
-    // Horizon placed at 46% of viewport height (just below the hoop rim & net)
-    final horizon = height * 0.46;
+    // Horizon placed at 59% of viewport height (matching GamePigeon grounded perspective)
+    final horizon = height * 0.59;
     final vp = Offset(width / 2, horizon);
 
-    // Distant back wall spans 76% of width, from 13% height down to horizon
-    final backWallLeft = width * 0.12;
-    final backWallRight = width * 0.88;
-    final backWallTop = height * 0.13;
+    // Distant back wall spans across width, from top down to horizon
+    final backWallLeft = width * 0.04;
+    final backWallRight = width * 0.96;
+    final backWallTop = height * 0.05;
 
     final backWall = Rect.fromLTRB(
       backWallLeft,

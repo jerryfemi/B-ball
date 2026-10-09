@@ -19,7 +19,7 @@ class BackboardVisual extends PositionComponent {
   BackboardVisual({
     required Vector2 position,
     this.hoopWidth = 1.8,
-    this.hoopDepth = 0.45,
+    this.hoopDepth = 0.18,
   }) : super(
           position: position,
           size: Vector2(6.0, 20.0),
@@ -349,7 +349,7 @@ class BackboardVisual extends PositionComponent {
 
     // Top half of rim ellipse (from pi to 2*pi): curves upwards/away
     final rearRimPaint = Paint()
-      ..color = const Color(0xFFC2410C) // Shaded burnt orange
+      ..color = const Color(0xFF751117) // Shaded deep iron crimson
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
       ..strokeWidth = 0.08;
