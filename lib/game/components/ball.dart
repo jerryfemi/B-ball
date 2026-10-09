@@ -24,6 +24,11 @@ class Basketball extends BodyComponent with DragCallbacks {
   bool isEntering = false;
   double enterProgress = 0.0;
 
+  late final forge2d.Shape _shape;
+  Vector2? _dragStartPos;
+  Vector2? _lastDragPos;
+  int? _dragStartTimeMs;
+
   Basketball({
     required this.initialPosition,
     this.radius = 0.78,
@@ -64,9 +69,13 @@ class Basketball extends BodyComponent with DragCallbacks {
         friction: 0.8, // More friction for better rolling/spinning
         restitution: 0.82, // Extra bouncy
       ),
+      filter: forge2d.Filter(
+        categoryBits: 2,
+        maskBits: isLaunched ? forge2d.Filter.allCategories : 0,
+      ),
     );
 
-    body.createShape(forge2d.Circle(radius: radius), shapeDef);
+    _shape = body.createShape(forge2d.Circle(radius: radius), shapeDef);
     return body;
   }
 
@@ -131,12 +140,17 @@ class Basketball extends BodyComponent with DragCallbacks {
           blurRadius,
         );
 
+      canvas.save();
+      // Counter-rotate by physical body roll so the shadow stays strictly flat on the horizontal floor
+      canvas.rotate(-body.angle);
+
       final shadowRect = Rect.fromCenter(
         center: Offset(0, distToFloor),
         width: radius * 2.2 * shadowScale,
         height: radius * 0.65 * shadowScale,
       );
       canvas.drawOval(shadowRect, shadowPaint);
+      canvas.restore();
     }
 
     // 2. Perspective scaling: scales down to ~0.73x as it rises up to the hoop (1.8m rim)
@@ -198,22 +212,65 @@ class Basketball extends BodyComponent with DragCallbacks {
   }
 
   @override
+  void onDragStart(DragStartEvent event) {
+    super.onDragStart(event);
+    if (!isLaunched && !isEntering) {
+      _dragStartPos = event.canvasPosition;
+      _lastDragPos = event.canvasPosition;
+      _dragStartTimeMs = DateTime.now().millisecondsSinceEpoch;
+    }
+  }
+
+  @override
+  void onDragUpdate(DragUpdateEvent event) {
+    super.onDragUpdate(event);
+    if (!isLaunched && !isEntering) {
+      _lastDragPos = event.canvasEndPosition;
+    }
+  }
+
+  @override
   void onDragEnd(DragEndEvent event) {
     super.onDragEnd(event);
 
-    if (isLaunched) return;
+    if (isLaunched || isEntering) return;
 
-    final velocity = event.velocity;
+    double vx = event.velocity.x;
+    double vy = event.velocity.y;
+
+    // Displacement-based gesture fallback: captures full upward flick even if mouse release lagged
+    if (_dragStartPos != null &&
+        _lastDragPos != null &&
+        _dragStartTimeMs != null) {
+      final delta = _lastDragPos! - _dragStartPos!;
+      final dtMs =
+          (DateTime.now().millisecondsSinceEpoch - _dragStartTimeMs!)
+              .clamp(40, 600);
+      final dispVy = delta.y / (dtMs / 1000.0);
+      final dispVx = delta.x / (dtMs / 1000.0);
+
+      // If displacement shows a decisive upward flick, take the stronger velocity
+      if (dispVy < vy) {
+        vy = dispVy;
+        vx = dispVx;
+      }
+    }
+
     // Only launch when swiped upwards toward the hoop
-    if (velocity.y >= 0) return;
+    if (vy >= -40.0) return;
 
     isLaunched = true;
     body.type = BodyType.dynamic; // Become physical!
-    onLaunched?.call(); // Notify the game to spawn the next ball
+    // Enable full collision response across all physical objects once in flight
+    _shape.filter = forge2d.Filter(
+      categoryBits: 1,
+      maskBits: forge2d.Filter.allCategories,
+    );
+    onLaunched?.call(); // Notify the game to spawn the next ball after delay
 
     // Scale swipe velocity to world physics impulse (calibrated for 20m arena height)
-    final impulseX = (velocity.x / 45.0).clamp(-18.0, 18.0);
-    final impulseY = (velocity.y / 42.0).clamp(-35.0, -12.0);
+    final impulseX = (vx / 45.0).clamp(-18.0, 18.0);
+    final impulseY = (vy / 36.0).clamp(-38.0, -18.0);
     final impulse = Vector2(impulseX, impulseY);
 
     body.applyLinearImpulse(impulse);
