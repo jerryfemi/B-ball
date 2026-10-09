@@ -2,12 +2,19 @@ import 'dart:math' as math;
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 
+import 'ball.dart';
+
 /// Renders the front half of the metal rim, mounting bracket, and front net cords.
 /// Configured with priority = 3 so it renders in front of the basketball (priority = 2),
 /// completing the 2.5D immersion when the ball drops into the hoop.
 class FrontRimVisual extends PositionComponent {
   final double hoopWidth;
   final double hoopDepth;
+
+  double _currentNetDepth = 0.9;
+  double _currentBottomWidth = 0.55;
+  double _netDepthVelocity = 0.0;
+  double _netWidthVelocity = 0.0;
 
   FrontRimVisual({
     required Vector2 position,
@@ -19,6 +26,48 @@ class FrontRimVisual extends PositionComponent {
           anchor: Anchor.center,
           priority: 3,
         );
+
+  @override
+  void update(double dt) {
+    super.update(dt);
+    
+    final balls = parent?.children.whereType<Basketball>() ?? [];
+    bool ballInNet = false;
+    double maxDepth = 0.9;
+    double targetWidth = 0.55;
+
+    for (final ball in balls) {
+      // Only stretch when a ball that reached the rim is moving downwards through the hoop
+      if (ball.passedThroughRim && ball.body.position.y > 4.8 && ball.body.position.y < 6.8 && ball.body.linearVelocity.y > 0) {
+        // Must be horizontally close to the center
+        if (ball.body.position.x.abs() < hoopWidth / 2) {
+          ballInNet = true;
+          double stretchDepth = ball.body.position.y - 5.0 + ball.radius * 0.7;
+          if (stretchDepth > maxDepth) maxDepth = stretchDepth;
+          targetWidth = 0.85; // Widen bottom to let ball through
+        }
+      }
+    }
+
+    if (ballInNet) {
+      _currentNetDepth = maxDepth;
+      _currentBottomWidth = targetWidth;
+      _netDepthVelocity = 0.0;
+      _netWidthVelocity = 0.0;
+    } else {
+      // Bouncy spring physics
+      const double kStiffness = 200.0;
+      const double kDamping = 12.0;
+
+      double depthForce = kStiffness * (0.9 - _currentNetDepth) - kDamping * _netDepthVelocity;
+      _netDepthVelocity += depthForce * dt;
+      _currentNetDepth += _netDepthVelocity * dt;
+
+      double widthForce = kStiffness * (0.55 - _currentBottomWidth) - kDamping * _netWidthVelocity;
+      _netWidthVelocity += widthForce * dt;
+      _currentBottomWidth += _netWidthVelocity * dt;
+    }
+  }
 
   @override
   void render(Canvas canvas) {
@@ -118,8 +167,8 @@ class FrontRimVisual extends PositionComponent {
       ..style = PaintingStyle.fill;
 
     const cordCount = 8;
-    const netDepth = 0.9;
-    const bottomWidthRatio = 0.55;
+    final netDepth = _currentNetDepth;
+    final bottomWidthRatio = _currentBottomWidth;
 
     final topPoints = <Offset>[];
     final bottomPoints = <Offset>[];
