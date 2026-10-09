@@ -63,8 +63,9 @@ class Basketball extends BodyComponent with DragCallbacks {
 
   @override
   Body createBody() {
-    final startY =
-        animateEntrance ? initialPosition.y + 2.5 : initialPosition.y;
+    final startY = animateEntrance
+        ? initialPosition.y + 2.5
+        : initialPosition.y;
 
     final bodyDef = BodyDef(
       type: BodyType.kinematic,
@@ -77,10 +78,7 @@ class Basketball extends BodyComponent with DragCallbacks {
 
     final shapeDef = ShapeDef(
       density: 1.0,
-      material: SurfaceMaterial(
-        friction: 0.8,
-        restitution: 0.82,
-      ),
+      material: SurfaceMaterial(friction: 0.8, restitution: 0.82),
       filter: forge2d.Filter(
         categoryBits: 0x0008, // Basketball category
         maskBits: 0, // Unlaunched/entering ball collides with nothing
@@ -103,8 +101,11 @@ class Basketball extends BodyComponent with DragCallbacks {
         isEntering = false;
       }
       final t = Curves.easeOutCubic.transform(enterProgress);
-      final curY =
-          ui.lerpDouble(initialPosition.y + 2.5, initialPosition.y, t)!;
+      final curY = ui.lerpDouble(
+        initialPosition.y + 2.5,
+        initialPosition.y,
+        t,
+      )!;
       body.setTransform(
         Vector2(initialPosition.x, curY),
         const forge2d.Rot.identity(),
@@ -168,8 +169,10 @@ class Basketball extends BodyComponent with DragCallbacks {
           // Rebound upward and carom slightly forward/lateral
           final reboundVy = -body.linearVelocity.y.abs() * 0.70;
           final lateralPush = body.position.x * 1.5;
-          body.linearVelocity =
-              Vector2(body.linearVelocity.x * 0.55 + lateralPush, reboundVy);
+          body.linearVelocity = Vector2(
+            body.linearVelocity.x * 0.55 + lateralPush,
+            reboundVy,
+          );
           body.angularVelocity *= 0.50;
           targetFloorY = 11.8; // Bounces forward into the paint as a miss
           _zDepth = 0.95;
@@ -204,7 +207,9 @@ class Basketball extends BodyComponent with DragCallbacks {
 
       // 2. 2.5D Court Floor Collision & Natural Bouncing Under the Hoop
       // Only check while falling downwards AFTER reaching apex to prevent launch teleportation
-      if (_hasPassedApex && body.linearVelocity.y > 0 && body.position.y >= targetFloorY) {
+      if (_hasPassedApex &&
+          body.linearVelocity.y > 0 &&
+          body.position.y >= targetFloorY) {
         body.setTransform(
           Vector2(body.position.x, targetFloorY),
           const forge2d.Rot.identity(),
@@ -224,10 +229,7 @@ class Basketball extends BodyComponent with DragCallbacks {
           }
         } else {
           // Settled peacefully to rest on the hardwood court floor
-          body.linearVelocity = Vector2(
-            body.linearVelocity.x * 0.85,
-            0.0,
-          );
+          body.linearVelocity = Vector2(body.linearVelocity.x * 0.85, 0.0);
           if (body.linearVelocity.x.abs() < 0.1) {
             body.linearVelocity = Vector2.zero();
             body.angularVelocity = 0.0;
@@ -263,8 +265,8 @@ class Basketball extends BodyComponent with DragCallbacks {
   @override
   void render(Canvas canvas) {
     // Opacity fade out over the last 3 seconds of the 6 second lifetime (solid for 3s, fade for 3s)
-    final double opacity = timeSinceLaunch > 3.0 
-        ? (1.0 - (timeSinceLaunch - 3.0) / 3.0).clamp(0.0, 1.0) 
+    final double opacity = timeSinceLaunch > 3.0
+        ? (1.0 - (timeSinceLaunch - 3.0) / 3.0).clamp(0.0, 1.0)
         : 1.0;
 
     canvas.saveLayer(
@@ -282,14 +284,20 @@ class Basketball extends BodyComponent with DragCallbacks {
 
     // Drop shadow shows when the ball is within 4.5m of its landing court floor
     if (heightAboveFloor >= -0.2 && heightAboveFloor < 4.5) {
-      final shadowFade =
-          (1.0 - (heightAboveFloor.clamp(0.0, 4.5) / 4.5)).clamp(0.0, 1.0);
+      final shadowFade = (1.0 - (heightAboveFloor.clamp(0.0, 4.5) / 4.5)).clamp(
+        0.0,
+        1.0,
+      );
       final shadowAlpha = (0.58 * shadowFade).clamp(0.0, 0.58);
       final shadowScale =
-          (1.0 + (heightAboveFloor.clamp(0.0, 4.5) / 4.5) * 0.35)
-              .clamp(1.0, 1.35);
-      final blurRadius =
-          (0.06 + heightAboveFloor.clamp(0.0, 4.5) * 0.07).clamp(0.06, 0.28);
+          (1.0 + (heightAboveFloor.clamp(0.0, 4.5) / 4.5) * 0.35).clamp(
+            1.0,
+            1.35,
+          );
+      final blurRadius = (0.06 + heightAboveFloor.clamp(0.0, 4.5) * 0.07).clamp(
+        0.06,
+        0.28,
+      );
 
       final shadowPaint = Paint()
         ..color = Color.fromRGBO(0, 0, 0, shadowAlpha)
@@ -323,11 +331,16 @@ class Basketball extends BodyComponent with DragCallbacks {
       final transform = canvas.getTransform();
       final logicalCenterX = transform[12];
       final logicalCenterY = transform[13];
-      final logicalScale =
-          math.sqrt(transform[0] * transform[0] + transform[1] * transform[1]);
+      final logicalScale = math.sqrt(
+        transform[0] * transform[0] + transform[1] * transform[1],
+      );
 
-      final dpr =
-          WidgetsBinding.instance.platformDispatcher.views.first.devicePixelRatio;
+      final dpr = WidgetsBinding
+          .instance
+          .platformDispatcher
+          .views
+          .first
+          .devicePixelRatio;
 
       final physicalCenterX = logicalCenterX * dpr;
       final physicalCenterY = logicalCenterY * dpr;
@@ -396,8 +409,11 @@ class Basketball extends BodyComponent with DragCallbacks {
         _dragStartTimeMs != null) {
       delta = _lastDragPos! - _dragStartPos!;
       final dtSec =
-          (DateTime.now().millisecondsSinceEpoch - _dragStartTimeMs!)
-              .clamp(40, 500) / 1000.0;
+          (DateTime.now().millisecondsSinceEpoch - _dragStartTimeMs!).clamp(
+            40,
+            500,
+          ) /
+          1000.0;
       final dispVy = delta.y / dtSec;
       final dispVx = delta.x / dtSec;
 
