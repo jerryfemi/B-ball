@@ -1,41 +1,37 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flame/events.dart';
 import 'package:flame_forge2d/flame_forge2d.dart';
 import 'package:forge2d/forge2d.dart' as forge2d;
-import 'package:flame/events.dart';
 import 'package:flutter/material.dart';
+import 'package:vector_math/vector_math_64.dart' show Vector3;
 
-class Basketball extends BodyComponent with DragCallbacks {
+import '../basketball_game.dart';
+import '../physics/ball_physics_3d.dart';
+import '../physics/perspective_camera.dart';
+import '../physics/launch_solver.dart';
+
+/// Basketball component featuring true 3D projectile kinematics,
+/// exact 3D Torus rim collision, backboard glass bounce, hardwood floor roll,
+/// and continuous ground drop shadow within the 1-point perspective gymnasium.
+class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
   final Vector2 initialPosition;
   final double radius;
   final VoidCallback? onLaunched;
+  final bool animateEntrance;
+
+  // 3D physics simulator
+  late final BallPhysics3D physics;
+
+  // 3D perspective camera for projection
+  PerspectiveCamera3D get camera3D =>
+      PerspectiveCamera3D.standard(game.size.x, game.size.y);
 
   ui.FragmentProgram? _program;
-
-  // 3D rotation driven by physical spin (initialized with natural resting tilt)
-  double _pitch = 0.36; // tilted forward toward camera
-  double _yaw = -0.42; // tilted sideways
-
-  bool isLaunched = false;
-  double timeSinceLaunch = 0.0;
-  bool _hasActivatedRimCollision = false;
-  bool _hasPassedApex = false;
-  bool _hasBankedBackboard = false;
-  bool _hasClankedFrontRim = false;
-  double _launchPower = 0.0;
-  bool passedThroughRim = false;
-
-  double targetFloorY = 10.4;
-  int _bounceCount = 0;
-  double _zDepth = 0.0;
-  double _targetDepth = 1.0;
-
-  final bool animateEntrance;
   bool isEntering = false;
   double enterProgress = 0.0;
 
-  late final forge2d.Shape _shape;
   Vector2? _dragStartPos;
   Vector2? _lastDragPos;
   int? _dragStartTimeMs;
@@ -46,10 +42,22 @@ class Basketball extends BodyComponent with DragCallbacks {
     this.onLaunched,
     this.animateEntrance = false,
   }) : super(priority: 5) {
+    physics = BallPhysics3D(
+      initialPos: Vector3(0.0, 0.25, 0.0),
+      radius: 0.125,
+    );
     if (animateEntrance) {
       isEntering = true;
+      physics.pos.y = -0.4; // Start slightly below floor level for smooth slide-in
     }
   }
+
+  // Getters for game visual listeners (FrontRimVisual, BackboardVisual, etc.)
+  bool get isLaunched => physics.isLaunched;
+  bool get passedThroughRim => physics.passedThroughRim;
+  bool get hasClankedFrontRim => physics.hasClankedRim;
+  bool get hasBankedBackboard => physics.hasBankedBackboard;
+  double get timeSinceLaunch => physics.timeSinceLaunch;
 
   @override
   Future<void> onLoad() async {
@@ -57,21 +65,15 @@ class Basketball extends BodyComponent with DragCallbacks {
     try {
       _program = await ui.FragmentProgram.fromAsset('shaders/basketball.frag');
     } catch (e) {
-      debugPrint('Failed to load shader: $e');
+      debugPrint('Failed to load basketball shader: $e');
     }
   }
 
   @override
   Body createBody() {
-    final startY = animateEntrance
-        ? initialPosition.y + 2.5
-        : initialPosition.y;
-
     final bodyDef = BodyDef(
       type: BodyType.kinematic,
-      position: Vector2(initialPosition.x, startY),
-      linearDamping: 0.05,
-      angularDamping: 0.15,
+      position: initialPosition,
     );
 
     final body = world.createBody(bodyDef);
@@ -81,11 +83,11 @@ class Basketball extends BodyComponent with DragCallbacks {
       material: SurfaceMaterial(friction: 0.8, restitution: 0.82),
       filter: forge2d.Filter(
         categoryBits: 0x0008, // Basketball category
-        maskBits: 0, // Unlaunched/entering ball collides with nothing
+        maskBits: 0, // True 3D physics handles all collisions!
       ),
     );
 
-    _shape = body.createShape(forge2d.Circle(radius: radius), shapeDef);
+    body.createShape(forge2d.Circle(radius: radius), shapeDef);
     return body;
   }
 
@@ -101,172 +103,62 @@ class Basketball extends BodyComponent with DragCallbacks {
         isEntering = false;
       }
       final t = Curves.easeOutCubic.transform(enterProgress);
-      final curY = ui.lerpDouble(
-        initialPosition.y + 2.5,
-        initialPosition.y,
-        t,
-      )!;
-      body.setTransform(
-        Vector2(initialPosition.x, curY),
-        const forge2d.Rot.identity(),
+      physics.pos.y = ui.lerpDouble(-0.4, 0.25, t)!;
+      final f2d = camera3D.projectToForge2D(
+        physics.pos.x,
+        physics.pos.y,
+        physics.pos.z,
       );
+      body.setTransform(Vector2(f2d.dx, f2d.dy), const forge2d.Rot.identity());
       return;
     }
 
-    if (isLaunched && body.type == BodyType.dynamic) {
-      timeSinceLaunch += dt;
-      // Garbage collection: keep made/missed balls lingering on court for 6 seconds
-      if (timeSinceLaunch > 6.0) {
+    if (isLaunched) {
+      // 1. Advance the 3D physics engine (substeps, torus rim, backboard, floor)
+      physics.update(dt);
+
+      // 2. Lifecycle cleanup: remove spent balls lingering on court after 6 seconds
+      if (physics.timeSinceLaunch > 6.0) {
         removeFromParent();
         return;
       }
 
-      // 1. Monotonic Z-Depth Progression:
-      // Advances into the depth of the room over ~0.85s flight time
-      if (_zDepth < _targetDepth) {
-        _zDepth = math.min(_targetDepth, _zDepth + dt * 1.35);
-      }
+      // 3. Project 3D coordinate to Forge2D world meters
+      final f2d = camera3D.projectToForge2D(
+        physics.pos.x,
+        physics.pos.y,
+        physics.pos.z,
+      );
+      body.setTransform(Vector2(f2d.dx, f2d.dy), const forge2d.Rot.identity());
 
-      // Dynamic 3D Depth Layering:
+      // Downward velocity in Forge2D space (+Y is down)
+      final f2dVelY = physics.vel.y < 0
+          ? physics.vel.y.abs() * 1.5
+          : -physics.vel.y * 1.5;
+      body.linearVelocity = Vector2(physics.vel.x, f2dVelY);
+
+      // 4. Dynamic 3D depth layering
       _updateRenderPriority();
-
-      // DIRECTIONAL PARABOLIC PHASE CHECK:
-      // While ascending (Vy < 0): passes freely in front of the rim
-      // The moment the ball reaches its apex and starts DIPPING (Vy >= 0), activate rim collision!
-      if (body.linearVelocity.y >= 0) {
-        _hasPassedApex = true;
-        if (!_hasActivatedRimCollision) {
-          _hasActivatedRimCollision = true;
-          _shape.filter = forge2d.Filter(
-            categoryBits: 0x0008,
-            maskBits: 0x0004, // Pegs only! Eliminates 19.2m bottom safety floor interception
-          );
-        }
-      }
-
-      // Clean Entry into the Rim Cylinder from above:
-      if (!_hasClankedFrontRim &&
-          body.position.y < 4.95 &&
-          body.position.x.abs() < 0.65 &&
-          body.linearVelocity.y > 0) {
-        passedThroughRim = true;
-        _zDepth = 1.0;
-        targetFloorY = 10.4; // Direct under-basket key floor
-      }
-
-      // Front-Iron Clank: descending shot hitting the front iron ellipse
-      if (body.linearVelocity.y > 0 &&
-          !_hasClankedFrontRim &&
-          !passedThroughRim &&
-          body.position.y >= 4.90 &&
-          body.position.y <= 5.45 &&
-          body.position.x.abs() <= 0.85) {
-        final normX = (body.position.x / 0.9).clamp(-1.0, 1.0);
-        final frontRimY = 5.0 + math.sqrt(1.0 - normX * normX) * 0.225;
-        // Hit detection on the front iron curve
-        if ((body.position.y - frontRimY).abs() <= 0.24) {
-          _hasClankedFrontRim = true;
-          // Rebound upward and carom slightly forward/lateral
-          final reboundVy = -body.linearVelocity.y.abs() * 0.70;
-          final lateralPush = body.position.x * 1.5;
-          body.linearVelocity = Vector2(
-            body.linearVelocity.x * 0.55 + lateralPush,
-            reboundVy,
-          );
-          body.angularVelocity *= 0.50;
-          targetFloorY = 11.8; // Bounces forward into the paint as a miss
-          _zDepth = 0.95;
-        }
-      }
-
-      // Backboard Glass Bank: descending shot with high power caroms forward/down
-      if (body.linearVelocity.y > 0 &&
-          !_hasBankedBackboard &&
-          _launchPower > 0.60 &&
-          body.position.y >= 3.4 &&
-          body.position.y <= 4.8 &&
-          body.position.x.abs() <= 1.6) {
-        _hasBankedBackboard = true;
-        _zDepth = 1.0;
-        targetFloorY = 10.8;
-        body.linearVelocity = Vector2(body.linearVelocity.x * 0.45, 8.5);
-      }
-
-      // Cotton Net Swish Damping: gently cushions the plunge and centers the ball
-      if (passedThroughRim &&
-          body.position.y >= 5.0 &&
-          body.position.y <= 6.2 &&
-          body.position.x.abs() < 0.65) {
-        body.linearVelocity.x *= 0.92;
-        _zDepth = 1.0;
-        targetFloorY = 10.4;
-        if (body.linearVelocity.y > 6.5) {
-          body.linearVelocity.y = 6.5;
-        }
-      }
-
-      // 2. 2.5D Court Floor Collision & Natural Bouncing Under the Hoop
-      // Only check while falling downwards AFTER reaching apex to prevent launch teleportation
-      if (_hasPassedApex &&
-          body.linearVelocity.y > 0 &&
-          body.position.y >= targetFloorY) {
-        body.setTransform(
-          Vector2(body.position.x, targetFloorY),
-          const forge2d.Rot.identity(),
-        );
-
-        if (body.linearVelocity.y.abs() > 1.2) {
-          _bounceCount++;
-          // Rebound upward with authentic hardwood floor restitution
-          body.linearVelocity = Vector2(
-            body.linearVelocity.x * 0.78,
-            -body.linearVelocity.y.abs() * 0.58,
-          );
-          body.angularVelocity *= 0.70;
-          // Slight forward progression on each bounce within the key
-          if (targetFloorY < 12.0 && _bounceCount < 4) {
-            targetFloorY += 0.35;
-          }
-        } else {
-          // Settled peacefully to rest on the hardwood court floor
-          body.linearVelocity = Vector2(body.linearVelocity.x * 0.85, 0.0);
-          if (body.linearVelocity.x.abs() < 0.1) {
-            body.linearVelocity = Vector2.zero();
-            body.angularVelocity = 0.0;
-          }
-        }
-      }
-
-      // Realistic 3D spin tumbling driven by physical velocity
-      _pitch -= body.linearVelocity.y * dt * 0.12;
-      _yaw -= body.linearVelocity.x * dt * 0.15;
-      _pitch -= body.angularVelocity * dt * 0.45;
     }
   }
 
   void _updateRenderPriority() {
-    // While ascending (Vy < 0) or above the rim (Y < 4.9m):
-    // The ball is in front of the entire hoop apparatus (in foreground)
-    if (body.linearVelocity.y < 0 || body.position.y < 4.9) {
-      priority = 5;
-    } else if (passedThroughRim &&
-        body.position.x.abs() <= 0.95 &&
-        body.position.y >= 4.9 &&
-        body.position.y <= 6.8) {
-      // Dipping through the rim opening and net cylinder:
-      // Front rim (priority 3) wraps in front of the ball, backboard (priority 1) is behind it
+    if (physics.passedThroughRim &&
+        physics.pos.y <= BallPhysics3D.rimCenter.y &&
+        physics.pos.y >= BallPhysics3D.netBottomY) {
+      // Inside net cylinder: backboard (priority 1) < ball (priority 2) < front rim (priority 3)
       priority = 2;
     } else {
-      // Cleared the net or bounced off front rim: renders in front of the court & rim
+      // In foreground / in front of hoop
       priority = 5;
     }
   }
 
   @override
   void render(Canvas canvas) {
-    // Opacity fade out over the last 3 seconds of the 6 second lifetime (solid for 3s, fade for 3s)
-    final double opacity = timeSinceLaunch > 3.0
-        ? (1.0 - (timeSinceLaunch - 3.0) / 3.0).clamp(0.0, 1.0)
+    // Fade out over the last 3 seconds of the 6-second lifetime
+    final double opacity = physics.timeSinceLaunch > 3.0
+        ? (1.0 - (physics.timeSinceLaunch - 3.0) / 3.0).clamp(0.0, 1.0)
         : 1.0;
 
     canvas.saveLayer(
@@ -274,53 +166,43 @@ class Basketball extends BodyComponent with DragCallbacks {
       Paint()..color = Color.fromRGBO(255, 255, 255, opacity),
     );
 
-    final currentY = body.position.y;
+    // 1. Continuous Hardwood Floor Drop Shadow
+    // Shadow is calculated at (physics.pos.x, 0.0, physics.pos.z) on the court floor
+    final floorF2D = camera3D.projectToForge2D(
+      physics.pos.x,
+      0.0,
+      physics.pos.z,
+    );
+    final shadowLocalOffset = Offset(
+      floorF2D.dx - body.position.x,
+      floorF2D.dy - body.position.y,
+    );
 
-    // 1. Dynamic Hardwood Floor Drop Shadow
-    // Shadow is calculated relative to the ball's natural landing court depth
-    final currentFloorY = isLaunched ? targetFloorY : 18.62;
-    final distToFloor = currentFloorY - currentY;
-    final heightAboveFloor = distToFloor - radius;
+    final heightAboveFloor =
+        (physics.pos.y - physics.radius).clamp(0.0, 8.0);
+    final shadowAlpha =
+        ((0.52 / (1.0 + heightAboveFloor * 0.40)) * opacity).clamp(0.0, 0.52);
 
-    // Drop shadow shows when the ball is within 4.5m of its landing court floor
-    if (heightAboveFloor >= -0.2 && heightAboveFloor < 4.5) {
-      final shadowFade = (1.0 - (heightAboveFloor.clamp(0.0, 4.5) / 4.5)).clamp(
-        0.0,
-        1.0,
-      );
-      final shadowAlpha = (0.58 * shadowFade).clamp(0.0, 0.58);
-      final shadowScale =
-          (1.0 + (heightAboveFloor.clamp(0.0, 4.5) / 4.5) * 0.35).clamp(
-            1.0,
-            1.35,
-          );
-      final blurRadius = (0.06 + heightAboveFloor.clamp(0.0, 4.5) * 0.07).clamp(
-        0.06,
-        0.28,
-      );
+    if (shadowAlpha > 0.01) {
+      final zScale = camera3D.scaleAtDepth(physics.pos.z);
+      final visualRadius = radius * zScale * 1.38;
+      final shadowScale = 1.0 + heightAboveFloor * 0.16;
+      final blurMeters = (0.05 + heightAboveFloor * 0.06).clamp(0.05, 0.35);
 
       final shadowPaint = Paint()
         ..color = Color.fromRGBO(0, 0, 0, shadowAlpha)
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, blurRadius);
-
-      canvas.save();
-      // Counter-rotate by physical body roll so the shadow stays strictly flat on the horizontal floor
-      canvas.rotate(-body.angle);
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, blurMeters);
 
       final shadowRect = Rect.fromCenter(
-        center: Offset(0, distToFloor),
-        width: radius * 2.2 * shadowScale,
-        height: radius * 0.48 * shadowScale,
+        center: shadowLocalOffset,
+        width: visualRadius * 2.2 * shadowScale,
+        height: visualRadius * 0.42 * shadowScale, // Perspective flattening
       );
       canvas.drawOval(shadowRect, shadowPaint);
-      canvas.restore();
     }
 
-    // 2. Monotonic Perspective Foreshortening:
-    // In foreground hands: _zDepth = 0.0 -> scale = 1.38x
-    // At the hoop and court floor: _zDepth = 1.0 -> scale = 0.90x
-    // The ball NEVER re-expands when descending from the hoop!
-    final scaleFactor = ui.lerpDouble(1.38, 0.90, _zDepth)!;
+    // 2. Monotonic Perspective Foreshortening based on exact 3D Z-depth
+    final scaleFactor = 1.38 * camera3D.scaleAtDepth(physics.pos.z);
 
     canvas.save();
     canvas.scale(scaleFactor);
@@ -349,8 +231,8 @@ class Basketball extends BodyComponent with DragCallbacks {
       shader.setFloat(0, physicalCenterX);
       shader.setFloat(1, physicalCenterY);
       shader.setFloat(2, physicalRadius);
-      shader.setFloat(3, _yaw);
-      shader.setFloat(4, _pitch);
+      shader.setFloat(3, physics.yaw);
+      shader.setFloat(4, physics.pitch);
       shader.setFloat(5, radius);
 
       final paint = Paint()..shader = shader;
@@ -366,7 +248,7 @@ class Basketball extends BodyComponent with DragCallbacks {
     }
 
     canvas.restore();
-    canvas.restore(); // Restore the saveLayer for opacity
+    canvas.restore(); // Restore opacity saveLayer
   }
 
   @override
@@ -429,51 +311,24 @@ class Basketball extends BodyComponent with DragCallbacks {
     if (!isUpward) return;
 
     // Upward swipe velocity in pixels/second
-    final swipeSpeedY = finalVy.abs().clamp(200.0, 3000.0);
-    // Lateral swipe ratio (aim angle)
-    final swipeRatioX = (finalVx / finalVy.abs()).clamp(-0.8, 0.8);
+    final swipeSpeedY = finalVy.abs();
+    // Lateral swipe ratio (aim angle dx / |dy|)
+    final swipeRatioX = (finalVx / swipeSpeedY).clamp(-0.8, 0.8);
 
-    // Launch velocity calibration for 20m arena with g = 30 m/s²:
-    // Minimum flick (-27.0 m/s) -> short shot that peaks below the rim (airball)
-    // Medium flick (-32.0 m/s) -> perfect arc that peaks at Y ~ 1.8m and dips cleanly into hoop
-    // Firm flick (-42.0 m/s) -> high rainbow arc
-    final powerFactor = ((swipeSpeedY - 150.0) / 1500.0).clamp(0.0, 1.0);
-    _launchPower = powerFactor;
-    final targetVy = ui.lerpDouble(-28.0, -42.0, powerFactor)!;
+    // Dynamic swipe calibration:
+    // Gentle flick: ~400 - 700 px/s -> powerRatio 0.65 - 0.78 (drops short, airball or front rim clank)
+    // Sweet spot: ~1000 - 1300 px/s -> powerRatio 0.95 - 1.05 (clean arc into rim)
+    // Firm flick: ~1600 - 2400 px/s -> powerRatio 1.15 - 1.40 (bank shot / long)
+    final powerRatio =
+        (0.65 + (swipeSpeedY - 400.0) / 1400.0).clamp(0.40, 1.45);
 
-    // 2.5D Court Landing Floor in 1-point perspective gymnasium:
-    // Hoop is at Y = 5.0m, horizon is at Y = 9.2m.
-    // Firm shot to the hoop (powerFactor >= 0.40): lands in the red key directly under the hoop (Y = 10.4m)
-    // Short shot / airball: lands between free-throw circle and mid-court (Y = 12.0m to 15.5m)
-    // Weak swipe: lands near foreground (Y = 17.5m)
-    if (powerFactor >= 0.40) {
-      targetFloorY = 10.4;
-      _targetDepth = 1.0;
-    } else {
-      targetFloorY = ui.lerpDouble(17.5, 12.0, powerFactor / 0.40)!;
-      _targetDepth = ui.lerpDouble(0.35, 0.90, powerFactor / 0.40)!;
-    }
-    _zDepth = 0.0;
-    _bounceCount = 0;
-    _hasClankedFrontRim = false;
-    _hasPassedApex = false;
-
-    // Lateral velocity based on flick angle:
-    // Over the ~1.5s flight time to the rim, swipeRatioX directly steers the shot
-    final targetVx = swipeRatioX * 4.6;
-
-    isLaunched = true;
-    body.type = BodyType.dynamic;
-
-    // Ascending phase: passes cleanly towards apex without peg or floor collision
-    _shape.filter = forge2d.Filter(
-      categoryBits: 0x0008,
-      maskBits: 0, // Collides with nothing while rising to apex
+    final launchVel = LaunchSolver.calculateLaunchVelocity(
+      powerRatio: powerRatio,
+      aimRatio: swipeRatioX,
+      from: physics.pos,
     );
 
+    physics.launch(launchVel, backspin: 14.0);
     onLaunched?.call();
-
-    body.linearVelocity = Vector2(targetVx, targetVy);
-    body.angularVelocity = targetVy * 0.18; // Authentic backspin
   }
 }
