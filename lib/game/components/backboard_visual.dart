@@ -84,52 +84,119 @@ class BackboardVisual extends PositionComponent {
   }
 
   void _renderWallDropShadow(Canvas canvas) {
-    // Soft blurred ambient drop shadow cast onto the brick wall behind the backboard
+    // Soft, deep diffuse shadow projected onto the distant back wall
+    // Reflects that the hoop is suspended forward in the 3D room volume
     final shadowPaint = Paint()
-      ..color = const Color(0x60000000)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
+      ..color = const Color(0x55000000)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
 
-    final shadowPath = _buildBackboardPath(3.6, 2.4, const Offset(0.08, -0.92));
+    final shadowPath =
+        _buildBackboardPath(3.7, 2.5, const Offset(0.10, -0.82));
     canvas.drawPath(shadowPath, shadowPaint);
 
-    // Mount drop shadow on wall
-    final mountShadowPaint = Paint()
-      ..color = const Color(0x40000000)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
-    canvas.drawRect(
-      const Rect.fromLTWH(-0.8, -1.1, 0.15, 2.5),
-      mountShadowPaint,
-    );
-    canvas.drawRect(
-      const Rect.fromLTWH(0.85, -1.1, 0.15, 2.5),
-      mountShadowPaint,
-    );
+    // Boom arm diffuse shadow projected back onto the wall
+    final boomShadowPaint = Paint()
+      ..color = const Color(0x35000000)
+      ..strokeWidth = 0.25
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
+
+    canvas.drawLine(const Offset(-0.85, -1.6), const Offset(-0.55, -2.4), boomShadowPaint);
+    canvas.drawLine(const Offset(0.85, -1.6), const Offset(0.55, -2.4), boomShadowPaint);
+    canvas.drawLine(const Offset(-0.85, -0.4), const Offset(-0.55, -1.1), boomShadowPaint);
+    canvas.drawLine(const Offset(0.85, -0.4), const Offset(0.55, -1.1), boomShadowPaint);
   }
 
   void _renderWallMounts(Canvas canvas) {
-    // Renders heavy-duty steel wall mounts behind the backboard
-    final mountPaint = Paint()
-      ..color = const Color(0xFF475569) // Dark slate metal
+    // Industrial 3D cantilever steel truss boom extending forward from the distant wall
+    final steelPaint = Paint()
+      ..color = const Color(0xFF334155) // Dark slate structural steel
       ..style = PaintingStyle.fill;
-      
-    final highlightPaint = Paint()
-      ..color = const Color(0xFF64748B) // Highlight edge
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.05;
 
-    // Left and right mounting struts
-    final leftStrut = Rect.fromLTWH(-0.9, -1.2, 0.15, 2.5);
-    final rightStrut = Rect.fromLTWH(0.75, -1.2, 0.15, 2.5);
-    
-    canvas.drawRect(leftStrut, mountPaint);
-    canvas.drawRect(leftStrut, highlightPaint);
-    canvas.drawRect(rightStrut, mountPaint);
-    canvas.drawRect(rightStrut, highlightPaint);
-    
-    // Crossbeam
-    final crossbeam = Rect.fromCenter(center: const Offset(0, -0.2), width: 2.0, height: 0.2);
-    canvas.drawRect(crossbeam, mountPaint);
-    canvas.drawRect(crossbeam, highlightPaint);
+    final highlightPaint = Paint()
+      ..color = const Color(0x5094A3B8) // Steel top edge highlight
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.04;
+
+    final darkShadowPaint = Paint()
+      ..color = const Color(0xFF1E293B)
+      ..style = PaintingStyle.fill;
+
+    // 1. Distant wall mounting anchor plate
+    final anchorPlate = Rect.fromCenter(
+      center: const Offset(0, -1.8),
+      width: 1.6,
+      height: 1.8,
+    );
+    canvas.drawRect(anchorPlate, darkShadowPaint);
+    canvas.drawRect(
+      anchorPlate,
+      Paint()
+        ..color = const Color(0x3064748B)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.04,
+    );
+
+    // Anchor bolt studs on the distant wall plate
+    final boltPaint = Paint()..color = const Color(0xFF64748B);
+    for (final boltOffset in const [
+      Offset(-0.7, -2.5),
+      Offset(0.7, -2.5),
+      Offset(-0.7, -1.1),
+      Offset(0.7, -1.1),
+    ]) {
+      canvas.drawCircle(boltOffset, 0.04, boltPaint);
+    }
+
+    // 2. Cantilever Diagonal Steel Truss Boom Arms (reaching forward to backboard)
+    final boomPath = Path();
+
+    // Upper Left Boom Arm
+    boomPath.moveTo(-0.95, -1.8);
+    boomPath.lineTo(-0.60, -2.55);
+    boomPath.lineTo(-0.50, -2.55);
+    boomPath.lineTo(-0.85, -1.8);
+    boomPath.close();
+
+    // Upper Right Boom Arm
+    boomPath.moveTo(0.85, -1.8);
+    boomPath.lineTo(0.50, -2.55);
+    boomPath.lineTo(0.60, -2.55);
+    boomPath.lineTo(0.95, -1.8);
+    boomPath.close();
+
+    // Lower Left Diagonal Compression Strut
+    boomPath.moveTo(-0.95, -0.35);
+    boomPath.lineTo(-0.60, -1.15);
+    boomPath.lineTo(-0.50, -1.15);
+    boomPath.lineTo(-0.85, -0.35);
+    boomPath.close();
+
+    // Lower Right Diagonal Compression Strut
+    boomPath.moveTo(0.85, -0.35);
+    boomPath.lineTo(0.50, -1.15);
+    boomPath.lineTo(0.60, -1.15);
+    boomPath.lineTo(0.95, -0.35);
+    boomPath.close();
+
+    canvas.drawPath(boomPath, steelPaint);
+    canvas.drawPath(boomPath, highlightPaint);
+
+    // 3. Steel X-Bracing across the boom
+    final bracePaint = Paint()
+      ..color = const Color(0xFF475569)
+      ..strokeWidth = 0.06;
+
+    canvas.drawLine(const Offset(-0.85, -1.7), const Offset(0.85, -0.45), bracePaint);
+    canvas.drawLine(const Offset(0.85, -1.7), const Offset(-0.85, -0.45), bracePaint);
+
+    // 4. Heavy horizontal crossbeams directly behind the backboard
+    final topBeam = Rect.fromCenter(center: const Offset(0, -1.75), width: 2.1, height: 0.16);
+    final botBeam = Rect.fromCenter(center: const Offset(0, -0.40), width: 2.1, height: 0.16);
+
+    canvas.drawRect(topBeam, steelPaint);
+    canvas.drawRect(topBeam, highlightPaint);
+    canvas.drawRect(botBeam, steelPaint);
+    canvas.drawRect(botBeam, highlightPaint);
   }
 
   void _renderScoopedBackboard(Canvas canvas) {
