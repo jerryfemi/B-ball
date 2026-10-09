@@ -24,7 +24,20 @@ class Basketball extends BodyComponent with DragCallbacks {
   bool isEntering = false;
   double enterProgress = 0.0;
 
-  late final forge2d.Shape _shape;
+  // 2.5D Coordinates (in world meters):
+  // x3d: lateral offset from court center (- = left, + = right, 0 = center)
+  // y3d: altitude above hardwood floor (0.0 = grounded on floor)
+  // z3d: depth into gym (0.0 = player hands in foreground, 4.5 = hoop center, 4.85 = backboard)
+  double x3d = 0.0;
+  double y3d = 0.0;
+  double z3d = 0.0;
+
+  double vx3d = 0.0;
+  double vy3d = 0.0;
+  double vz3d = 0.0;
+
+  bool hasScored = false;
+
   Vector2? _dragStartPos;
   Vector2? _lastDragPos;
   int? _dragStartTimeMs;
@@ -40,6 +53,31 @@ class Basketball extends BodyComponent with DragCallbacks {
     }
   }
 
+  // Perspective depth scale factor: shrinks organically as depth z increases
+  double getDepthScale(double z) {
+    return 3.2 / (3.2 + z * 0.95);
+  }
+
+  // Hardwood floor Y position in world meters based on depth z
+  // z = 0.0 (player foreground): 19.2m
+  // z = 4.5 (hoop base): 10.0m (50% screen height)
+  double getFloorY(double z) {
+    final t = (z / 4.5).clamp(0.0, 1.3);
+    return 19.2 - t * 9.2;
+  }
+
+  // Project 3D (x, y, z) into 2D world coordinates (projX, projY)
+  Vector2 project3D(double x, double y, double z) {
+    final s = getDepthScale(z);
+    final floorY = getFloorY(z);
+    final projX = x * s;
+    final sRim = getDepthScale(4.5);
+    // At rim (y=3.05, z=4.5), height above floor on screen is 10.0 - 5.0 = 5.0m
+    final heightOnScreen = y * (5.0 / 3.05) * (s / sRim);
+    final projY = floorY - radius * s - heightOnScreen;
+    return Vector2(projX, projY);
+  }
+
   @override
   Future<void> onLoad() async {
     await super.onLoad();
@@ -52,13 +90,18 @@ class Basketball extends BodyComponent with DragCallbacks {
 
   @override
   Body createBody() {
-    final startY =
-        animateEntrance ? initialPosition.y + 2.5 : initialPosition.y;
+    x3d = 0.0;
+    y3d = 0.0;
+    z3d = 0.0;
+
+    final projPos = project3D(x3d, y3d, z3d);
+    final startY = animateEntrance ? projPos.y + 2.5 : projPos.y;
+
     final bodyDef = BodyDef(
-      type: BodyType.kinematic, // Start kinematic so it hovers in the ready position
-      position: Vector2(initialPosition.x, startY),
-      linearDamping: 0.1,
-      angularDamping: 0.2, // Adds some natural spin friction
+      type: BodyType.kinematic,
+      position: Vector2(projPos.x, startY),
+      linearDamping: 0.0,
+      angularDamping: 0.0,
     );
 
     final body = world.createBody(bodyDef);
@@ -66,16 +109,16 @@ class Basketball extends BodyComponent with DragCallbacks {
     final shapeDef = ShapeDef(
       density: 1.0,
       material: SurfaceMaterial(
-        friction: 0.8, // More friction for better rolling/spinning
-        restitution: 0.82, // Extra bouncy
+        friction: 0.8,
+        restitution: 0.82,
       ),
       filter: forge2d.Filter(
         categoryBits: 2,
-        maskBits: isLaunched ? forge2d.Filter.allCategories : 0,
+        maskBits: 0, // Ballistic engine handles 3D depth collisions internally
       ),
     );
 
-    _shape = body.createShape(forge2d.Circle(radius: radius), shapeDef);
+    body.createShape(forge2d.Circle(radius: radius), shapeDef);
     return body;
   }
 
@@ -83,7 +126,7 @@ class Basketball extends BodyComponent with DragCallbacks {
   void update(double dt) {
     super.update(dt);
 
-    // Smooth Feeder Entrance: glide up from below into the ready position
+    // Smooth Feeder Entrance: glide up from below into ready position
     if (isEntering && !isLaunched) {
       enterProgress += dt / 0.35;
       if (enterProgress >= 1.0) {
@@ -91,88 +134,143 @@ class Basketball extends BodyComponent with DragCallbacks {
         isEntering = false;
       }
       final t = Curves.easeOutCubic.transform(enterProgress);
-      final curY =
-          ui.lerpDouble(initialPosition.y + 2.5, initialPosition.y, t)!;
+      final projPos = project3D(0.0, 0.0, 0.0);
+      final curY = ui.lerpDouble(projPos.y + 2.5, projPos.y, t)!;
       body.setTransform(
-        Vector2(initialPosition.x, curY),
+        Vector2(projPos.x, curY),
         const forge2d.Rot.identity(),
       );
+      return;
     }
 
     if (isLaunched) {
       timeSinceLaunch += dt;
-      // Garbage collection: remove balls 4 seconds after they are shot
-      if (timeSinceLaunch > 4.0) {
+      // Garbage collection: remove ball 5.0 seconds after shot
+      if (timeSinceLaunch > 5.0) {
         removeFromParent();
         return;
       }
+
+      // 1. Gravity acting in 3D downward toward the floor
+      const double gravity = 36.0;
+      vy3d -= gravity * dt;
+
+      // 2. Integrate 3D positions
+      x3d += vx3d * dt;
+      y3d += vy3d * dt;
+      z3d += vz3d * dt;
+
+      // Subtle aerodynamic drag
+      final dragFactor = math.pow(0.98, dt * 60).toDouble();
+      vx3d *= dragFactor;
+      vz3d *= dragFactor;
+
+      // 3. Backboard interaction (backboard at depth z = 4.85m)
+      if (z3d >= 4.85) {
+        if (x3d.abs() <= 1.8 && y3d >= 2.3 && y3d <= 4.6) {
+          z3d = 4.85;
+          vz3d = -vz3d.abs() * 0.62; // Rebound forward into court!
+          vx3d += (x3d * 0.4); // Bank angle deflection
+          vy3d *= 0.85;
+        }
+      }
+
+      // 4. Rim interaction (rim centered at x = 0, y = 3.05m, z = 4.5m)
+      // Only interact when passing through the rim depth zone [4.1m, 4.8m]
+      if (z3d >= 4.1 && z3d <= 4.8) {
+        final distToRimCenter =
+            math.sqrt(x3d * x3d + (z3d - 4.5) * (z3d - 4.5));
+        final altDiff = y3d - 3.05;
+
+        // Ball is descending and in rim plane
+        if (vy3d < 0 && altDiff.abs() < 0.40) {
+          if (distToRimCenter <= 0.45) {
+            // SWISH! Pass cleanly through cylinder
+            if (!hasScored) {
+              hasScored = true;
+            }
+            vx3d *= 0.70;
+            vz3d *= 0.70;
+            vy3d *= 0.85;
+          } else if (distToRimCenter > 0.45 && distToRimCenter <= 0.95) {
+            // RIM HIT: elastic deflection off the ring
+            final angle = math.atan2(z3d - 4.5, x3d);
+            final speed = math.sqrt(vx3d * vx3d + vy3d * vy3d + vz3d * vz3d);
+            vx3d = math.cos(angle) * (speed * 0.45);
+            vz3d = math.sin(angle) * (speed * 0.45);
+            vy3d = vy3d.abs() * 0.55; // Bounce up off rim
+          }
+        }
+      }
+
+      // 5. Hardwood court floor bounce (occurs at depth z3d!)
+      if (y3d <= 0.0) {
+        y3d = 0.0;
+        if (vy3d < 0) {
+          vy3d = -vy3d * 0.68; // Floor restitution
+          vx3d *= 0.72;
+          vz3d *= 0.72;
+          if (vy3d < 1.2) {
+            vy3d = 0.0; // Settle on court
+          }
+        }
+      }
+
+      // 6. Natural 3D spin tumbling
+      _pitch -= vy3d * dt * 0.15;
+      _pitch -= vz3d * dt * 0.25;
+      _yaw -= vx3d * dt * 0.20;
+
+      // 7. Update projected 2D position in world
+      final projPos = project3D(x3d, y3d, z3d);
+      body.setTransform(projPos, const forge2d.Rot.identity());
     }
-
-    // Fake 3D rotation based on actual 2D velocity and angular velocity!
-    // If it moves up/down (Y velocity), it spins around X axis (pitch)
-    _pitch -= body.linearVelocity.y * dt * 0.15;
-
-    // If it moves left/right (X velocity), it spins around Y axis (yaw)
-    _yaw -= body.linearVelocity.x * dt * 0.15;
-
-    // We also factor in the Forge2D physical angular velocity for perfect synchronization when bouncing
-    _pitch -= body.angularVelocity * dt * 0.5;
   }
 
   @override
   void render(Canvas canvas) {
-    final currentY = body.position.y;
+    final currentScale = getDepthScale(z3d);
+    final currentFloorY = getFloorY(z3d);
+    final distToFloor = currentFloorY - body.position.y;
 
-    // 1. Dynamic Floor Drop Shadow (Spatial Height Perception)
-    const floorY = 19.2;
-    final distToFloor = floorY - currentY;
-    final heightAboveFloor = distToFloor - radius;
-
-    // Only render floor shadow when the ball is within 3.5m of the ground
-    if (heightAboveFloor >= -0.1 && heightAboveFloor < 3.5) {
-      final shadowFade =
-          (1.0 - (heightAboveFloor.clamp(0.0, 3.5) / 3.5)).clamp(0.0, 1.0);
+    // 1. Dynamic Floor Drop Shadow (at the landing depth on the court!)
+    if (y3d < 3.2) {
+      final shadowFade = (1.0 - (y3d / 3.2)).clamp(0.0, 1.0);
       final shadowAlpha = (0.55 * shadowFade).clamp(0.0, 0.55);
-      final shadowScale =
-          (1.0 + (heightAboveFloor.clamp(0.0, 3.5) / 3.5) * 0.5).clamp(1.0, 1.5);
-      final blurRadius =
-          (0.06 + heightAboveFloor.clamp(0.0, 3.5) * 0.08).clamp(0.06, 0.35);
+      final shadowScale = (currentScale * (1.0 + (y3d / 3.2) * 0.4))
+          .clamp(currentScale, currentScale * 1.5);
+      final blurRadius = (0.05 + y3d * 0.06).clamp(0.05, 0.30);
 
       final shadowPaint = Paint()
         ..color = Color.fromRGBO(0, 0, 0, shadowAlpha)
         ..maskFilter = MaskFilter.blur(BlurStyle.normal, blurRadius);
 
       canvas.save();
-      // Counter-rotate by physical body roll so the shadow stays strictly flat on the horizontal floor
+      // Counter-rotate so shadow remains horizontally flat on the court
       canvas.rotate(-body.angle);
 
       final shadowRect = Rect.fromCenter(
-        center: Offset(0, distToFloor.clamp(radius, 25.0)),
+        center: Offset(0, distToFloor),
         width: radius * 2.2 * shadowScale,
-        height: radius * 0.50 * shadowScale,
+        height: radius * 0.55 * shadowScale,
       );
       canvas.drawOval(shadowRect, shadowPaint);
       canvas.restore();
     }
 
-    // 2. Perspective scaling: scales down to ~0.73x as it rises up to the hoop (1.8m rim)
-    final scaleFactor = (0.65 + (currentY / 20.0) * 0.35).clamp(0.65, 1.0);
-
+    // 2. Perspective Ball Scaling
     canvas.save();
-    canvas.scale(scaleFactor);
+    canvas.scale(currentScale);
 
     if (_program != null) {
       final shader = _program!.fragmentShader();
 
-      // Read exact screen pixels and scale from Flutter's Canvas transform matrix
       final transform = canvas.getTransform();
       final logicalCenterX = transform[12];
       final logicalCenterY = transform[13];
-      // Rotation-invariant scale: sqrt(m00^2 + m10^2)
       final logicalScale =
           math.sqrt(transform[0] * transform[0] + transform[1] * transform[1]);
 
-      // Query hardware device pixel ratio (DPR) to bridge logical canvas to WebGL FlutterFragCoord
       final dpr =
           WidgetsBinding.instance.platformDispatcher.views.first.devicePixelRatio;
 
@@ -180,16 +278,14 @@ class Basketball extends BodyComponent with DragCallbacks {
       final physicalCenterY = logicalCenterY * dpr;
       final physicalRadius = radius * logicalScale * dpr;
 
-      // Pass Uniforms in exact physical screen space
-      shader.setFloat(0, physicalCenterX); // u_center.x
-      shader.setFloat(1, physicalCenterY); // u_center.y
-      shader.setFloat(2, physicalRadius); // u_radius
-      shader.setFloat(3, _yaw); // u_rotation.x
-      shader.setFloat(4, _pitch); // u_rotation.y
-      shader.setFloat(5, radius); // u_local_radius
+      shader.setFloat(0, physicalCenterX);
+      shader.setFloat(1, physicalCenterY);
+      shader.setFloat(2, physicalRadius);
+      shader.setFloat(3, _yaw);
+      shader.setFloat(4, _pitch);
+      shader.setFloat(5, radius);
 
       final paint = Paint()..shader = shader;
-      // Draw a rect covering the ball bounds with padding for anti-aliasing
       final rect = Rect.fromCenter(
         center: Offset.zero,
         width: radius * 2.2,
@@ -197,7 +293,6 @@ class Basketball extends BodyComponent with DragCallbacks {
       );
       canvas.drawRect(rect, paint);
     } else {
-      // Fallback rendering while shader compiles/loads
       final paint = Paint()..color = const Color(0xFFFF6F00);
       canvas.drawCircle(Offset.zero, radius, paint);
     }
@@ -208,9 +303,9 @@ class Basketball extends BodyComponent with DragCallbacks {
   @override
   bool containsPoint(Vector2 point) {
     if (isLaunched || isEntering) return false;
-    // Generous touch target (2.5x radius) so quick swipe gestures never miss
+    final currentScale = getDepthScale(z3d);
     final dist = (point - body.position).length;
-    return dist <= radius * 2.5;
+    return dist <= radius * currentScale * 2.5;
   }
 
   @override
@@ -241,7 +336,6 @@ class Basketball extends BodyComponent with DragCallbacks {
     double vy = event.velocity.y;
     Vector2? delta;
 
-    // Displacement-based gesture fallback: captures full upward flick even if mouse release lagged
     if (_dragStartPos != null &&
         _lastDragPos != null &&
         _dragStartTimeMs != null) {
@@ -252,36 +346,28 @@ class Basketball extends BodyComponent with DragCallbacks {
       final dispVy = delta.y / (dtMs / 1000.0);
       final dispVx = delta.x / (dtMs / 1000.0);
 
-      // If displacement shows a decisive upward flick, take the stronger velocity
       if (dispVy < vy) {
         vy = dispVy;
         vx = dispVx;
       }
     }
 
-    // Only launch when swiped upwards toward the hoop (via speed or displacement)
+    // Only launch when swiped upwards toward the hoop
     final isUpward = vy <= -40.0 || (delta != null && delta.y <= -25.0);
     if (!isUpward) return;
 
+    final speedY = vy.abs(); // In pixels per second (typically 300 to 1800 px/s)
+
+    // 2.5D Ballistic Velocity Mapping:
+    // Forward depth speed into the gym (4.8 m/s to 7.2 m/s)
+    vz3d = (4.8 + (speedY / 900.0) * 1.8).clamp(4.8, 7.2);
+    // Altitude launch arc speed (15.5 m/s to 19.2 m/s)
+    vy3d = (15.5 + (speedY / 750.0) * 2.6).clamp(15.2, 19.5);
+    // Lateral aim speed (-3.5 m/s to +3.5 m/s)
+    vx3d = (vx / 160.0).clamp(-3.5, 3.5);
+
     isLaunched = true;
-    body.type = BodyType.dynamic; // Become physical!
-    // Enable full collision response across all physical objects once in flight
-    _shape.filter = forge2d.Filter(
-      categoryBits: 1,
-      maskBits: forge2d.Filter.allCategories,
-    );
-    onLaunched?.call(); // Notify the game to spawn the next ball after delay
-
-    // Scale swipe velocity to world physical velocity calibrated for the 20m arena
-    // vy is negative (upward) in screen pixels/sec
-    final targetVx = (vx / 65.0).clamp(-12.0, 12.0);
-    // Base launch velocity of -24.0 m/s + scaled swipe energy, clamped between -37.0 m/s (high arc/board) and -25.5 m/s (floater/rim)
-    final targetVy = (-24.0 + (vy / 75.0)).clamp(-37.0, -25.5);
-
-    body.linearVelocity = Vector2(targetVx, targetVy);
-
-    // Natural backspin proportional to upward launch speed
-    body.angularVelocity = targetVy * 0.22;
+    onLaunched?.call();
   }
 }
 
