@@ -43,6 +43,7 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
 
   // Rolling touch history for release velocity estimation
   final List<_TouchSample> _touchSamples = [];
+  bool _streakEvaluated = false;
 
   Basketball({
     required this.initialPosition,
@@ -69,6 +70,11 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
           ),
         );
       },
+      onScored: ({required bool isSwish, required bool isBankShot}) {
+        if (!isMounted) return;
+        _streakEvaluated = true;
+        game.registerScore(isSwish: isSwish, isBankShot: isBankShot);
+      },
     );
     if (animateEntrance) {
       isEntering = true;
@@ -83,6 +89,15 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
   bool get hasClankedFrontRim => physics.hasClankedRim;
   bool get hasBankedBackboard => physics.hasBankedBackboard;
   double get timeSinceLaunch => physics.timeSinceLaunch;
+
+  @override
+  void onRemove() {
+    if (isLaunched && !_streakEvaluated && !physics.passedThroughRim) {
+      _streakEvaluated = true;
+      game.resetStreak();
+    }
+    super.onRemove();
+  }
 
   @override
   Future<void> onLoad() async {
@@ -142,6 +157,15 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
       // 1. Advance the 3D physics engine (substeps, torus rim, backboard, floor)
       physics.update(dt);
 
+      // Evaluate missed shot for streak reset once the ball settles on the floor or times out
+      if (!_streakEvaluated &&
+          physics.timeSinceLaunch > 0.40 &&
+          (physics.pos.y <= physics.radius + 0.02 ||
+              physics.timeSinceLaunch > 3.0)) {
+        _streakEvaluated = true;
+        game.resetStreak();
+      }
+
       // 2. Lifecycle cleanup: 3s visible + 2s fade = 5s total court lifetime
       if (physics.timeSinceLaunch > 5.0) {
         removeFromParent();
@@ -168,10 +192,17 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
   }
 
   void _updateRenderPriority() {
+    final bool inRimZone =
+        physics.pos.z >=
+            (BallPhysics3D.rimCenter.z - BallPhysics3D.rimRadius) &&
+        physics.pos.y <= (BallPhysics3D.rimCenter.y + 0.50) &&
+        physics.pos.y >= (BallPhysics3D.rimCenter.y - 0.50);
+
     if (physics.pos.z > BallPhysics3D.backboardZ) {
       // Behind the backboard
       priority = 0;
     } else if (physics.pos.z > BallPhysics3D.rimCenter.z ||
+        inRimZone ||
         (physics.passedThroughRim &&
             physics.pos.y <= BallPhysics3D.rimCenter.y &&
             physics.pos.y >= BallPhysics3D.netBottomY)) {
