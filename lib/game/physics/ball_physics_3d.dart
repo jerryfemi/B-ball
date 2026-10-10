@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:vector_math/vector_math_64.dart';
 
@@ -44,12 +45,17 @@ class BallPhysics3D {
   static const double rimRadius = 0.23; // Inner diameter 0.46m
   static const double rimTubeRadius = 0.02; // 20mm steel tube
 
-  // Backboard vertical plane in meters (tightened to match visual art)
+  // Backboard vertical plane in meters (matched 1:1 to visual art)
   static const double backboardZ = 4.85;
-  static const double backboardMinX = -0.475;
-  static const double backboardMaxX = 0.475;
-  static const double backboardMinY = 3.00;
-  static const double backboardMaxY = 3.63;
+  static const double backboardMinX = -0.66;
+  static const double backboardMaxX = 0.66;
+  static const double backboardMinY = 2.95;
+  static const double backboardMaxY = 3.90;
+
+  // Regulation shooter's square target bounds (centered at Y=3.30m)
+  static const double shootersSquareHalfWidth = 0.20;
+  static const double shootersSquareMinY = 3.12;
+  static const double shootersSquareMaxY = 3.48;
 
   // Nylon net bounds
   static const double netBottomY = 2.60;
@@ -65,14 +71,17 @@ class BallPhysics3D {
   static const double poleRadius = 0.08;
   static const double poleMaxY = 3.05;
 
+  final void Function(Vector3 impactPoint)? onWallImpact;
+
   BallPhysics3D({
     Vector3? initialPos,
     this.radius = 0.125,
     this.pitch = 0.36,
     this.yaw = -0.42,
-  })  : pos = initialPos ?? Vector3(0.0, 0.25, 0.0),
-        vel = Vector3.zero(),
-        angularVel = Vector3.zero();
+    this.onWallImpact,
+  }) : pos = initialPos ?? Vector3(0.0, 0.25, 0.0),
+       vel = Vector3.zero(),
+       angularVel = Vector3.zero();
 
   /// Launches the basketball with 3D velocity [v] and backspin.
   void launch(Vector3 v, {double backspin = 12.0}) {
@@ -245,11 +254,11 @@ class BallPhysics3D {
     }
   }
 
-  /// 3D Vertical Backboard glass collision using impulse-based contact.
-  /// One _contact() call replaces the scripted velocity overrides and
-  /// the separate shooter's-square / outside-square branches.
+  /// 3D Vertical Backboard glass collision detection and response.
+  /// Matched 1:1 to visual art to prevent phasing, and features calibrated
+  /// bank shot kinematics for shots hitting the regulation shooter's square.
   void _checkBackboardCollision() {
-    if (pos.z + radius >= backboardZ && pos.z - radius <= backboardZ + 0.12) {
+    if (pos.z + radius >= backboardZ && pos.z - radius <= backboardZ + 0.25) {
       if (pos.x >= backboardMinX &&
           pos.x <= backboardMaxX &&
           pos.y >= backboardMinY &&
@@ -258,19 +267,27 @@ class BallPhysics3D {
           pos.z = backboardZ - radius - 0.001;
           hasBankedBackboard = true;
 
-          // Glass contact: normal pointing back towards court (-Z)
-          // Restitution e=0.62 and low friction μ=0.12 (smooth tempered glass)
-          final n = Vector3(0, 0, -1);
-          _contact(n, e: 0.62, mu: 0.12);
+          // Check if hitting inside the regulation shooter's square
+          final isShootersSquare = pos.x.abs() <= shootersSquareHalfWidth &&
+              pos.y >= shootersSquareMinY &&
+              pos.y <= shootersSquareMaxY;
 
-          // Small bank-assist nudge for shots hitting the target square area.
-          // This is a tiny centering velocity addition, never an absolute override.
-          final isShootersSquare = pos.x.abs() <= 0.16 &&
-              pos.y >= 3.12 &&
-              pos.y <= 3.32;
           if (isShootersSquare) {
-            final nudgeX = (rimCenter.x - pos.x) * 0.12;
-            vel.x += nudgeX.clamp(-0.25, 0.25);
+            // 99% Bank Shot Guidance:
+            // 1. Forward velocity calibrated to carry the ball 35cm to rim center (Z=4.50m from Z=4.85m)
+            vel.z = -1.38;
+            // 2. Lateral centering velocity directed directly at the rim center (X=0)
+            vel.x = -pos.x * 2.8;
+            // 3. Soft downward velocity so gravity pulls it cleanly down through the net
+            vel.y = -0.65;
+            // 4. Dampen spin for a soft kiss off the glass
+            angularVel.scale(0.35);
+          } else {
+            // Standard glass contact outside the target square:
+            // Normal pointing back towards court (-Z)
+            // Restitution e=0.62 and low friction mu=0.12 (smooth tempered glass)
+            final n = Vector3(0.0, 0.0, -1.0);
+            _contact(n, e: 0.62, mu: 0.12);
           }
         }
       }
@@ -338,6 +355,10 @@ class BallPhysics3D {
   void _checkBackWallCollision() {
     if (pos.z + radius >= wallZ) {
       pos.z = wallZ - radius - 0.001;
+
+      if (vel.z > 0) {
+        onWallImpact?.call(Vector3(pos.x, pos.y, wallZ));
+      }
 
       // Solid brick wall contact: normal pointing toward the player (-Z)
       // High masonry restitution (e=0.55) repels the ball back forward into the court
@@ -420,17 +441,63 @@ class BallPhysics3D {
     final shadowScreenPos = camera.projectCoords(pos.x, 0.0, pos.z);
 
     final baseRadius = radius * camera.pixelsPerMeter * floorScale;
-    final shadowAlpha =
-        ((0.55 / (1.0 + heightAboveFloor * 0.45)) * opacity).clamp(0.0, 0.55);
+    final shadowAlpha = ((0.55 / (1.0 + heightAboveFloor * 0.45)) * opacity)
+        .clamp(0.0, 0.55);
 
     if (shadowAlpha <= 0.01) return;
 
     final shadowScale = 1.0 + heightAboveFloor * 0.15;
-    final blurRadius =
-        (baseRadius * 0.15 + heightAboveFloor * 1.6).clamp(1.5, 22.0);
+    final blurRadius = (baseRadius * 0.15 + heightAboveFloor * 1.6).clamp(
+      1.5,
+      22.0,
+    );
 
     final shadowWidth = baseRadius * 2.2 * shadowScale;
     final shadowHeight = shadowWidth * 0.38; // Perspective flattening on floor
+
+    final shadowPaint = Paint()
+      ..color = Color.fromRGBO(0, 0, 0, shadowAlpha)
+      ..maskFilter = MaskFilter.blur(BlurStyle.normal, blurRadius);
+
+    final shadowRect = Rect.fromCenter(
+      center: shadowScreenPos,
+      width: shadowWidth,
+      height: shadowHeight,
+    );
+
+    canvas.drawOval(shadowRect, shadowPaint);
+  }
+
+  /// Renders the brick back wall contact shadow at (pos.x, shadowY, wallZ)
+  /// as the ball approaches within ~0.70m of the back wall plane.
+  void renderWallShadow(
+    Canvas canvas,
+    PerspectiveCamera3D camera, {
+    double opacity = 1.0,
+  }) {
+    if (pos.x.abs() > halfWidth) return;
+    final distToWall = (wallZ - (pos.z + radius)).clamp(0.0, 0.70);
+    if (distToWall >= 0.70) return;
+
+    final wallProximity = 1.0 - (distToWall / 0.70);
+    final shadowAlpha = (wallProximity * 0.60 * opacity).clamp(0.0, 0.60);
+    if (shadowAlpha <= 0.01) return;
+
+    // Overhead floodlight casts shadow slightly downward on the vertical wall
+    final shadowY = pos.y - (0.04 + distToWall * 0.08);
+    final shadowScreenPos = camera.projectCoords(pos.x, shadowY, wallZ);
+
+    final wallScale = camera.scaleAtDepth(wallZ);
+    final baseRadius = radius * camera.pixelsPerMeter * wallScale;
+
+    final shadowSpread = 1.0 + (1.0 - wallProximity) * 0.35;
+    final blurRadius = (baseRadius * 0.12 + (1.0 - wallProximity) * 12.0).clamp(
+      1.5,
+      16.0,
+    );
+
+    final shadowWidth = baseRadius * 2.0 * shadowSpread;
+    final shadowHeight = baseRadius * 2.0 * shadowSpread;
 
     final shadowPaint = Paint()
       ..color = Color.fromRGBO(0, 0, 0, shadowAlpha)
