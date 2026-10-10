@@ -28,8 +28,8 @@ class DistantWallRenderer {
     canvas.save();
     canvas.clipRect(wallRect);
 
-    // 1. Sandy dark charcoal mortar bed
-    final mortarPaint = Paint()..color = const Color(0xFF3B322B);
+    // 1. Authentic GamePigeon light sandy beige mortar bed
+    final mortarPaint = Paint()..color = const Color(0xFFD6C8B4);
     canvas.drawRect(wallRect, mortarPaint);
 
     // 2. Running-Bond Exposed Clay Bricks (Calibrated to GamePigeon visual scale)
@@ -41,10 +41,10 @@ class DistantWallRenderer {
 
     final brickPaint = Paint()..style = PaintingStyle.fill;
     final highlightPaint = Paint()
-      ..color = const Color(0x22FFFFFF)
+      ..color = const Color(0x35FFFFFF)
       ..strokeWidth = 0.8;
     final shadowPaint = Paint()
-      ..color = const Color(0x3E000000)
+      ..color = const Color(0x38000000)
       ..strokeWidth = 0.8;
 
     int row = 0;
@@ -56,7 +56,15 @@ class DistantWallRenderer {
       for (double x = startX; x < wallRect.right + brickWidth; x += stepX) {
         // High-entropy pseudo-random hash to prevent repeating diagonal patterns
         final hash = ((row * 37) ^ (col * 19) ^ 0x5A) % _brickColors.length;
-        brickPaint.color = _brickColors[hash];
+        final baseColor = _brickColors[hash];
+        // Subtle per-brick luminance & tone modulation for natural kiln-fired clay texture
+        final toneMod = (((row * 73) ^ (col * 31) ^ 0xA3) & 0x0F) / 15.0 - 0.5;
+        brickPaint.color = Color.from(
+          alpha: 1.0,
+          red: (baseColor.r + toneMod * 0.07).clamp(0.0, 1.0),
+          green: (baseColor.g + toneMod * 0.05).clamp(0.0, 1.0),
+          blue: (baseColor.b + toneMod * 0.04).clamp(0.0, 1.0),
+        );
 
         final bRect = Rect.fromLTWH(
           x,
