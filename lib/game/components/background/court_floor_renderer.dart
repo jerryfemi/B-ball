@@ -47,12 +47,12 @@ class CourtFloorRenderer {
       canvas.drawLine(topPt, botPt, plankPaint);
     }
 
-    // 3. Transverse Plank Seams (Exact 3D Camera Depth Steps)
+    // 3. Subtle Transverse Depth Steps (Softened perspective steps)
     final transversePaint = Paint()
-      ..color = const Color(0x10000000)
-      ..strokeWidth = 0.8;
+      ..color = const Color(0x0A000000)
+      ..strokeWidth = 0.6;
 
-    for (double z = 0.4; z <= RoomGeometry.wallZ; z += 0.5) {
+    for (double z = 0.8; z <= RoomGeometry.wallZ; z += 0.9) {
       final y = geom.projectFloor(0.0, z).dy;
       if (y >= geom.wallBaseY && y <= height) {
         canvas.drawLine(Offset(0, y), Offset(width, y), transversePaint);
@@ -147,24 +147,24 @@ class CourtFloorRenderer {
 
     canvas.drawPath(fullKeyPath, keyPaint);
 
-    // Clean regulation white court lines along key perimeter
+    // Clean regulation collegiate dark court lines along key perimeter
     final keyBorderPaint = Paint()
-      ..color = const Color(0xE0FFFFFF)
+      ..color = const Color(0xC02B2623)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.4;
+      ..strokeWidth = 2.2;
     canvas.drawPath(keyPath, keyBorderPaint);
   }
 
   void _renderCourtMarkings(Canvas canvas, RoomGeometry geom) {
     final linePaint = Paint()
-      ..color = const Color(0xE8FFFFFF)
+      ..color = const Color(0xC82B2623)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.4;
+      ..strokeWidth = 2.2;
 
     final dashedPaint = Paint()
-      ..color = const Color(0x95FFFFFF)
+      ..color = const Color(0x702B2623)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.4;
+      ..strokeWidth = 2.2;
 
     // 1. Restricted Area Arc (Centered under hoop at Z=4.50m, Radius=1.15m)
     const hoopZ = 4.50;
@@ -261,26 +261,37 @@ class CourtFloorRenderer {
     final endY = geom.screenHeight;
     final centerX = geom.screenWidth / 2.0;
 
-    // Single clean center specular reflection line directly beneath the pole
-    const coreWidth = 6.0;
-    final coreRect = Rect.fromLTRB(
-      centerX - coreWidth / 2,
+    // Soft perspective reflection band that widens toward the camera
+    const topWidth = 10.0;
+    const botWidth = 44.0;
+
+    final reflectionPath = Path()
+      ..moveTo(centerX - topWidth / 2, startY)
+      ..lineTo(centerX + topWidth / 2, startY)
+      ..lineTo(centerX + botWidth / 2, endY)
+      ..lineTo(centerX - botWidth / 2, endY)
+      ..close();
+
+    final reflectionRect = Rect.fromLTRB(
+      centerX - botWidth / 2,
       startY,
-      centerX + coreWidth / 2,
+      centerX + botWidth / 2,
       endY,
     );
+
     final corePaint = Paint()
       ..shader = LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: const [
           Color(0x95FFFFFF), // Crisp specular white reflection core directly under pole
-          Color(0x50FFFFFF), // Midtone fade along the key
-          Color(0x15FFFFFF), // Soft fade into foreground
+          Color(0x45FFFFFF), // Soft midtone fade along the key
+          Color(0x18FFFFFF), // Feathered spread in foreground
           Colors.transparent,
         ],
-        stops: const [0.0, 0.22, 0.65, 1.0],
-      ).createShader(coreRect);
-    canvas.drawRect(coreRect, corePaint);
+        stops: const [0.0, 0.25, 0.65, 1.0],
+      ).createShader(reflectionRect);
+
+    canvas.drawPath(reflectionPath, corePaint);
   }
 }
