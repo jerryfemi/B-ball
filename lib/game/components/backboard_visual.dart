@@ -123,7 +123,7 @@ class BackboardVisual extends PositionComponent {
 
     canvas.drawLine(
       const Offset(0.08, -0.15),
-      const Offset(0.08, 7.8),
+      const Offset(0.08, 8.00),
       poleShadowPaint,
     );
   }
@@ -131,7 +131,7 @@ class BackboardVisual extends PositionComponent {
   void _renderPole(Canvas canvas) {
     const poleWidth = 0.22;
     const topY = -0.30;
-    const bottomY = 7.80; // Hardwood floor entry depth under hoop
+    const bottomY = 8.30; // Hardwood floor entry depth under hoop at Z=4.85m
 
     final poleRect = Rect.fromLTRB(
       -poleWidth / 2,
