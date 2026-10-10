@@ -66,9 +66,9 @@ class FrontRimVisual extends PositionComponent {
     } else {
       // Numerical stability: clamp timestep
       final clampedDt = dt.clamp(0.001, 0.02);
-      // Under-damped spring values for a lively, wobbly, organic net
-      const double kStiffness = 85.0;
-      const double kDamping = 4.8;
+      // Under-damped spring values for a snappy, fast-reacting wobbly net
+      const double kStiffness = 160.0;
+      const double kDamping = 8.0;
 
       double depthForce =
           kStiffness * (0.9 - _currentNetDepth) - kDamping * _netDepthVelocity;
@@ -82,8 +82,8 @@ class FrontRimVisual extends PositionComponent {
       _currentBottomWidth += _netWidthVelocity * clampedDt;
       _currentBottomWidth = _currentBottomWidth.clamp(0.38, 0.92);
 
-      // Lateral harmonic sway jiggle
-      double swayForce = 70.0 * (0.0 - _currentSway) - 4.2 * _swayVelocity;
+      // Lateral harmonic sway jiggle (faster snap back)
+      double swayForce = 130.0 * (0.0 - _currentSway) - 6.0 * _swayVelocity;
       _swayVelocity += swayForce * clampedDt;
       _currentSway += _swayVelocity * clampedDt;
       _currentSway = _currentSway.clamp(-0.25, 0.25);
