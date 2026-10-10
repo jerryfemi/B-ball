@@ -18,7 +18,7 @@ class WallImpactPuff extends PositionComponent {
   }) : super(
           position: position,
           anchor: Anchor.center,
-          priority: 1, // Rendered on the wall, behind foreground balls
+          priority: 0, // Rendered on the back wall, strictly behind the backboard (priority 1)
         );
 
   @override
