@@ -66,12 +66,15 @@ class LaunchSolver {
     final vz = ref.z * powerScaleZ;
 
     // Lateral velocity based on flick angle:
-    // Generous sweet-spot assistance for centered flicks
+    // ref.x perfectly aims for the center of the rim from any spawn offset.
+    // aimRatio adds lateral deviation based on the player's swipe angle.
     double lateralAim = aimRatio;
     if (lateralAim.abs() < 0.12) {
       lateralAim *= 0.45; // Soft center assist for clean swishes
     }
-    final vx = lateralAim * 3.2;
+    
+    // Add the user's targeted lateral velocity to the baseline center-aimed reference
+    final vx = ref.x + (lateralAim * 3.2);
 
     return Vector3(vx, vy, vz);
   }
