@@ -2,18 +2,17 @@ import 'package:flutter/material.dart';
 
 import 'room_geometry.dart';
 
-/// Renders volumetric arena floodlight and vignette shadows, creating
-/// realistic light containment and pushing peripheral room corners into deep shadow.
+/// Renders subtle arena floodlight and vignette shadows, creating
+/// light focus on the hoop and court key while gently shading outer corners.
 class LightingRenderer {
   void render(Canvas canvas, RoomGeometry geom) {
     final width = geom.screenWidth;
     final height = geom.screenHeight;
     final fullRect = Rect.fromLTWH(0, 0, width, height);
 
-    // 1. Volumetric Overhead Arena Floodlight
-    // Centered above the hoop area (approx 22% down, center X)
-    final spotlightCenter = Offset(width / 2, height * 0.22);
-    final spotlightRadius = height * 0.75;
+    // 1. Soft Overhead Floodlight centered at the hoop (X=center, Y=25% height)
+    final spotlightCenter = Offset(width / 2.0, height * 0.25);
+    final spotlightRadius = height * 0.80;
 
     final spotlightPaint = Paint()
       ..shader = RadialGradient(
@@ -23,27 +22,27 @@ class LightingRenderer {
         ),
         radius: spotlightRadius / width,
         colors: const [
-          Color(0x00000000), // Pure brightness on hoop & key
-          Color(0x10050A14), // Subtle ambient drop
-          Color(0x40050A14), // Medium shadow
-          Color(0x75050A14), // Deep arena shadow in outer corners
+          Color(0x00000000), // Pure crisp clarity on hoop & key
+          Color(0x08000000), // Soft ambient drop
+          Color(0x22000000), // Medium vignette
+          Color(0x48000000), // Arena shadow in extreme corners
         ],
-        stops: const [0.0, 0.40, 0.75, 1.0],
+        stops: const [0.0, 0.45, 0.75, 1.0],
       ).createShader(fullRect);
 
     canvas.drawRect(fullRect, spotlightPaint);
 
-    // 2. Corner Vignette Gradients (Darkens extreme left/right and ceiling corners)
+    // 2. Corner Vignette Gradient
     final vignettePaint = Paint()
       ..shader = RadialGradient(
         center: Alignment.center,
         radius: 0.95,
         colors: const [
           Colors.transparent,
-          Color(0x20000000),
-          Color(0x60000000),
+          Color(0x15000000),
+          Color(0x35000000),
         ],
-        stops: const [0.65, 0.85, 1.0],
+        stops: const [0.70, 0.88, 1.0],
       ).createShader(fullRect);
 
     canvas.drawRect(fullRect, vignettePaint);
