@@ -72,6 +72,7 @@ class BallPhysics3D {
   static const double poleMaxY = 3.05;
 
   final void Function(Vector3 impactPoint)? onWallImpact;
+  final void Function({required bool isSwish, required bool isBankShot})? onScored;
 
   BallPhysics3D({
     Vector3? initialPos,
@@ -79,6 +80,7 @@ class BallPhysics3D {
     this.pitch = 0.36,
     this.yaw = -0.42,
     this.onWallImpact,
+    this.onScored,
   }) : pos = initialPos ?? Vector3(0.0, 0.25, 0.0),
        vel = Vector3.zero(),
        angularVel = Vector3.zero();
@@ -181,9 +183,11 @@ class BallPhysics3D {
     // 2. Position step
     pos.add(vel * dt);
 
-    // 3. Spin-driven visual rotation (constant ω in flight — no velocity coupling)
-    pitch -= angularVel.x * dt * 0.8;
-    yaw -= angularVel.y * dt * 0.8;
+    // 3. Spin-driven visual rotation (constant airborne ω in flight)
+    if (pos.y > radius + 0.01) {
+      pitch -= angularVel.x * dt * 0.8;
+      yaw -= angularVel.y * dt * 0.8;
+    }
 
     // 4. Rim Torus Collision Detection & Response
     _checkRimTorusCollision();
@@ -309,6 +313,9 @@ class BallPhysics3D {
         dXZ < rimRadius + 0.02 &&
         vel.y < 0) {
       passedThroughRim = true;
+      final bool isSwish = !hasClankedRim && !hasBankedBackboard;
+      final bool isBank = hasBankedBackboard;
+      onScored?.call(isSwish: isSwish, isBankShot: isBank);
     }
 
     // Inside the net cylinder: frame-rate-independent exponential drag
@@ -403,6 +410,11 @@ class BallPhysics3D {
           final d = math.exp(-3.0 * dt);
           vel.x *= d;
           vel.z *= d;
+
+          // Physical rolling without slipping: angular rotation coupled to ground translation
+          pitch += (vel.z / radius) * dt * 0.85;
+          yaw += (vel.x / radius) * dt * 0.85;
+
           if (vel.x.abs() < 0.04 && vel.z.abs() < 0.04) {
             vel.setZero();
             angularVel.setZero();
