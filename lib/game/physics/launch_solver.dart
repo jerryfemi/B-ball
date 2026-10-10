@@ -45,6 +45,33 @@ class LaunchSolver {
     return Vector3(vx, vy, vz);
   }
 
+  /// GamePigeon calibrated reference flick curve with power plateau.
+  ///
+  /// Across the natural flick range [ref * (1 - plateau)] to [ref * (1 + plateau)],
+  /// power stays locked at exactly 1.0 (clean swish trajectory).
+  /// Flicks outside the plateau scale smoothly into short (front iron/airball)
+  /// or deep (back iron/bank) trajectories.
+  static double flickToPower(double speedPxPerSec) {
+    const double ref = 720.0;
+    const double plateau = 0.22; // +/- 22% forgiveness window (561 to 878 px/s)
+
+    final double d = (speedPxPerSec / ref) - 1.0;
+    final double rawPower =
+        1.0 + (d.abs() < plateau ? 0.0 : d - plateau * d.sign);
+
+    return rawPower.clamp(0.48, 1.32);
+  }
+
+  /// Continuous C0 aim assist curve with zero step discontinuity.
+  ///
+  /// Smoothly transitions from soft 0.35x centering assist near the dead center
+  /// up to 1.0x unassisted raw aim at |aimRatio| >= 0.25.
+  static double calculateAimAssist(double aimRatio) {
+    final double r = aimRatio.clamp(-0.80, 0.80);
+    final double ramp = (r.abs() / 0.25).clamp(0.0, 1.0);
+    return r * (0.35 + 0.65 * ramp);
+  }
+
   /// Scales the reference trajectory based on the player's swipe speed and angle.
   ///
   /// - [powerRatio]: 1.0 is a perfect shot. < 1.0 is short (front iron/airball), > 1.0 is long (backboard/back rim).
@@ -67,12 +94,9 @@ class LaunchSolver {
 
     // Lateral velocity based on flick angle:
     // ref.x perfectly aims for the center of the rim from any spawn offset.
-    // aimRatio adds lateral deviation based on the player's swipe angle.
-    double lateralAim = aimRatio;
-    if (lateralAim.abs() < 0.12) {
-      lateralAim *= 0.45; // Soft center assist for clean swishes
-    }
-    
+    // calculateAimAssist smoothly scales lateral deviation with zero discontinuity.
+    final lateralAim = calculateAimAssist(aimRatio);
+
     // Add the user's targeted lateral velocity to the baseline center-aimed reference
     final vx = ref.x + (lateralAim * 3.2);
 
