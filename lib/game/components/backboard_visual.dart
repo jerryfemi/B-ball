@@ -15,11 +15,13 @@ class BackboardVisual extends PositionComponent {
   double _currentBottomWidth = 0.55;
   double _netDepthVelocity = 0.0;
   double _netWidthVelocity = 0.0;
+  double _currentSway = 0.0;
+  double _swayVelocity = 0.0;
 
   BackboardVisual({
     required Vector2 position,
     this.hoopWidth = 1.8,
-    this.hoopDepth = 0.18,
+    this.hoopDepth = 0.13,
   }) : super(
           position: position,
           size: Vector2(6.0, 20.0),
@@ -46,6 +48,10 @@ class BackboardVisual extends PositionComponent {
           double stretchDepth = ball.body.position.y - 5.0 + ball.radius * 0.7;
           if (stretchDepth > maxDepth) maxDepth = stretchDepth;
           targetWidth = 0.85; 
+
+          // Impart lateral sway from ball horizontal speed
+          _swayVelocity = (ball.body.linearVelocity.x * 0.35).clamp(-2.0, 2.0);
+          _currentSway = (ball.body.position.x * 0.25).clamp(-0.20, 0.20);
         }
       }
     }
@@ -53,25 +59,32 @@ class BackboardVisual extends PositionComponent {
     if (ballInNet) {
       _currentNetDepth = maxDepth.clamp(0.85, 1.35);
       _currentBottomWidth = targetWidth.clamp(0.55, 0.85);
-      _netDepthVelocity = 0.0;
-      _netWidthVelocity = 0.0;
+      _netDepthVelocity = 1.8;
+      _netWidthVelocity = -1.2;
     } else {
-      // Numerical stability: clamp timestep to prevent explicit Euler divergence
+      // Numerical stability: clamp timestep
       final clampedDt = dt.clamp(0.001, 0.02);
-      const double kStiffness = 180.0;
-      const double kDamping = 14.0;
+      // Under-damped spring values for a lively, wobbly, organic net
+      const double kStiffness = 85.0;
+      const double kDamping = 4.8;
 
       double depthForce =
           kStiffness * (0.9 - _currentNetDepth) - kDamping * _netDepthVelocity;
       _netDepthVelocity += depthForce * clampedDt;
       _currentNetDepth += _netDepthVelocity * clampedDt;
-      _currentNetDepth = _currentNetDepth.clamp(0.75, 1.40);
+      _currentNetDepth = _currentNetDepth.clamp(0.70, 1.45);
 
       double widthForce =
           kStiffness * (0.55 - _currentBottomWidth) - kDamping * _netWidthVelocity;
       _netWidthVelocity += widthForce * clampedDt;
       _currentBottomWidth += _netWidthVelocity * clampedDt;
-      _currentBottomWidth = _currentBottomWidth.clamp(0.40, 0.90);
+      _currentBottomWidth = _currentBottomWidth.clamp(0.38, 0.92);
+
+      // Lateral harmonic sway jiggle
+      double swayForce = 70.0 * (0.0 - _currentSway) - 4.2 * _swayVelocity;
+      _swayVelocity += swayForce * clampedDt;
+      _currentSway += _swayVelocity * clampedDt;
+      _currentSway = _currentSway.clamp(-0.25, 0.25);
     }
   }
 
@@ -380,7 +393,7 @@ class BackboardVisual extends PositionComponent {
       final topX = (hoopWidth / 2) * math.cos(angle);
       final topY = (hoopDepth / 2) * math.sin(angle);
 
-      final bottomX = topX * bottomWidthRatio;
+      final bottomX = topX * bottomWidthRatio + _currentSway;
       final bottomY = netDepth;
 
       canvas.drawLine(
@@ -397,7 +410,7 @@ class BackboardVisual extends PositionComponent {
       final curDepth = hoopDepth * (1.0 - (1.0 - bottomWidthRatio) * yFrac);
 
       final ribRect = Rect.fromCenter(
-        center: Offset(0, curY),
+        center: Offset(_currentSway * yFrac, curY),
         width: curWidth,
         height: curDepth,
       );
