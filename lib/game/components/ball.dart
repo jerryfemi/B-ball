@@ -143,13 +143,18 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
   }
 
   void _updateRenderPriority() {
-    if (physics.passedThroughRim &&
-        physics.pos.y <= BallPhysics3D.rimCenter.y &&
-        physics.pos.y >= BallPhysics3D.netBottomY) {
-      // Inside net cylinder: backboard (priority 1) < ball (priority 2) < front rim (priority 3)
+    if (physics.pos.z > BallPhysics3D.backboardZ) {
+      // Behind the backboard
+      priority = 0;
+    } else if (physics.pos.z > BallPhysics3D.rimCenter.z ||
+        (physics.passedThroughRim &&
+            physics.pos.y <= BallPhysics3D.rimCenter.y &&
+            physics.pos.y >= BallPhysics3D.netBottomY)) {
+      // Behind front rim / inside net cylinder:
+      // backboard (priority 1) < ball (priority 2) < front rim & net (priority 3)
       priority = 2;
     } else {
-      // In foreground / in front of hoop
+      // In foreground / in front of hoop & front rim
       priority = 5;
     }
   }
