@@ -6,10 +6,11 @@ import 'perspective_camera.dart';
 import 'launch_solver.dart';
 
 /// 3D point-mass basketball physics simulator featuring:
-/// - Analytic ballistic motion with realistic gravity and drag
-/// - Exact 3D Torus Rim collision detection and physical rebound resolution
+/// - Fixed 1/240s timestep accumulator for deterministic simulation
+/// - Impulse-based contact model with restitution + Coulomb friction + spin coupling
+/// - Exact 3D Torus Rim collision detection
 /// - 3D Backboard vertical plane collision
-/// - Nylon net soft swish damping and score detection
+/// - Frame-rate-independent exponential net drag
 /// - Hardwood court floor bouncing and rolling
 /// - Continuous floor drop shadow projected on the hardwood court
 class BallPhysics3D {
@@ -34,17 +35,21 @@ class BallPhysics3D {
   bool isSettled = false;
   double timeSinceLaunch = 0.0;
 
+  // Fixed timestep accumulator
+  double _accumulator = 0.0;
+  static const double fixedDt = 1.0 / 240.0;
+
   // Hoop geometric dimensions in meters
   static final Vector3 rimCenter = Vector3(0.0, 3.05, 4.50);
   static const double rimRadius = 0.23; // Inner diameter 0.46m
   static const double rimTubeRadius = 0.02; // 20mm steel tube
 
-  // Backboard vertical plane in meters
+  // Backboard vertical plane in meters (tightened to match visual art)
   static const double backboardZ = 4.85;
-  static const double backboardMinX = -0.90;
-  static const double backboardMaxX = 0.90;
-  static const double backboardMinY = 2.70;
-  static const double backboardMaxY = 3.85;
+  static const double backboardMinX = -0.475;
+  static const double backboardMaxX = 0.475;
+  static const double backboardMinY = 3.00;
+  static const double backboardMaxY = 3.63;
 
   // Nylon net bounds
   static const double netBottomY = 2.60;
@@ -69,9 +74,11 @@ class BallPhysics3D {
     bounceCount = 0;
     isSettled = false;
     timeSinceLaunch = 0.0;
+    _accumulator = 0.0;
   }
 
-  /// Steps the 3D physics simulation forward by [dt] seconds using substep integration.
+  /// Steps the 3D physics simulation forward by [dt] seconds
+  /// using a fixed 1/240s timestep accumulator for deterministic physics.
   void update(double dt) {
     if (!isLaunched) return;
 
@@ -80,15 +87,69 @@ class BallPhysics3D {
 
     if (isSettled) return;
 
-    // Substep integration (4 substeps per frame) for robust collision handling
-    const int substeps = 4;
-    final subDt = dt / substeps;
-
-    for (int i = 0; i < substeps; i++) {
-      _substep(subDt);
+    // Fixed timestep accumulator: cap raw dt to prevent spiral of death on frame hitches
+    _accumulator += dt.clamp(0.0, 0.05);
+    while (_accumulator >= fixedDt) {
+      _substep(fixedDt);
+      _accumulator -= fixedDt;
       if (isSettled) break;
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // Unified impulse-based contact resolution
+  // ---------------------------------------------------------------------------
+
+  /// Applies an impulse-based contact with restitution and Coulomb friction.
+  ///
+  /// [n] is the surface normal pointing away from the surface toward the ball.
+  /// [e] is restitution (0 = perfectly inelastic, 1 = perfectly elastic).
+  /// [mu] is Coulomb friction coefficient (tangential grip).
+  ///
+  /// Spin coupling: backspin naturally produces "kiss and drop" off back rim,
+  /// front rim grazes roll in correctly, bank shots bounce at the physical
+  /// angle of incidence — all without any scripted velocity overrides.
+  void _contact(Vector3 n, {required double e, required double mu}) {
+    final vn = vel.dot(n);
+    if (vn >= 0) return; // Separating — no contact impulse needed
+
+    // ── Normal impulse (unit-mass ball) ──
+    final jn = -(1 + e) * vn;
+    vel.addScaled(n, jn);
+
+    // ── Friction impulse with spin coupling ──
+    // rVec: vector from ball center to contact point (-radius along the normal)
+    final rVec = n.scaled(-radius);
+
+    // Surface velocity at contact point = translational vel + ω × r
+    final omegaCrossR = Vector3.zero();
+    angularVel.crossInto(rVec, omegaCrossR);
+    final surf = vel + omegaCrossR;
+
+    // Tangential slip: remove normal component from surface velocity
+    final surfDotN = surf.dot(n);
+    final slip = surf - n.scaled(surfDotN);
+    final s = slip.length;
+
+    if (s > 1e-4) {
+      // Friction impulse capped by Coulomb limit
+      // Thin hollow-shell sphere: 1/m + r²/I = 2.5 (since I = 2/3 mr²)
+      final jt = math.min(mu * jn, s / 2.5);
+      final t = slip.scaled(-1.0 / s); // Unit tangent opposing slip direction
+
+      // Apply tangential impulse to translational velocity
+      vel.addScaled(t, jt);
+
+      // Apply tangential impulse to angular velocity: Δω = (r × t) * jt / I
+      final rCrossT = Vector3.zero();
+      rVec.crossInto(t, rCrossT);
+      angularVel.addScaled(rCrossT, jt / (2.0 / 3.0 * radius * radius));
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Substep integration
+  // ---------------------------------------------------------------------------
 
   void _substep(double dt) {
     // 1. Gravity and aerodynamic drag
@@ -100,9 +161,9 @@ class BallPhysics3D {
     // 2. Position step
     pos.add(vel * dt);
 
-    // 3. Realistic spin orientation updates
-    pitch -= vel.y * dt * 0.14 + angularVel.x * dt * 0.8;
-    yaw -= vel.x * dt * 0.18 + angularVel.y * dt * 0.8;
+    // 3. Spin-driven visual rotation (constant ω in flight — no velocity coupling)
+    pitch -= angularVel.x * dt * 0.8;
+    yaw -= angularVel.y * dt * 0.8;
 
     // 4. Rim Torus Collision Detection & Response
     _checkRimTorusCollision();
@@ -111,13 +172,18 @@ class BallPhysics3D {
     _checkBackboardCollision();
 
     // 6. Score Detection & Net Damping
-    _checkScoreAndNet(prevY);
+    _checkScoreAndNet(prevY, dt);
 
     // 7. Hardwood Court Floor Collision
-    _checkFloorCollision();
+    _checkFloorCollision(dt);
   }
 
+  // ---------------------------------------------------------------------------
+  // Collision handlers (all using the unified _contact model)
+  // ---------------------------------------------------------------------------
+
   /// Exact 3D Torus collision detection against the horizontal circular metal rim.
+  /// One _contact() call replaces three separate scripted branches (front/back/side rim).
   void _checkRimTorusCollision() {
     final dx = pos.x - rimCenter.x;
     final dz = pos.z - rimCenter.z;
@@ -140,62 +206,30 @@ class BallPhysics3D {
 
     if (dist < contactRadius) {
       // Normal pointing away from rim metal toward ball
-      final nx = dist > 1e-5 ? rx / dist : 0.0;
-      final ny = dist > 1e-5 ? ry / dist : 1.0;
-      final nz = dist > 1e-5 ? rz / dist : 0.0;
+      final invDist = dist > 1e-5 ? 1.0 / dist : 0.0;
+      final nx = dist > 1e-5 ? rx * invDist : 0.0;
+      final ny = dist > 1e-5 ? ry * invDist : 1.0;
+      final nz = dist > 1e-5 ? rz * invDist : 0.0;
 
       // Positional resolution to prevent clipping
       pos.x = qx + nx * (contactRadius + 0.001);
       pos.y = qy + ny * (contactRadius + 0.001);
       pos.z = qz + nz * (contactRadius + 0.001);
 
-      // Normal velocity component
-      final vn = vel.x * nx + vel.y * ny + vel.z * nz;
+      // Unified contact: steel rim (e=0.60, μ=0.25)
+      // Backspin "kiss and drop" on back rim emerges naturally from friction coupling.
+      // Front rim grazes that should roll in DO roll in — the normal handles it.
+      // Side rattles produce unique bounces based on contact geometry.
+      final n = Vector3(nx, ny, nz);
+      _contact(n, e: 0.60, mu: 0.25);
 
-      // Only resolve if ball is moving into the rim surface
-      if (vn < 0) {
-        final normalVx = vn * nx;
-        final normalVy = vn * ny;
-        final normalVz = vn * nz;
-
-        final tangentVx = vel.x - normalVx;
-        final tangentVy = vel.y - normalVy;
-        final tangentVz = vel.z - normalVz;
-
-        // Determine which part of the rim was contacted
-        final isBackRim = qz > rimCenter.z + 0.03;
-        final isFrontRim = qz < rimCenter.z - 0.03;
-        final isDescending = vel.y < 0;
-
-        if (isBackRim && isDescending) {
-          // Authentic "Shooter's Touch": backspin absorbs forward momentum on the back iron
-          // and pulls the ball downward through the net cylinder
-          vel.x = -normalVx * 0.28 + tangentVx * 0.60;
-          vel.y = -normalVy * 0.32 + tangentVy * 0.55;
-          vel.z = -normalVz * 0.28 + tangentVz * 0.60;
-          if (vel.y > -1.2) vel.y = -1.2; // Soft downward guide into rim
-          angularVel.x *= 0.4;
-        } else if (isFrontRim && isDescending) {
-          // Front iron clank: firm upward/backward deflection
-          vel.x = -0.65 * normalVx + 0.75 * tangentVx;
-          vel.y = (vel.y.abs() * 0.65).clamp(1.5, 4.5); // Audible upward clank!
-          vel.z = -vel.z.abs() * 0.55; // Pushes back towards court
-          hasClankedRim = true;
-          angularVel.x *= 0.6;
-        } else {
-          // Side rims (rattle) or ascending collision:
-          vel.x = -0.68 * normalVx + 0.80 * tangentVx;
-          vel.y = -0.68 * normalVy + 0.80 * tangentVy;
-          vel.z = -0.68 * normalVz + 0.80 * tangentVz;
-          hasClankedRim = true;
-          angularVel.x *= 0.6;
-          angularVel.y += (tangentVx * 4.0).clamp(-10.0, 10.0);
-        }
-      }
+      hasClankedRim = true;
     }
   }
 
-  /// 3D Vertical Backboard collision detection & rebound.
+  /// 3D Vertical Backboard glass collision using impulse-based contact.
+  /// One _contact() call replaces the scripted velocity overrides and
+  /// the separate shooter's-square / outside-square branches.
   void _checkBackboardCollision() {
     if (pos.z + radius >= backboardZ && pos.z - radius <= backboardZ + 0.12) {
       if (pos.x >= backboardMinX &&
@@ -206,31 +240,29 @@ class BallPhysics3D {
           pos.z = backboardZ - radius - 0.001;
           hasBankedBackboard = true;
 
-          // Shooter's square area on backboard: X in [-0.40, 0.40], Y in [3.10, 3.65]
-          final isShootersSquare = pos.x.abs() <= 0.40 &&
-              pos.y >= 3.10 &&
-              pos.y <= 3.65;
+          // Glass contact: normal pointing back towards court (-Z)
+          // Restitution e=0.62 and low friction μ=0.12 (smooth tempered glass)
+          final n = Vector3(0, 0, -1);
+          _contact(n, e: 0.62, mu: 0.12);
 
+          // Small bank-assist nudge for shots hitting the target square area.
+          // This is a tiny centering velocity addition, never an absolute override.
+          final isShootersSquare = pos.x.abs() <= 0.16 &&
+              pos.y >= 3.12 &&
+              pos.y <= 3.32;
           if (isShootersSquare) {
-            // Authentic bank shot: glass absorbs forward energy and guides gently down into the hoop opening
-            vel.z = -1.15; // Soft forward travel back towards rim center (Z_rim = 4.50m)
-            vel.y = -2.2;  // Downward descent towards rim opening (Y_rim = 3.05m)
-            vel.x = -pos.x * 1.5; // Natural center pull towards rim center
-            angularVel.x *= 0.5;
-          } else {
-            // Outside target square: firm miss rebound
-            vel.z = -vel.z * 0.55;
-            vel.x *= 0.80;
-            vel.y *= 0.80;
-            angularVel.x *= 0.7;
+            final nudgeX = (rimCenter.x - pos.x) * 0.12;
+            vel.x += nudgeX.clamp(-0.25, 0.25);
           }
         }
       }
     }
   }
 
-  /// Scoring detection and soft cotton net descent damping.
-  void _checkScoreAndNet(double prevY) {
+  /// Scoring detection and frame-rate-independent nylon net descent damping.
+  /// Exponential decay replaces per-substep multiplication for identical
+  /// behavior at any framerate (60Hz, 120Hz, variable).
+  void _checkScoreAndNet(double prevY, double dt) {
     final dx = pos.x - rimCenter.x;
     final dz = pos.z - rimCenter.z;
     final dXZ = math.sqrt(dx * dx + dz * dz);
@@ -244,36 +276,42 @@ class BallPhysics3D {
       passedThroughRim = true;
     }
 
-    // Inside the net cylinder: gentle centering and deceleration
+    // Inside the net cylinder: frame-rate-independent exponential drag
     if (passedThroughRim &&
         pos.y >= netBottomY &&
         pos.y <= rimCenter.y &&
         dXZ < rimRadius * 1.3) {
-      vel.x *= 0.88;
-      vel.z = (rimCenter.z - pos.z) * 1.8; // Guides cleanly down through center of net!
-      if (vel.y < -2.6) {
-        vel.y = -2.6; // Soft cushion through nylon mesh
-      }
+      // Exponential decay ensures identical results at any framerate
+      final dLateral = math.exp(-6.0 * dt);
+      final dVertical = math.exp(-3.0 * dt);
+
+      // Lateral: decay + gentle spring centering towards net axis
+      vel.x = vel.x * dLateral + (rimCenter.x - pos.x) * 25.0 * dt;
+      vel.z = vel.z * dLateral + (rimCenter.z - pos.z) * 25.0 * dt;
+
+      // Vertical: smooth deceleration through nylon mesh
+      vel.y *= dVertical;
     }
   }
 
-  /// Hardwood court floor bouncing and rolling settling.
-  void _checkFloorCollision() {
+  /// Hardwood court floor bouncing (impulse-based) and rolling friction settling.
+  void _checkFloorCollision(double dt) {
     if (pos.y <= radius) {
       pos.y = radius;
 
       if (vel.y < 0) {
         if (vel.y.abs() > 0.35) {
           bounceCount++;
-          // Hardwood floor restitution e = 0.62
-          vel.y = -vel.y * 0.62;
-          vel.x *= 0.80;
-          vel.z *= 0.80;
-          angularVel.scale(0.70);
+          // Floor contact: normal pointing up, hardwood restitution + high friction
+          final n = Vector3(0, 1, 0);
+          _contact(n, e: 0.62, mu: 0.50);
         } else {
+          // Very low bounce energy — transition to rolling and settling
           vel.y = 0.0;
-          vel.x *= 0.88;
-          vel.z *= 0.88;
+          // Frame-rate-independent rolling friction (exponential decay)
+          final d = math.exp(-3.0 * dt);
+          vel.x *= d;
+          vel.z *= d;
           if (vel.x.abs() < 0.04 && vel.z.abs() < 0.04) {
             vel.setZero();
             angularVel.setZero();
@@ -283,6 +321,10 @@ class BallPhysics3D {
       }
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // Projection & rendering helpers (unchanged)
+  // ---------------------------------------------------------------------------
 
   /// Computes the projected 2D screen position in pixels.
   Offset getScreenPosition(PerspectiveCamera3D camera) {
