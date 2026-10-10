@@ -52,7 +52,11 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     this.animateEntrance = false,
   }) : super(priority: 5) {
     physics = BallPhysics3D(
-      initialPos: Vector3(initialPosition.x / 6.78, 0.25, 0.0),
+      initialPos: Vector3(
+        initialPosition.x / PerspectiveCamera3D.forge2dUnitsPerMeterAtZ0,
+        0.25,
+        0.0,
+      ),
       radius: 0.125,
       onWallImpact: (impactPt) {
         if (!isMounted) return;
@@ -476,21 +480,15 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     double vx = event.velocity.x;
     double vy = event.velocity.y;
 
+    // Primary estimator: trailing 90ms window displacement.
+    // Falls back to event.velocity only if fewer than 2 samples exist.
     if (windowSamples.length >= 2) {
       final firstInWindow = windowSamples.first;
       final dtSec =
           (lastSample.timestampMs - firstInWindow.timestampMs) / 1000.0;
       if (dtSec > 0.012) {
-        final sampleVx =
-            (lastSample.position.x - firstInWindow.position.x) / dtSec;
-        final sampleVy =
-            (lastSample.position.y - firstInWindow.position.y) / dtSec;
-
-        // Use displacement velocity if it captured a faster upward flick
-        if (sampleVy < vy) {
-          vy = sampleVy;
-          vx = sampleVx;
-        }
+        vx = (lastSample.position.x - firstInWindow.position.x) / dtSec;
+        vy = (lastSample.position.y - firstInWindow.position.y) / dtSec;
       }
     }
 
