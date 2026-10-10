@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flame/components.dart';
@@ -10,19 +11,20 @@ import 'background/room_geometry.dart';
 
 /// Authentic GamePigeon Gymnasium Court Environment:
 /// Orchestrates unified 3D perspective background with:
-/// - Exposed red clay brick back wall with sandy charcoal mortar
+/// - Exposed red clay brick back wall with sandy light mortar
 /// - Maple hardwood court floor with true 3D perspective markings
 /// - Collegiate terracotta key, restricted area arc, and free-throw circle
 /// - Signature vertical pole floor reflection streak
 /// - Volumetric arena floodlight focus
 ///
-/// Fully cached using [ui.Picture] for zero per-frame CPU/GPU rasterization overhead.
+/// Fully baked to an immutable GPU texture via [ui.Picture.toImageSync]
+/// for zero per-frame CPU/GPU rasterization overhead (single texture blit).
 class GameBackground extends Component with HasGameReference {
   final DistantWallRenderer _distantWallRenderer = DistantWallRenderer();
   final CourtFloorRenderer _courtFloorRenderer = CourtFloorRenderer();
   final LightingRenderer _lightingRenderer = LightingRenderer();
 
-  ui.Picture? _cachedPicture;
+  ui.Image? _cachedImage;
   Vector2? _cachedSize;
 
   @override
@@ -32,13 +34,20 @@ class GameBackground extends Component with HasGameReference {
   }
 
   void _invalidateCache() {
-    _cachedPicture?.dispose();
-    _cachedPicture = null;
+    _cachedImage?.dispose();
+    _cachedImage = null;
     _cachedSize = null;
   }
 
   void _rebuildCache(double width, double height) {
-    _cachedPicture?.dispose();
+    _cachedImage?.dispose();
+
+    final dpr = WidgetsBinding
+        .instance
+        .platformDispatcher
+        .views
+        .first
+        .devicePixelRatio;
 
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, width, height));
@@ -53,7 +62,12 @@ class GameBackground extends Component with HasGameReference {
     // 3. Subtle arena floodlight focus & corner vignette
     _lightingRenderer.render(canvas, geom);
 
-    _cachedPicture = recorder.endRecording();
+    final picture = recorder.endRecording();
+    final pixelWidth = math.max(1, (width * dpr).round());
+    final pixelHeight = math.max(1, (height * dpr).round());
+    _cachedImage = picture.toImageSync(pixelWidth, pixelHeight);
+    picture.dispose();
+
     _cachedSize = Vector2(width, height);
   }
 
@@ -66,15 +80,25 @@ class GameBackground extends Component with HasGameReference {
 
     if (width <= 0 || height <= 0) return;
 
-    if (_cachedPicture == null ||
+    if (_cachedImage == null ||
         _cachedSize == null ||
         _cachedSize!.x != width ||
         _cachedSize!.y != height) {
       _rebuildCache(width, height);
     }
 
-    if (_cachedPicture != null) {
-      canvas.drawPicture(_cachedPicture!);
+    if (_cachedImage != null) {
+      canvas.drawImageRect(
+        _cachedImage!,
+        Rect.fromLTWH(
+          0,
+          0,
+          _cachedImage!.width.toDouble(),
+          _cachedImage!.height.toDouble(),
+        ),
+        Rect.fromLTWH(0, 0, width, height),
+        Paint()..filterQuality = FilterQuality.low,
+      );
     }
   }
 
