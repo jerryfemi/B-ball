@@ -54,6 +54,17 @@ class BallPhysics3D {
   // Nylon net bounds
   static const double netBottomY = 2.60;
 
+  // Gymnasium room boundary constants (in meters, matching RoomGeometry)
+  static const double wallZ = 5.25;
+  static const double halfWidth = 3.75;
+  static const double ceilingY = 6.50;
+
+  // Cylindrical free-standing pole bounds
+  static const double poleX = 0.0;
+  static const double poleZ = 4.85;
+  static const double poleRadius = 0.08;
+  static const double poleMaxY = 3.05;
+
   BallPhysics3D({
     Vector3? initialPos,
     this.radius = 0.125,
@@ -174,7 +185,14 @@ class BallPhysics3D {
     // 6. Score Detection & Net Damping
     _checkScoreAndNet(prevY, dt);
 
-    // 7. Hardwood Court Floor Collision
+    // 7. Cylindrical Pole Collision Detection & Response
+    _checkPoleCollision();
+
+    // 8. Solid Gymnasium Back Wall & Side Wall Colliders
+    _checkBackWallCollision();
+    _checkSideWallsCollision();
+
+    // 9. Hardwood Court Floor Collision (strictly on the court floor)
     _checkFloorCollision(dt);
   }
 
@@ -294,8 +312,60 @@ class BallPhysics3D {
     }
   }
 
+  /// Cylindrical pole collision detection and response.
+  void _checkPoleCollision() {
+    if (pos.y <= poleMaxY && pos.y >= radius) {
+      final dx = pos.x - poleX;
+      final dz = pos.z - poleZ;
+      final distXZ = math.sqrt(dx * dx + dz * dz);
+      final contactDist = radius + poleRadius;
+      if (distXZ < contactDist && distXZ > 1e-5) {
+        final nx = dx / distXZ;
+        final nz = dz / distXZ;
+        pos.x = poleX + nx * (contactDist + 0.001);
+        pos.z = poleZ + nz * (contactDist + 0.001);
+
+        // Steel pole contact: normal pointing radially outward
+        final n = Vector3(nx, 0.0, nz);
+        _contact(n, e: 0.58, mu: 0.25);
+      }
+    }
+  }
+
+  /// Solid gymnasium brick back wall collision detection and response.
+  /// Strictly prevents balls from penetrating into the brick wall (Z >= wallZ)
+  /// and repels them back forward onto the court floor.
+  void _checkBackWallCollision() {
+    if (pos.z + radius >= wallZ) {
+      pos.z = wallZ - radius - 0.001;
+
+      // Solid brick wall contact: normal pointing toward the player (-Z)
+      // High masonry restitution (e=0.55) repels the ball back forward into the court
+      final n = Vector3(0.0, 0.0, -1.0);
+      _contact(n, e: 0.55, mu: 0.40);
+    }
+  }
+
+  /// Solid gymnasium side walls collision detection and response.
+  /// Repels wide shots inward toward the court center.
+  void _checkSideWallsCollision() {
+    if (pos.x + radius >= halfWidth) {
+      pos.x = halfWidth - radius - 0.001;
+      final n = Vector3(-1.0, 0.0, 0.0);
+      _contact(n, e: 0.55, mu: 0.40);
+    } else if (pos.x - radius <= -halfWidth) {
+      pos.x = -halfWidth + radius + 0.001;
+      final n = Vector3(1.0, 0.0, 0.0);
+      _contact(n, e: 0.55, mu: 0.40);
+    }
+  }
+
   /// Hardwood court floor bouncing (impulse-based) and rolling friction settling.
+  /// Restricted strictly to the court floor area (Z <= wallZ and |X| <= halfWidth).
   void _checkFloorCollision(double dt) {
+    // Court floor only exists inside the gym boundaries in front of the back wall
+    if (pos.z > wallZ || pos.x.abs() > halfWidth) return;
+
     if (pos.y <= radius) {
       pos.y = radius;
 
@@ -342,6 +412,9 @@ class BallPhysics3D {
     PerspectiveCamera3D camera, {
     double opacity = 1.0,
   }) {
+    // Do not draw floor shadow if the ball is outside the court floor
+    if (pos.z > wallZ || pos.x.abs() > halfWidth) return;
+
     final heightAboveFloor = (pos.y - radius).clamp(0.0, 8.0);
     final floorScale = camera.scaleAtDepth(pos.z);
     final shadowScreenPos = camera.projectCoords(pos.x, 0.0, pos.z);
