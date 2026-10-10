@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flame/components.dart';
 import 'package:flame_forge2d/flame_forge2d.dart';
 import 'package:flutter/material.dart';
@@ -79,15 +80,29 @@ class BasketballGame extends Forge2DGame {
     );
   }
 
+  double _lastSpawnX = 0.0;
+  final math.Random _rng = math.Random();
+
+  double _pickNextSpawnX() {
+    // Diverse shooting positions along the bottom baseline (in Forge2D meters)
+    const candidates = [-1.4, -0.7, 0.0, 0.7, 1.4];
+    final options =
+        candidates.where((x) => (x - _lastSpawnX).abs() >= 0.5).toList();
+    final chosen = options[_rng.nextInt(options.length)];
+    _lastSpawnX = chosen;
+    return chosen;
+  }
+
   void _spawnReadyBall({bool animate = false}) {
+    final spawnX = animate ? _pickNextSpawnX() : 0.0;
     final ball = Basketball(
-      // Rest directly on the hardwood court floor (floor 19.2m - radius 0.58m = 18.62m)
-      initialPosition: Vector2(0, 18.62),
+      // Rest directly on the hardwood court floor at the chosen baseline spot
+      initialPosition: Vector2(spawnX, 18.62),
       radius: 0.58,
       animateEntrance: animate,
       onLaunched: () {
-        // Wait 800ms for launched ball to clear the key before feeding next ball
-        Future.delayed(const Duration(milliseconds: 800), () {
+        // Snappy feed of next ball: 250ms delay
+        Future.delayed(const Duration(milliseconds: 250), () {
           if (isLoaded) {
             _spawnReadyBall(animate: true);
           }
