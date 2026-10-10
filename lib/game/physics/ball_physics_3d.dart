@@ -47,10 +47,10 @@ class BallPhysics3D {
 
   // Backboard vertical plane in meters (matched 1:1 to visual art)
   static const double backboardZ = 4.85;
-  static const double backboardMinX = -0.66;
-  static const double backboardMaxX = 0.66;
+  static const double backboardMinX = -0.72;
+  static const double backboardMaxX = 0.72;
   static const double backboardMinY = 2.95;
-  static const double backboardMaxY = 3.90;
+  static const double backboardMaxY = 4.00;
 
   // Regulation shooter's square target bounds (centered at Y=3.30m, matching drawn 0.35m x 0.24m red box)
   static const double shootersSquareHalfWidth = 0.175;
@@ -261,7 +261,7 @@ class BallPhysics3D {
   /// Matched 1:1 to visual art to prevent phasing, and features calibrated
   /// bank shot kinematics for shots hitting the regulation shooter's square.
   void _checkBackboardCollision() {
-    if (pos.z + radius >= backboardZ && pos.z - radius <= backboardZ + 0.02) {
+    if (pos.z + radius >= backboardZ && pos.z - radius <= backboardZ + 0.08) {
       if (pos.x >= backboardMinX &&
           pos.x <= backboardMaxX &&
           pos.y >= backboardMinY &&
