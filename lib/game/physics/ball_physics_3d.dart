@@ -42,7 +42,7 @@ class BallPhysics3D {
 
   // Hoop geometric dimensions in meters
   static final Vector3 rimCenter = Vector3(0.0, 3.05, 4.50);
-  static const double rimRadius = 0.23; // Inner diameter 0.46m
+  static const double rimRadius = 0.27; // Calibrated to match drawn front rim art (~0.32m in Forge units)
   static const double rimTubeRadius = 0.02; // 20mm steel tube
 
   // Backboard vertical plane in meters (matched 1:1 to visual art)
@@ -52,10 +52,10 @@ class BallPhysics3D {
   static const double backboardMinY = 2.95;
   static const double backboardMaxY = 3.90;
 
-  // Regulation shooter's square target bounds (centered at Y=3.30m)
-  static const double shootersSquareHalfWidth = 0.20;
-  static const double shootersSquareMinY = 3.12;
-  static const double shootersSquareMaxY = 3.48;
+  // Regulation shooter's square target bounds (centered at Y=3.30m, matching drawn 0.35m x 0.24m red box)
+  static const double shootersSquareHalfWidth = 0.175;
+  static const double shootersSquareMinY = 3.18;
+  static const double shootersSquareMaxY = 3.42;
 
   // Nylon net bounds
   static const double netBottomY = 2.60;
@@ -68,7 +68,7 @@ class BallPhysics3D {
   // Cylindrical free-standing pole bounds
   static const double poleX = 0.0;
   static const double poleZ = 4.85;
-  static const double poleRadius = 0.08;
+  static const double poleRadius = 0.04;
   static const double poleMaxY = 3.05;
 
   final void Function(Vector3 impactPoint)? onWallImpact;
@@ -85,10 +85,10 @@ class BallPhysics3D {
        vel = Vector3.zero(),
        angularVel = Vector3.zero();
 
-  /// Launches the basketball with 3D velocity [v] and backspin.
+  /// Launches the basketball with 3D velocity [v] and physical backspin.
   void launch(Vector3 v, {double backspin = 12.0}) {
     vel = v.clone();
-    angularVel = Vector3(backspin, (v.x * 2.0).clamp(-8.0, 8.0), 0.0);
+    angularVel = Vector3(-backspin.abs(), (v.x * 2.0).clamp(-8.0, 8.0), 0.0);
     isLaunched = true;
     passedThroughRim = false;
     hasClankedRim = false;
@@ -174,9 +174,8 @@ class BallPhysics3D {
   // ---------------------------------------------------------------------------
 
   void _substep(double dt) {
-    // 1. Gravity and aerodynamic drag
+    // 1. Pure ballistic Newtonian gravity (zero in-flight drag to match LaunchSolver)
     vel.y -= LaunchSolver.gravity * dt;
-    vel.scale(1.0 - 0.05 * dt);
 
     final prevY = pos.y;
 
@@ -262,7 +261,7 @@ class BallPhysics3D {
   /// Matched 1:1 to visual art to prevent phasing, and features calibrated
   /// bank shot kinematics for shots hitting the regulation shooter's square.
   void _checkBackboardCollision() {
-    if (pos.z + radius >= backboardZ && pos.z - radius <= backboardZ + 0.25) {
+    if (pos.z + radius >= backboardZ && pos.z - radius <= backboardZ + 0.02) {
       if (pos.x >= backboardMinX &&
           pos.x <= backboardMaxX &&
           pos.y >= backboardMinY &&
@@ -276,22 +275,15 @@ class BallPhysics3D {
               pos.y >= shootersSquareMinY &&
               pos.y <= shootersSquareMaxY;
 
+          // Physical tempered-glass impulse contact (e=0.62, μ=0.12)
+          final n = Vector3(0.0, 0.0, -1.0);
+          _contact(n, e: 0.62, mu: 0.12);
+
           if (isShootersSquare) {
-            // 99% Bank Shot Guidance:
-            // 1. Forward velocity calibrated to carry the ball 35cm to rim center (Z=4.50m from Z=4.85m)
-            vel.z = -1.38;
-            // 2. Lateral centering velocity directed directly at the rim center (X=0)
-            vel.x = -pos.x * 2.8;
-            // 3. Soft downward velocity so gravity pulls it cleanly down through the net
-            vel.y = -0.65;
-            // 4. Dampen spin for a soft kiss off the glass
-            angularVel.scale(0.35);
-          } else {
-            // Standard glass contact outside the target square:
-            // Normal pointing back towards court (-Z)
-            // Restitution e=0.62 and low friction mu=0.12 (smooth tempered glass)
-            final n = Vector3(0.0, 0.0, -1.0);
-            _contact(n, e: 0.62, mu: 0.12);
+            // Dynamic Bank Shot Guidance:
+            // Proportional soft nudges centering lateral offset and soft downward velocity
+            vel.x -= pos.x * 1.5;
+            vel.y -= 0.35;
           }
         }
       }
