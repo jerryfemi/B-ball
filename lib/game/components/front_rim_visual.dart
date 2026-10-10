@@ -21,7 +21,7 @@ class FrontRimVisual extends PositionComponent {
   FrontRimVisual({
     required Vector2 position,
     this.hoopWidth = 1.8,
-    this.hoopDepth = 0.13,
+    this.hoopDepth = 0.15,
   }) : super(
           position: position,
           size: Vector2(4.0, 4.0),
