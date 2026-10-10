@@ -42,15 +42,19 @@ class GameBackground extends Component with HasGameReference {
   void _rebuildCache(double width, double height) {
     _cachedImage?.dispose();
 
-    final dpr = WidgetsBinding
-        .instance
-        .platformDispatcher
-        .views
-        .first
-        .devicePixelRatio;
+    final views = WidgetsBinding.instance.platformDispatcher.views;
+    final dpr = views.isNotEmpty ? views.first.devicePixelRatio : 1.0;
+
+    final pixelWidth = math.max(1, (width * dpr).round());
+    final pixelHeight = math.max(1, (height * dpr).round());
 
     final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, width, height));
+    final canvas = Canvas(
+      recorder,
+      Rect.fromLTWH(0, 0, pixelWidth.toDouble(), pixelHeight.toDouble()),
+    );
+    canvas.scale(dpr, dpr);
+
     final geom = RoomGeometry.fromScreenSize(width, height);
 
     // 1. Authentic GamePigeon exposed red clay brick gym back wall
@@ -63,8 +67,6 @@ class GameBackground extends Component with HasGameReference {
     _lightingRenderer.render(canvas, geom);
 
     final picture = recorder.endRecording();
-    final pixelWidth = math.max(1, (width * dpr).round());
-    final pixelHeight = math.max(1, (height * dpr).round());
     _cachedImage = picture.toImageSync(pixelWidth, pixelHeight);
     picture.dispose();
 
