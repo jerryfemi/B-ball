@@ -33,23 +33,37 @@ class PerspectiveCamera3D {
     required this.pixelsPerMeter,
   });
 
-  /// Factory calibrated to match the unified 3D arena perspective:
-  /// - Horizon line at 27.0% height (eye level passing through hoop)
-  /// - Camera eye height at 2.91m (looking slightly downward into court)
-  /// - Court floor extends from 65.0% (back wall baseline) to 100% (player's feet)
-  /// - Hoop rim (Y=3.05m, Z=4.50m) projects to exactly Y=0.25H (Forge2D Y=5.0)
+  /// Conversion factor from 3D meters at Z=0 to Forge2D world meters (constant 6.90).
+  static const double forge2dUnitsPerMeterAtZ0 = 20.0 * 0.345;
+
+  /// Factory calibrated to match GamePigeon's dynamic wide-angle 1-point perspective:
+  /// - Focal distance d = 3.0 (wide-angle FOV with 2.5x foreshortening)
+  /// - Apparent ball-to-rim ratio is 1.37x (matching GamePigeon's ~1.4x)
+  /// - Horizon line at 44.1% height (mid-screen vanishing point)
+  /// - Camera eye height at 1.67m (natural player eye level)
+  /// - Exactly preserves the 3 key visual anchors:
+  ///   * Hoop rim (Y=3.05m, Z=4.50m) projects to Y=0.250H (Forge2D Y=5.0)
+  ///   * Back wall baseline (Y=0.0m, Z=5.25m) projects to Y=0.650H (Forge2D Y=13.0)
+  ///   * Ready ball at foul line (Y=0.25m, Z=0.0m) projects to Y=0.931H (Forge2D Y=18.62)
   factory PerspectiveCamera3D.standard(double screenWidth, double screenHeight) {
-    final horizonY = screenHeight * 0.270;
-    final ppm = screenHeight * 0.251;
+    final horizonY = screenHeight * 0.441;
+    final ppm = screenHeight * 0.345;
 
     return PerspectiveCamera3D(
       screenWidth: screenWidth,
       screenHeight: screenHeight,
       horizonScreenY: horizonY,
-      eyeHeightInMeters: 2.91,
-      focalDistance: 5.7,
+      eyeHeightInMeters: 1.67,
+      focalDistance: 3.0,
       pixelsPerMeter: ppm,
     );
+  }
+
+  /// Inverts a Forge2D X offset to physical 3D meters at depth [z].
+  double unprojectForge2DX(double f2dX, {double z = 0.0}) {
+    final s = scaleAtDepth(z);
+    final metersToPixels = screenHeight / 20.0;
+    return (f2dX * metersToPixels) / (pixelsPerMeter * s);
   }
 
   /// Perspective scale factor at depth [z] (in meters).
