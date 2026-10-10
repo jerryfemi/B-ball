@@ -14,7 +14,8 @@ class LaunchSolver {
   static final Vector3 defaultRimTarget = Vector3(0.0, 3.05, 4.50);
 
   // Height above the rim where a perfect shot reaches its peak apex (in meters)
-  static const double defaultApexAboveRim = 0.75;
+  // Calibrated to 1.10m for a steep ~55° descent angle, unlocking clean swish clearance
+  static const double defaultApexAboveRim = 1.10;
 
   /// Solves the exact analytic reference velocity $(V_x, V_y, V_z)$ needed to peak
   /// [apexAboveRim] meters above [target] and drop through it cleanly.
@@ -62,11 +63,12 @@ class LaunchSolver {
     return rawPower.clamp(0.48, 1.32);
   }
 
-  /// Continuous C0 aim assist curve with zero step discontinuity.
+  /// Continuous C0 aim assist curve with dead zone for center flicks.
   ///
-  /// Smoothly transitions from soft 0.35x centering assist near the dead center
-  /// up to 1.0x unassisted raw aim at |aimRatio| >= 0.25.
+  /// Sub-3% lateral flicks are locked directly to the hoop center axis (0.0).
+  /// Transitions smoothly from soft 0.35x assist up to 1.0x unassisted raw aim at |aimRatio| >= 0.25.
   static double calculateAimAssist(double aimRatio) {
+    if (aimRatio.abs() < 0.03) return 0.0;
     final double r = aimRatio.clamp(-0.80, 0.80);
     final double ramp = (r.abs() / 0.25).clamp(0.0, 1.0);
     return r * (0.35 + 0.65 * ramp);
