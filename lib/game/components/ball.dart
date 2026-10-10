@@ -173,37 +173,42 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
 
     // 1. Continuous Hardwood Floor Drop Shadow
     // Shadow is calculated at (physics.pos.x, 0.0, physics.pos.z) on the court floor
-    final floorF2D = camera3D.projectToForge2D(
-      physics.pos.x,
-      0.0,
-      physics.pos.z,
-    );
-    final shadowLocalOffset = Offset(
-      floorF2D.dx - body.position.x,
-      floorF2D.dy - body.position.y,
-    );
+    final bool onCourtFloor = physics.pos.z <= BallPhysics3D.wallZ &&
+        physics.pos.x.abs() <= BallPhysics3D.halfWidth;
 
-    final heightAboveFloor =
-        (physics.pos.y - physics.radius).clamp(0.0, 8.0);
-    final shadowAlpha =
-        ((0.52 / (1.0 + heightAboveFloor * 0.40)) * opacity).clamp(0.0, 0.52);
-
-    if (shadowAlpha > 0.01) {
-      final zScale = camera3D.scaleAtDepth(physics.pos.z);
-      final visualRadius = radius * zScale * 1.38;
-      final shadowScale = 1.0 + heightAboveFloor * 0.16;
-      final blurMeters = (0.05 + heightAboveFloor * 0.06).clamp(0.05, 0.35);
-
-      final shadowPaint = Paint()
-        ..color = Color.fromRGBO(0, 0, 0, shadowAlpha)
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, blurMeters);
-
-      final shadowRect = Rect.fromCenter(
-        center: shadowLocalOffset,
-        width: visualRadius * 2.2 * shadowScale,
-        height: visualRadius * 0.42 * shadowScale, // Perspective flattening
+    if (onCourtFloor) {
+      final floorF2D = camera3D.projectToForge2D(
+        physics.pos.x,
+        0.0,
+        physics.pos.z,
       );
-      canvas.drawOval(shadowRect, shadowPaint);
+      final shadowLocalOffset = Offset(
+        floorF2D.dx - body.position.x,
+        floorF2D.dy - body.position.y,
+      );
+
+      final heightAboveFloor =
+          (physics.pos.y - physics.radius).clamp(0.0, 8.0);
+      final shadowAlpha =
+          ((0.52 / (1.0 + heightAboveFloor * 0.40)) * opacity).clamp(0.0, 0.52);
+
+      if (shadowAlpha > 0.01) {
+        final zScale = camera3D.scaleAtDepth(physics.pos.z);
+        final visualRadius = radius * zScale * 1.38;
+        final shadowScale = 1.0 + heightAboveFloor * 0.16;
+        final blurMeters = (0.05 + heightAboveFloor * 0.06).clamp(0.05, 0.35);
+
+        final shadowPaint = Paint()
+          ..color = Color.fromRGBO(0, 0, 0, shadowAlpha)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, blurMeters);
+
+        final shadowRect = Rect.fromCenter(
+          center: shadowLocalOffset,
+          width: visualRadius * 2.2 * shadowScale,
+          height: visualRadius * 0.42 * shadowScale, // Perspective flattening
+        );
+        canvas.drawOval(shadowRect, shadowPaint);
+      }
     }
 
     // 2. Monotonic Perspective Foreshortening based on exact 3D Z-depth
