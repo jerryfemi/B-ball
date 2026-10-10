@@ -33,17 +33,20 @@ class PerspectiveCamera3D {
     required this.pixelsPerMeter,
   });
 
-  /// Factory calibrated to match the grounded arena perspective (60.5% horizon, edge-on rim POV).
+  /// Factory calibrated to match the unified 3D arena perspective:
+  /// - Horizon line at 27.0% height (eye level passing through hoop)
+  /// - Camera eye height at 2.91m (looking slightly downward into court)
+  /// - Court floor extends from 65.0% (back wall baseline) to 100% (player's feet)
+  /// - Hoop rim (Y=3.05m, Z=4.50m) projects to exactly Y=0.25H (Forge2D Y=5.0)
   factory PerspectiveCamera3D.standard(double screenWidth, double screenHeight) {
-    // Horizon line at 60.5% height (grounded court floor, tall majestic back wall)
-    final horizonY = screenHeight * 0.605;
-    final ppm = screenHeight * 0.339;
+    final horizonY = screenHeight * 0.270;
+    final ppm = screenHeight * 0.251;
 
     return PerspectiveCamera3D(
       screenWidth: screenWidth,
       screenHeight: screenHeight,
       horizonScreenY: horizonY,
-      eyeHeightInMeters: 1.178,
+      eyeHeightInMeters: 2.91,
       focalDistance: 5.7,
       pixelsPerMeter: ppm,
     );
