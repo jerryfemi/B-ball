@@ -10,10 +10,58 @@ import 'components/hoop_physics.dart';
 import 'components/ball.dart';
 import 'components/ground.dart';
 
+/// Encapsulates details of a made basketball shot.
+class ScoreEvent {
+  final int points;
+  final bool isSwish;
+  final bool isBankShot;
+  final int streak;
+
+  const ScoreEvent({
+    required this.points,
+    required this.isSwish,
+    required this.isBankShot,
+    required this.streak,
+  });
+}
+
 class BasketballGame extends Forge2DGame {
   BasketballGame() : super(gravity: Vector2(0, 30.0));
 
   static const double worldHeightInMeters = 20.0;
+
+  // Game state & scoring pipeline
+  int score = 0;
+  int currentStreak = 0;
+  int bestStreak = 0;
+  void Function(ScoreEvent event)? onScoreEvent;
+
+  void registerScore({required bool isSwish, required bool isBankShot}) {
+    currentStreak++;
+    if (currentStreak > bestStreak) {
+      bestStreak = currentStreak;
+    }
+
+    // Regulation GamePigeon scoring rules:
+    // Base basket: 2 pts. Swish bonus: +1 pt (3 pts total). Bank shot bonus: +1 pt (3 pts total).
+    // Consecutive streak bonus: +1 additional point for streaks of 3 or more.
+    final basePoints = isSwish ? 3 : (isBankShot ? 3 : 2);
+    final streakBonus = currentStreak >= 3 ? (currentStreak - 2) : 0;
+    final points = basePoints + streakBonus;
+    score += points;
+
+    final event = ScoreEvent(
+      points: points,
+      isSwish: isSwish,
+      isBankShot: isBankShot,
+      streak: currentStreak,
+    );
+    onScoreEvent?.call(event);
+  }
+
+  void resetStreak() {
+    currentStreak = 0;
+  }
 
   @override
   Color backgroundColor() => const Color(0xFF090D16);
@@ -101,12 +149,18 @@ class BasketballGame extends Forge2DGame {
       radius: 0.58,
       animateEntrance: animate,
       onLaunched: () {
-        // Snappy feed of next ball: 250ms delay
-        Future.delayed(const Duration(milliseconds: 250), () {
-          if (isLoaded) {
-            _spawnReadyBall(animate: true);
-          }
-        });
+        // Snappy feed of next ball: 250ms delay managed via Flame TimerComponent
+        add(
+          TimerComponent(
+            period: 0.25,
+            removeOnFinish: true,
+            onTick: () {
+              if (isLoaded) {
+                _spawnReadyBall(animate: true);
+              }
+            },
+          ),
+        );
       },
     );
     world.add(ball);
