@@ -73,9 +73,12 @@ class BallPhysics3D {
 
   /// Steps the 3D physics simulation forward by [dt] seconds using substep integration.
   void update(double dt) {
-    if (!isLaunched || isSettled) return;
+    if (!isLaunched) return;
 
+    // Always increment the lifecycle timer, even if the ball is settled on the floor
     timeSinceLaunch += dt;
+
+    if (isSettled) return;
 
     // Substep integration (4 substeps per frame) for robust collision handling
     const int substeps = 4;
