@@ -11,6 +11,7 @@ import '../basketball_game.dart';
 import '../physics/ball_physics_3d.dart';
 import '../physics/perspective_camera.dart';
 import '../physics/launch_solver.dart';
+import 'wall_impact_puff.dart';
 
 /// Basketball component featuring true 3D projectile kinematics,
 /// exact 3D Torus rim collision, backboard glass bounce, hardwood floor roll,
@@ -24,17 +25,24 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
   // 3D physics simulator
   late final BallPhysics3D physics;
 
-  // 3D perspective camera for projection
-  PerspectiveCamera3D get camera3D =>
-      PerspectiveCamera3D.standard(game.size.x, game.size.y);
+  // Cached 3D perspective camera for projection
+  PerspectiveCamera3D? _cachedCamera;
+  Vector2? _lastCameraSize;
+
+  PerspectiveCamera3D get camera3D {
+    if (_cachedCamera == null || _lastCameraSize != game.size) {
+      _lastCameraSize = game.size.clone();
+      _cachedCamera = PerspectiveCamera3D.standard(game.size.x, game.size.y);
+    }
+    return _cachedCamera!;
+  }
 
   ui.FragmentProgram? _program;
   bool isEntering = false;
   double enterProgress = 0.0;
 
-  Vector2? _dragStartPos;
-  Vector2? _lastDragPos;
-  int? _dragStartTimeMs;
+  // Rolling touch history for release velocity estimation
+  final List<_TouchSample> _touchSamples = [];
 
   Basketball({
     required this.initialPosition,
@@ -45,10 +53,27 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     physics = BallPhysics3D(
       initialPos: Vector3(initialPosition.x / 6.78, 0.25, 0.0),
       radius: 0.125,
+      onWallImpact: (impactPt) {
+        if (!isMounted) return;
+        final wallF2D = camera3D.projectToForge2D(
+          impactPt.x,
+          impactPt.y,
+          impactPt.z,
+        );
+        final wallScale = camera3D.scaleAtDepth(BallPhysics3D.wallZ);
+        final visualRadius = radius * wallScale * 1.38;
+        game.world.add(
+          WallImpactPuff(
+            position: Vector2(wallF2D.dx, wallF2D.dy),
+            baseRadius: visualRadius,
+          ),
+        );
+      },
     );
     if (animateEntrance) {
       isEntering = true;
-      physics.pos.y = -0.4; // Start slightly below floor level for smooth slide-in
+      physics.pos.y =
+          -0.4; // Start slightly below floor level for smooth slide-in
     }
   }
 
@@ -173,7 +198,8 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
 
     // 1. Continuous Hardwood Floor Drop Shadow
     // Shadow is calculated at (physics.pos.x, 0.0, physics.pos.z) on the court floor
-    final bool onCourtFloor = physics.pos.z <= BallPhysics3D.wallZ &&
+    final bool onCourtFloor =
+        physics.pos.z <= BallPhysics3D.wallZ &&
         physics.pos.x.abs() <= BallPhysics3D.halfWidth;
 
     if (onCourtFloor) {
@@ -187,10 +213,9 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
         floorF2D.dy - body.position.y,
       );
 
-      final heightAboveFloor =
-          (physics.pos.y - physics.radius).clamp(0.0, 8.0);
-      final shadowAlpha =
-          ((0.52 / (1.0 + heightAboveFloor * 0.40)) * opacity).clamp(0.0, 0.52);
+      final heightAboveFloor = (physics.pos.y - physics.radius).clamp(0.0, 8.0);
+      final shadowAlpha = ((0.52 / (1.0 + heightAboveFloor * 0.40)) * opacity)
+          .clamp(0.0, 0.52);
 
       if (shadowAlpha > 0.01) {
         final zScale = camera3D.scaleAtDepth(physics.pos.z);
@@ -211,7 +236,102 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
       }
     }
 
-    // 2. Monotonic Perspective Foreshortening based on exact 3D Z-depth
+    // 2. Dynamic Backboard Glass Proximity Contact Shadow
+    // Cast on the transparent backboard when within ~35cm in front of the board (Z in 4.50m..4.85m)
+    final double distToBoard =
+        (BallPhysics3D.backboardZ - (physics.pos.z + physics.radius))
+            .clamp(0.0, 0.35);
+    final bool inBoardFrame =
+        physics.pos.x.abs() <= BallPhysics3D.backboardMaxX + 0.05 &&
+        physics.pos.y >= BallPhysics3D.backboardMinY - 0.05 &&
+        physics.pos.y <= BallPhysics3D.backboardMaxY + 0.05;
+
+    if (distToBoard < 0.35 && inBoardFrame) {
+      final double boardProximity = 1.0 - (distToBoard / 0.35);
+      final double boardShadowAlpha =
+          (boardProximity * 0.42 * opacity).clamp(0.0, 0.42);
+
+      if (boardShadowAlpha > 0.01) {
+        // Overhead arena spotlight: casts shadow slightly downward on the glass
+        final double shadowY = physics.pos.y - (0.02 + distToBoard * 0.05);
+        final boardF2D = camera3D.projectToForge2D(
+          physics.pos.x,
+          shadowY,
+          BallPhysics3D.backboardZ,
+        );
+        final boardShadowOffset = Offset(
+          boardF2D.dx - body.position.x,
+          boardF2D.dy - body.position.y,
+        );
+
+        final boardZScale = camera3D.scaleAtDepth(BallPhysics3D.backboardZ);
+        final boardVisualRadius = radius * boardZScale * 1.38;
+        final shadowSpread = 1.0 + (1.0 - boardProximity) * 0.30;
+        final blurMeters =
+            (0.03 + (1.0 - boardProximity) * 0.10).clamp(0.02, 0.16);
+
+        final boardShadowPaint = Paint()
+          ..color = Color.fromRGBO(0, 0, 0, boardShadowAlpha)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, blurMeters);
+
+        final boardShadowRect = Rect.fromCenter(
+          center: boardShadowOffset,
+          width: boardVisualRadius * 1.9 * shadowSpread,
+          height: boardVisualRadius * 1.9 * shadowSpread,
+        );
+        canvas.drawOval(boardShadowRect, boardShadowPaint);
+      }
+    }
+
+    // 3. Dynamic Brick Back Wall Proximity Contact Shadow
+    // Cast when the ball gets within ~0.70m of the back wall plane (wallZ = 5.25m)
+    final double distToWall =
+        (BallPhysics3D.wallZ - (physics.pos.z + physics.radius)).clamp(
+          0.0,
+          0.70,
+        );
+    if (distToWall < 0.70 && physics.pos.x.abs() <= BallPhysics3D.halfWidth) {
+      final double wallProximity = 1.0 - (distToWall / 0.70);
+      final double wallShadowAlpha = (wallProximity * 0.60 * opacity).clamp(
+        0.0,
+        0.60,
+      );
+
+      if (wallShadowAlpha > 0.01) {
+        // Overhead arena spotlight: casts shadow slightly downward on the vertical wall
+        final double shadowY = physics.pos.y - (0.04 + distToWall * 0.08);
+        final wallF2D = camera3D.projectToForge2D(
+          physics.pos.x,
+          shadowY,
+          BallPhysics3D.wallZ,
+        );
+        final wallShadowOffset = Offset(
+          wallF2D.dx - body.position.x,
+          wallF2D.dy - body.position.y,
+        );
+
+        final wallZScale = camera3D.scaleAtDepth(BallPhysics3D.wallZ);
+        final wallVisualRadius = radius * wallZScale * 1.38;
+        final shadowSpread = 1.0 + (1.0 - wallProximity) * 0.35;
+        final blurMeters = (0.04 + (1.0 - wallProximity) * 0.14).clamp(
+          0.03,
+          0.22,
+        );
+
+        final wallShadowPaint = Paint()
+          ..color = Color.fromRGBO(0, 0, 0, wallShadowAlpha)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, blurMeters);
+
+        final wallShadowRect = Rect.fromCenter(
+          center: wallShadowOffset,
+          width: wallVisualRadius * 2.0 * shadowSpread,
+          height: wallVisualRadius * 2.0 * shadowSpread,
+        );
+        canvas.drawOval(wallShadowRect, wallShadowPaint);
+      }
+    }
+
+    // 3. Monotonic Perspective Foreshortening based on exact 3D Z-depth
     final scaleFactor = 1.38 * camera3D.scaleAtDepth(physics.pos.z);
 
     canvas.save();
@@ -264,17 +384,22 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
   @override
   bool containsPoint(Vector2 point) {
     if (isLaunched || isEntering) return false;
-    final dist = (point - body.position).length;
-    return dist <= radius * 2.5;
+    // Lower ~45% of the screen (Y >= 11.0m in Forge2D world)
+    // or within generous radius of the ready ball
+    return point.y >= 11.0 || (point - body.position).length <= radius * 2.5;
   }
 
   @override
   void onDragStart(DragStartEvent event) {
     super.onDragStart(event);
     if (!isLaunched && !isEntering) {
-      _dragStartPos = event.canvasPosition;
-      _lastDragPos = event.canvasPosition;
-      _dragStartTimeMs = DateTime.now().millisecondsSinceEpoch;
+      _touchSamples.clear();
+      _touchSamples.add(
+        _TouchSample(
+          event.canvasPosition,
+          DateTime.now().millisecondsSinceEpoch,
+        ),
+      );
     }
   }
 
@@ -282,7 +407,14 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
   void onDragUpdate(DragUpdateEvent event) {
     super.onDragUpdate(event);
     if (!isLaunched && !isEntering) {
-      _lastDragPos = event.canvasEndPosition;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      _touchSamples.add(_TouchSample(event.canvasEndPosition, now));
+
+      // Keep sample buffer compact (retain last ~150ms)
+      while (_touchSamples.length > 2 &&
+          now - _touchSamples.first.timestampMs > 150) {
+        _touchSamples.removeAt(0);
+      }
     }
   }
 
@@ -290,54 +422,60 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
   void onDragEnd(DragEndEvent event) {
     super.onDragEnd(event);
 
-    if (isLaunched || isEntering) return;
+    if (isLaunched || isEntering || _touchSamples.isEmpty) return;
 
-    double finalVx = event.velocity.x;
-    double finalVy = event.velocity.y;
-    Vector2? delta;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final lastSample = _touchSamples.last;
 
-    if (_dragStartPos != null &&
-        _lastDragPos != null &&
-        _dragStartTimeMs != null) {
-      delta = _lastDragPos! - _dragStartPos!;
+    // 1. Resting finger cancel:
+    // If the finger rested/paused for >80ms before lifting, cancel the throw
+    // so players can comfortably abort or pause without launching wild shots.
+    if (now - lastSample.timestampMs > 80) {
+      _touchSamples.clear();
+      return;
+    }
+
+    // 2. Trailing ~90ms release window:
+    // Filter samples to strictly the final 90ms of finger motion
+    final windowStartMs = lastSample.timestampMs - 90;
+    final windowSamples = _touchSamples
+        .where((s) => s.timestampMs >= windowStartMs)
+        .toList();
+
+    double vx = event.velocity.x;
+    double vy = event.velocity.y;
+
+    if (windowSamples.length >= 2) {
+      final firstInWindow = windowSamples.first;
       final dtSec =
-          (DateTime.now().millisecondsSinceEpoch - _dragStartTimeMs!).clamp(
-            40,
-            500,
-          ) /
-          1000.0;
-      final dispVy = delta.y / dtSec;
-      final dispVx = delta.x / dtSec;
+          (lastSample.timestampMs - firstInWindow.timestampMs) / 1000.0;
+      if (dtSec > 0.012) {
+        final sampleVx =
+            (lastSample.position.x - firstInWindow.position.x) / dtSec;
+        final sampleVy =
+            (lastSample.position.y - firstInWindow.position.y) / dtSec;
 
-      // Use displacement velocity if it was a faster upward flick
-      if (dispVy < finalVy) {
-        finalVy = dispVy;
-        finalVx = dispVx;
+        // Use displacement velocity if it captured a faster upward flick
+        if (sampleVy < vy) {
+          vy = sampleVy;
+          vx = sampleVx;
+        }
       }
     }
 
+    _touchSamples.clear();
+
+    // 3. Minimum upward flick threshold:
     // Only launch when swiped upwards toward the hoop
-    final isUpward = finalVy <= -40.0 || (delta != null && delta.y <= -25.0);
-    if (!isUpward) return;
+    if (vy >= -120.0) return;
 
     // Upward swipe velocity in pixels/second
-    final swipeSpeedY = finalVy.abs();
+    final swipeSpeedY = vy.abs();
     // Lateral swipe ratio (aim angle dx / |dy|)
-    final swipeRatioX = (finalVx / swipeSpeedY).clamp(-0.8, 0.8);
+    final swipeRatioX = (vx / swipeSpeedY).clamp(-0.80, 0.80);
 
-    // Dynamic swipe calibration with 55% reduced speed threshold (lighter, effortless flick):
-    // - Under 315 px/s: weak flick -> 0.60 to 0.88 (short arc, front rim clank or key landing)
-    // - 315 to 990 px/s: natural swipe -> 0.88 to 1.08 (sweet spot centered at ~700 px/s for swishes & soft bank shots)
-    // - 990+ px/s: aggressive swipe -> 1.08 to 1.25 (deep backboard bank)
-    double powerRatio;
-    if (swipeSpeedY < 315.0) {
-      powerRatio = 0.60 + (swipeSpeedY / 315.0) * 0.28;
-    } else if (swipeSpeedY <= 990.0) {
-      powerRatio = 0.88 + ((swipeSpeedY - 315.0) / 675.0) * 0.20;
-    } else {
-      powerRatio = 1.08 + ((swipeSpeedY - 990.0) / 720.0) * 0.17;
-    }
-    powerRatio = powerRatio.clamp(0.45, 1.28);
+    // 4. GamePigeon Power Plateau calculation via LaunchSolver
+    final powerRatio = LaunchSolver.flickToPower(swipeSpeedY);
 
     final launchVel = LaunchSolver.calculateLaunchVelocity(
       powerRatio: powerRatio,
@@ -348,4 +486,11 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     physics.launch(launchVel, backspin: 14.0);
     onLaunched?.call();
   }
+}
+
+/// Lightweight timestamped touch sample for rolling velocity estimation
+class _TouchSample {
+  final Vector2 position;
+  final int timestampMs;
+  const _TouchSample(this.position, this.timestampMs);
 }
