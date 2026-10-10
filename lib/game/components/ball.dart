@@ -43,7 +43,7 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     this.animateEntrance = false,
   }) : super(priority: 5) {
     physics = BallPhysics3D(
-      initialPos: Vector3(0.0, 0.25, 0.0),
+      initialPos: Vector3(initialPosition.x / 6.78, 0.25, 0.0),
       radius: 0.125,
     );
     if (animateEntrance) {
@@ -117,8 +117,8 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
       // 1. Advance the 3D physics engine (substeps, torus rim, backboard, floor)
       physics.update(dt);
 
-      // 2. Lifecycle cleanup: remove spent balls lingering on court after 6 seconds
-      if (physics.timeSinceLaunch > 6.0) {
+      // 2. Lifecycle cleanup: 3s visible + 2s fade = 5s total court lifetime
+      if (physics.timeSinceLaunch > 5.0) {
         removeFromParent();
         return;
       }
@@ -156,9 +156,9 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
 
   @override
   void render(Canvas canvas) {
-    // Fade out over the last 3 seconds of the 6-second lifetime
+    // 3 seconds solid, then smooth 2-second fade out (5s total)
     final double opacity = physics.timeSinceLaunch > 3.0
-        ? (1.0 - (physics.timeSinceLaunch - 3.0) / 3.0).clamp(0.0, 1.0)
+        ? (1.0 - (physics.timeSinceLaunch - 3.0) / 2.0).clamp(0.0, 1.0)
         : 1.0;
 
     canvas.saveLayer(
