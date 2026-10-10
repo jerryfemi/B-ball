@@ -1,22 +1,77 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
+
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 
-/// Authentic GamePigeon basketball court background:
-/// - Weathered red clay brick wall with mortar joints and ambient lighting.
-/// - Terracotta/crimson painted key court with maple flanks and regulation markings.
-/// - Pole anchor baseplate collar.
-/// - Glossy vertical white pole reflection streak down the center court.
+import 'background/court_floor_renderer.dart';
+import 'background/distant_wall_renderer.dart';
+import 'background/lighting_renderer.dart';
+import 'background/room_geometry.dart';
+
+/// Authentic GamePigeon Gymnasium Court Environment:
+/// Orchestrates unified 3D perspective background with:
+/// - Exposed red clay brick back wall with sandy light mortar
+/// - Maple hardwood court floor with true 3D perspective markings
+/// - Collegiate terracotta key, restricted area arc, and free-throw circle
+/// - Signature vertical pole floor reflection streak
+/// - Volumetric arena floodlight focus
+///
+/// Fully baked to an immutable GPU texture via [ui.Picture.toImageSync]
+/// for zero per-frame CPU/GPU rasterization overhead (single texture blit).
 class GameBackground extends Component with HasGameReference {
-  // Deterministic brick color palette (clay, terracotta, burnt sienna)
-  static const List<Color> _brickColors = [
-    Color(0xFFA33B27),
-    Color(0xFF8F2F1E),
-    Color(0xFFB54631),
-    Color(0xFF7C2617),
-    Color(0xFF993724),
-    Color(0xFFAB412D),
-  ];
+  final DistantWallRenderer _distantWallRenderer = DistantWallRenderer();
+  final CourtFloorRenderer _courtFloorRenderer = CourtFloorRenderer();
+  final LightingRenderer _lightingRenderer = LightingRenderer();
+
+  ui.Image? _cachedImage;
+  Vector2? _cachedSize;
+
+  @override
+  void onGameResize(Vector2 size) {
+    super.onGameResize(size);
+    _invalidateCache();
+  }
+
+  void _invalidateCache() {
+    _cachedImage?.dispose();
+    _cachedImage = null;
+    _cachedSize = null;
+  }
+
+  void _rebuildCache(double width, double height) {
+    _cachedImage?.dispose();
+
+    final views = WidgetsBinding.instance.platformDispatcher.views;
+    final dpr = views.isNotEmpty ? views.first.devicePixelRatio : 1.0;
+
+    final pixelWidth = math.max(1, (width * dpr).round());
+    final pixelHeight = math.max(1, (height * dpr).round());
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(
+      recorder,
+      Rect.fromLTWH(0, 0, pixelWidth.toDouble(), pixelHeight.toDouble()),
+    );
+    canvas.scale(dpr, dpr);
+
+    final geom = RoomGeometry.fromScreenSize(width, height);
+
+    // 1. Authentic GamePigeon exposed red clay brick gym back wall
+    _distantWallRenderer.render(canvas, geom);
+
+    // 2. Hardwood court floor with unified 3D perspective markings & pole reflection
+    _courtFloorRenderer.render(canvas, geom);
+
+    // 3. Subtle arena floodlight focus & corner vignette
+    _lightingRenderer.render(canvas, geom);
+
+    final picture = recorder.endRecording();
+    _cachedImage = picture.toImageSync(pixelWidth, pixelHeight);
+    picture.dispose();
+
+    _cachedSize = Vector2(width, height);
+  }
 
   @override
   void render(Canvas canvas) {
@@ -24,208 +79,34 @@ class GameBackground extends Component with HasGameReference {
 
     final width = game.size.x;
     final height = game.size.y;
-    final wallHeight = height * 0.50; // Expansive court horizon: 50% wall, 50% floor
-    final floorHeight = height - wallHeight;
 
-    _renderBrickWall(canvas, width, wallHeight);
-    _renderCourtFloor(canvas, width, height, wallHeight, floorHeight);
-  }
+    if (width <= 0 || height <= 0) return;
 
-  void _renderBrickWall(Canvas canvas, double width, double wallHeight) {
-    final wallRect = Rect.fromLTWH(0, 0, width, wallHeight);
-
-    // 1. Sandy mortar base background
-    final mortarPaint = Paint()..color = const Color(0xFF7A6858);
-    canvas.drawRect(wallRect, mortarPaint);
-
-    // 2. Running-bond clay bricks
-    const brickWidth = 44.0;
-    const brickHeight = 16.0;
-    const mortarGap = 3.0;
-    const stepX = brickWidth + mortarGap;
-    const stepY = brickHeight + mortarGap;
-
-    final brickPaint = Paint()..style = PaintingStyle.fill;
-    final highlightPaint = Paint()
-      ..color = const Color(0x18FFFFFF)
-      ..strokeWidth = 1.0;
-    final shadowPaint = Paint()
-      ..color = const Color(0x28000000)
-      ..strokeWidth = 1.0;
-
-    int row = 0;
-    for (double y = 0; y < wallHeight; y += stepY) {
-      final isOdd = row % 2 == 1;
-      final startX = isOdd ? -brickWidth / 2 : 0.0;
-      int col = 0;
-
-      for (double x = startX; x < width + brickWidth; x += stepX) {
-        // Deterministic brick color selection
-        final colorIndex = ((row * 13) + (col * 7)) % _brickColors.length;
-        brickPaint.color = _brickColors[colorIndex];
-
-        final bRect = Rect.fromLTWH(
-          x,
-          y,
-          brickWidth,
-          math.min(brickHeight, wallHeight - y),
-        );
-        final rRect =
-            RRect.fromRectAndRadius(bRect, const Radius.circular(1.5));
-        canvas.drawRRect(rRect, brickPaint);
-
-        // Subtle top bevel highlight and bottom bevel shadow for 3D brick depth
-        canvas.drawLine(
-          Offset(bRect.left + 1, bRect.top + 1),
-          Offset(bRect.right - 1, bRect.top + 1),
-          highlightPaint,
-        );
-        canvas.drawLine(
-          Offset(bRect.left + 1, bRect.bottom - 1),
-          Offset(bRect.right - 1, bRect.bottom - 1),
-          shadowPaint,
-        );
-
-        col++;
-      }
-      row++;
+    if (_cachedImage == null ||
+        _cachedSize == null ||
+        _cachedSize!.x != width ||
+        _cachedSize!.y != height) {
+      _rebuildCache(width, height);
     }
 
-    // 3. Ambient atmospheric lighting & vignette
-    final vignettePaint = Paint()
-      ..shader = const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          Color(0x80000000), // Darker at ceiling
-          Color(0x15000000), // Soft ambient in middle
-          Color(0x40000000), // Shadow meeting the floor junction
-        ],
-        stops: [0.0, 0.65, 1.0],
-      ).createShader(wallRect);
-    canvas.drawRect(wallRect, vignettePaint);
-
-    // 4. Subtle wall base molding / junction trim
-    final trimPaint = Paint()..color = const Color(0xFF1E140F);
-    canvas.drawRect(
-      Rect.fromLTWH(0, wallHeight - 4.0, width, 4.0),
-      trimPaint,
-    );
+    if (_cachedImage != null) {
+      canvas.drawImageRect(
+        _cachedImage!,
+        Rect.fromLTWH(
+          0,
+          0,
+          _cachedImage!.width.toDouble(),
+          _cachedImage!.height.toDouble(),
+        ),
+        Rect.fromLTWH(0, 0, width, height),
+        Paint()..filterQuality = FilterQuality.low,
+      );
+    }
   }
 
-  void _renderCourtFloor(
-    Canvas canvas,
-    double width,
-    double height,
-    double wallHeight,
-    double floorHeight,
-  ) {
-    final floorRect = Rect.fromLTWH(0, wallHeight, width, floorHeight);
-    final centerX = width / 2;
-
-    // 1. Maple hardwood outer flanks
-    final maplePaint = Paint()
-      ..shader = const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          Color(0xFFC78B4E),
-          Color(0xFFD69A5C),
-          Color(0xFFC98E50),
-        ],
-      ).createShader(floorRect);
-    canvas.drawRect(floorRect, maplePaint);
-
-    // Subtle maple floor planks
-    final plankLinePaint = Paint()
-      ..color = const Color(0x18000000)
-      ..strokeWidth = 0.8;
-    for (double y = wallHeight; y < height; y += 18.0) {
-      canvas.drawLine(Offset(0, y), Offset(width, y), plankLinePaint);
-    }
-
-    // 2. Terracotta/Crimson painted key court trapezoid in deep perspective
-    final topKeyWidth = width * 0.40;
-    final bottomKeyWidth = width * 0.88;
-
-    final keyPath = Path()
-      ..moveTo(centerX - topKeyWidth / 2, wallHeight)
-      ..lineTo(centerX + topKeyWidth / 2, wallHeight)
-      ..lineTo(centerX + bottomKeyWidth / 2, height)
-      ..lineTo(centerX - bottomKeyWidth / 2, height)
-      ..close();
-
-    final keyPaint = Paint()
-      ..shader = const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          Color(0xFF8B1E1E), // Deeper crimson near back wall
-          Color(0xFFA52A2A), // Vibrant terracotta red center
-          Color(0xFF962323), // Foreground red
-        ],
-      ).createShader(floorRect);
-    canvas.drawPath(keyPath, keyPaint);
-
-    final keyBorderPaint = Paint()
-      ..color = const Color(0xFFFACC15) // Yellow arcade border line instead of dark
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3.0;
-    canvas.drawPath(keyPath, keyBorderPaint);
-
-    // 3. Free-Throw Markings
-    _renderCourtMarkings(canvas, width, height, wallHeight, floorHeight);
-
-    // 4. Overall floor gloss sheen overlay
-    final floorGlossPaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          const Color(0x30FFFFFF),
-          const Color(0x05FFFFFF),
-          Colors.transparent,
-        ],
-        stops: const [0.0, 0.4, 1.0],
-      ).createShader(floorRect);
-    canvas.drawRect(floorRect, floorGlossPaint);
-  }
-
-  void _renderCourtMarkings(
-    Canvas canvas,
-    double width,
-    double height,
-    double wallHeight,
-    double floorHeight,
-  ) {
-    final centerX = width / 2;
-
-    // Free-throw circle arc in deep perspective
-    final circleCenterY = wallHeight + floorHeight * 0.38;
-    final radiusX = width * 0.22;
-    final radiusY = floorHeight * 0.12;
-
-    final arcRect = Rect.fromCenter(
-      center: Offset(centerX, circleCenterY),
-      width: radiusX * 2,
-      height: radiusY * 2,
-    );
-
-    // Solid front arc (facing player)
-    final solidArcPaint = Paint()
-      ..color = const Color(0xFFFACC15) // Yellow arcade markings
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3.0;
-    canvas.drawArc(arcRect, 0, math.pi, false, solidArcPaint);
-
-    // Dashed back arc (receding toward basket)
-    final dashedArcPaint = Paint()
-      ..color = const Color(0xCCFACC15)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3.0;
-
-    for (double a = math.pi; a < 2 * math.pi; a += 0.35) {
-      canvas.drawArc(arcRect, a, 0.18, false, dashedArcPaint);
-    }
+  @override
+  void onRemove() {
+    _invalidateCache();
+    super.onRemove();
   }
 }

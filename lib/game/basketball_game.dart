@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flame/components.dart';
 import 'package:flame_forge2d/flame_forge2d.dart';
 import 'package:flutter/material.dart';
@@ -9,10 +10,58 @@ import 'components/hoop_physics.dart';
 import 'components/ball.dart';
 import 'components/ground.dart';
 
+/// Encapsulates details of a made basketball shot.
+class ScoreEvent {
+  final int points;
+  final bool isSwish;
+  final bool isBankShot;
+  final int streak;
+
+  const ScoreEvent({
+    required this.points,
+    required this.isSwish,
+    required this.isBankShot,
+    required this.streak,
+  });
+}
+
 class BasketballGame extends Forge2DGame {
   BasketballGame() : super(gravity: Vector2(0, 30.0));
 
   static const double worldHeightInMeters = 20.0;
+
+  // Game state & scoring pipeline
+  int score = 0;
+  int currentStreak = 0;
+  int bestStreak = 0;
+  void Function(ScoreEvent event)? onScoreEvent;
+
+  void registerScore({required bool isSwish, required bool isBankShot}) {
+    currentStreak++;
+    if (currentStreak > bestStreak) {
+      bestStreak = currentStreak;
+    }
+
+    // Regulation GamePigeon scoring rules:
+    // Base basket: 2 pts. Swish bonus: +1 pt (3 pts total). Bank shot bonus: +1 pt (3 pts total).
+    // Consecutive streak bonus: +1 additional point for streaks of 3 or more.
+    final basePoints = isSwish ? 3 : (isBankShot ? 3 : 2);
+    final streakBonus = currentStreak >= 3 ? (currentStreak - 2) : 0;
+    final points = basePoints + streakBonus;
+    score += points;
+
+    final event = ScoreEvent(
+      points: points,
+      isSwish: isSwish,
+      isBankShot: isBankShot,
+      streak: currentStreak,
+    );
+    onScoreEvent?.call(event);
+  }
+
+  void resetStreak() {
+    currentStreak = 0;
+  }
 
   @override
   Color backgroundColor() => const Color(0xFF090D16);
@@ -79,19 +128,39 @@ class BasketballGame extends Forge2DGame {
     );
   }
 
+  double _lastSpawnX = 0.0;
+  final math.Random _rng = math.Random();
+
+  double _pickNextSpawnX() {
+    // Diverse shooting positions along the bottom baseline (in Forge2D meters)
+    const candidates = [-1.4, -0.7, 0.0, 0.7, 1.4];
+    final options =
+        candidates.where((x) => (x - _lastSpawnX).abs() >= 0.5).toList();
+    final chosen = options[_rng.nextInt(options.length)];
+    _lastSpawnX = chosen;
+    return chosen;
+  }
+
   void _spawnReadyBall({bool animate = false}) {
+    final spawnX = animate ? _pickNextSpawnX() : 0.0;
     final ball = Basketball(
-      // Rest directly on the hardwood court floor (floor 19.2m - radius 0.58m = 18.62m)
-      initialPosition: Vector2(0, 18.62),
+      // Rest directly on the hardwood court floor at the chosen baseline spot
+      initialPosition: Vector2(spawnX, 18.62),
       radius: 0.58,
       animateEntrance: animate,
       onLaunched: () {
-        // Wait 800ms for launched ball to clear the key before feeding next ball
-        Future.delayed(const Duration(milliseconds: 800), () {
-          if (isLoaded) {
-            _spawnReadyBall(animate: true);
-          }
-        });
+        // Snappy feed of next ball: 250ms delay managed via Flame TimerComponent
+        add(
+          TimerComponent(
+            period: 0.25,
+            removeOnFinish: true,
+            onTick: () {
+              if (isLoaded) {
+                _spawnReadyBall(animate: true);
+              }
+            },
+          ),
+        );
       },
     );
     world.add(ball);

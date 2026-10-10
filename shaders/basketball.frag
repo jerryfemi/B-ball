@@ -49,46 +49,94 @@ void main() {
         -sy, 0.0, cy
     );
     
-    // Apply rotations to get the physical point on the texture
+    // Physical surface coordinate on the spinning sphere
     vec3 spherePos = rotY * rotX * normal;
     
-    // --- Draw the Basketball Seams ---
-    float lineThickness = 0.06;
-    bool isSeam = false;
+    // --- 1. Authentic Seams (Recessed Rubber Grooves with Raised Lip) ---
+    float distToSeam = 1.0;
     
     // Equator seam
-    if (abs(spherePos.y) < lineThickness) isSeam = true;
+    distToSeam = min(distToSeam, abs(spherePos.y));
     // Vertical seam
-    if (abs(spherePos.x) < lineThickness) isSeam = true;
+    distToSeam = min(distToSeam, abs(spherePos.x));
+    // Curved side seams
+    float distLeft = abs(distance(spherePos.xz, vec2(-0.8, 0.0)) - 0.6);
+    float distRight = abs(distance(spherePos.xz, vec2(0.8, 0.0)) - 0.6);
+    distToSeam = min(distToSeam, min(distLeft, distRight));
     
-    // The curved side seams (roughly mimicking the U-shape of a real basketball)
-    // We can simulate this by checking distance from two specific points
-    float distLeft = distance(spherePos.xz, vec2(-0.8, 0.0));
-    float distRight = distance(spherePos.xz, vec2(0.8, 0.0));
-    if (abs(distLeft - 0.6) < lineThickness) isSeam = true;
-    if (abs(distRight - 0.6) < lineThickness) isSeam = true;
+    float lineThickness = 0.052;
+    // Seam channel factor: 1.0 inside groove, 0.0 on leather
+    float seamMask = smoothstep(lineThickness, lineThickness * 0.72, distToSeam);
     
-    // Base colors
-    vec3 orangeColor = vec3(0.9, 0.4, 0.05); // Deep basketball orange
-    vec3 seamColor = vec3(0.15, 0.15, 0.15); // Dark grey/black for lines
+    // Raised leather ridge directly adjacent to the recessed seam
+    float seamRidge = smoothstep(lineThickness * 1.45, lineThickness, distToSeam) * (1.0 - seamMask) * 0.22;
     
-    vec3 color = isSeam ? seamColor : orangeColor;
+    // --- 2. Microscopic Pebbled Leather Texture (Dimpled Bumps) ---
+    // Frequency tuned for authentic basketball pebble density
+    vec3 pebbleP = spherePos * 54.0;
+    vec3 f = fract(pebbleP) - 0.5;
+    float distToPebbleCenter = length(f);
     
-    // --- 3D Lighting (Phong Shading) ---
-    // Overhead arena rafters lighting: slightly top-left and in front
-    vec3 lightDir = normalize(vec3(-0.20, 0.95, 0.65));
-    float diff = max(dot(normal, lightDir), 0.0);
+    // Smooth hemispherical pebble dome
+    float pebbleBump = clamp(1.0 - distToPebbleCenter * 2.15, 0.0, 1.0);
+    pebbleBump = pebbleBump * pebbleBump * (3.0 - 2.0 * pebbleBump); // Smooth cubic S-curve
     
-    // Ambient + Diffuse
-    vec3 finalColor = color * (0.38 + 0.62 * diff);
+    // Suppress pebbles inside the rubber seam channel
+    pebbleBump *= (1.0 - seamMask);
     
-    // Add soft specular highlight for authentic composite leather texture
+    // --- 3. Normal Vector Perturbation (Bump Mapping) ---
+    // Perturb the normal with pebble dome gradients so it catches highlights individually
+    vec3 bumpOffset = vec3(f.x, f.y, 0.0) * pebbleBump * 0.38;
+    
+    // Recess the seam into the sphere surface
+    if (seamMask > 0.01) {
+        bumpOffset -= normal * seamMask * 0.15;
+    }
+    
+    vec3 perturbedNormal = normalize(normal + bumpOffset);
+    
+    // --- 4. Authentic Composite Leather Color Grading ---
+    // Deep Wilson / Spalding composite orange palette
+    vec3 leatherDark = vec3(0.70, 0.27, 0.03);  // Deep burnt sienna between pebbles
+    vec3 leatherMid  = vec3(0.86, 0.38, 0.07);  // Warm composite orange body
+    vec3 leatherPeak = vec3(0.96, 0.47, 0.11);  // Slightly worn pebble highlight tops
+    
+    vec3 leatherColor = mix(leatherDark, leatherMid, pebbleBump);
+    leatherColor = mix(leatherColor, leatherPeak, pow(pebbleBump, 2.5));
+    // Add subtle raised ridge brightness
+    leatherColor += vec3(0.06, 0.03, 0.01) * seamRidge;
+    
+    // Matte charcoal black rubber seam with subtle edge gradient
+    vec3 rubberSeamColor = vec3(0.12, 0.12, 0.12);
+    
+    vec3 baseColor = mix(leatherColor, rubberSeamColor, seamMask);
+    
+    // --- 5. Volumetric Arena Lighting & Dual-Lobe Specular ---
+    // Overhead arena floodlight: top-left and slightly in front
+    vec3 lightDir = normalize(vec3(-0.25, 0.92, 0.65));
+    float diff = max(dot(perturbedNormal, lightDir), 0.0);
+    
+    // Soft upward bounce light from the hardwood court
+    vec3 bounceLightDir = normalize(vec3(0.0, -0.85, 0.50));
+    float bounceDiff = max(dot(perturbedNormal, bounceLightDir), 0.0) * 0.16;
+    
+    // Ambient + Diffuse illumination
+    vec3 litColor = baseColor * (0.34 + 0.66 * diff + bounceDiff);
+    
+    // Specular reflections
     vec3 viewDir = vec3(0.0, 0.0, 1.0);
-    vec3 reflectDir = reflect(-lightDir, normal);
-    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 22.0); // Tighter exponent
-    finalColor += vec3(0.14) * spec; // Dimmed soft sheen
+    vec3 reflectDir = reflect(-lightDir, perturbedNormal);
+    float specDot = max(dot(viewDir, reflectDir), 0.0);
     
-    // Final output with anti-aliasing on the edge
-    float alpha = smoothstep(1.0, 0.98, radius);
+    // A. Broad soft matte sheen (characteristic of composite microfiber leather)
+    float broadSheen = pow(specDot, 10.0) * 0.09 * (1.0 - seamMask);
+    
+    // B. Sharp micro-glint highlights on individual pebble tops
+    float pebbleGlint = pow(specDot, 36.0) * pebbleBump * 0.24;
+    
+    vec3 finalColor = litColor + vec3(broadSheen + pebbleGlint);
+    
+    // Smooth anti-aliased edge
+    float alpha = smoothstep(1.0, 0.985, radius);
     fragColor = vec4(finalColor * alpha, alpha);
 }

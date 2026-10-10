@@ -41,6 +41,7 @@ dependencies:
   flame_texturepacker: ^5.1.2
   flame_fire_atlas: ^1.8.18
   forge2d: ^0.15.2
+  vector_math: ^2.1.4
 
 dev_dependencies:
   flutter_test:

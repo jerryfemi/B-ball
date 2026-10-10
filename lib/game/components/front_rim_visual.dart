@@ -15,11 +15,13 @@ class FrontRimVisual extends PositionComponent {
   double _currentBottomWidth = 0.55;
   double _netDepthVelocity = 0.0;
   double _netWidthVelocity = 0.0;
+  double _currentSway = 0.0;
+  double _swayVelocity = 0.0;
 
   FrontRimVisual({
     required Vector2 position,
     this.hoopWidth = 1.8,
-    this.hoopDepth = 0.45,
+    this.hoopDepth = 0.15,
   }) : super(
           position: position,
           size: Vector2(4.0, 4.0),
@@ -38,34 +40,53 @@ class FrontRimVisual extends PositionComponent {
 
     for (final ball in balls) {
       // Only stretch when a ball that reached the rim is moving downwards through the hoop
-      if (ball.passedThroughRim && ball.body.position.y > 4.8 && ball.body.position.y < 6.8 && ball.body.linearVelocity.y > 0) {
+      if (ball.passedThroughRim &&
+          ball.body.position.y >= 4.9 &&
+          ball.body.position.y <= 6.2 &&
+          ball.body.linearVelocity.y > 0) {
         // Must be horizontally close to the center
-        if (ball.body.position.x.abs() < hoopWidth / 2) {
+        if (ball.body.position.x.abs() < hoopWidth * 0.45) {
           ballInNet = true;
           double stretchDepth = ball.body.position.y - 5.0 + ball.radius * 0.7;
           if (stretchDepth > maxDepth) maxDepth = stretchDepth;
           targetWidth = 0.85; // Widen bottom to let ball through
+
+          // Impart lateral sway from ball horizontal speed
+          _swayVelocity = (ball.body.linearVelocity.x * 0.35).clamp(-2.0, 2.0);
+          _currentSway = (ball.body.position.x * 0.25).clamp(-0.20, 0.20);
         }
       }
     }
 
     if (ballInNet) {
-      _currentNetDepth = maxDepth;
-      _currentBottomWidth = targetWidth;
-      _netDepthVelocity = 0.0;
-      _netWidthVelocity = 0.0;
+      _currentNetDepth = maxDepth.clamp(0.85, 1.35);
+      _currentBottomWidth = targetWidth.clamp(0.55, 0.85);
+      _netDepthVelocity = 1.8; // Spring release momentum when ball leaves
+      _netWidthVelocity = -1.2;
     } else {
-      // Bouncy spring physics
-      const double kStiffness = 200.0;
-      const double kDamping = 12.0;
+      // Numerical stability: clamp timestep
+      final clampedDt = dt.clamp(0.001, 0.02);
+      // Under-damped spring values for a fast, loose, non-viscous wobbly net
+      const double kStiffness = 120.0;
+      const double kDamping = 3.5;
 
-      double depthForce = kStiffness * (0.9 - _currentNetDepth) - kDamping * _netDepthVelocity;
-      _netDepthVelocity += depthForce * dt;
-      _currentNetDepth += _netDepthVelocity * dt;
+      double depthForce =
+          kStiffness * (0.9 - _currentNetDepth) - kDamping * _netDepthVelocity;
+      _netDepthVelocity += depthForce * clampedDt;
+      _currentNetDepth += _netDepthVelocity * clampedDt;
+      _currentNetDepth = _currentNetDepth.clamp(0.70, 1.45);
 
-      double widthForce = kStiffness * (0.55 - _currentBottomWidth) - kDamping * _netWidthVelocity;
-      _netWidthVelocity += widthForce * dt;
-      _currentBottomWidth += _netWidthVelocity * dt;
+      double widthForce =
+          kStiffness * (0.55 - _currentBottomWidth) - kDamping * _netWidthVelocity;
+      _netWidthVelocity += widthForce * clampedDt;
+      _currentBottomWidth += _netWidthVelocity * clampedDt;
+      _currentBottomWidth = _currentBottomWidth.clamp(0.38, 0.92);
+
+      // Lateral harmonic sway jiggle (fast and loose)
+      double swayForce = 90.0 * (0.0 - _currentSway) - 2.8 * _swayVelocity;
+      _swayVelocity += swayForce * clampedDt;
+      _currentSway += _swayVelocity * clampedDt;
+      _currentSway = _currentSway.clamp(-0.25, 0.25);
     }
   }
 
@@ -86,22 +107,34 @@ class FrontRimVisual extends PositionComponent {
 
   void _renderMountingBracket(Canvas canvas) {
     final bracketPaint = Paint()
-      ..color = const Color(0xFFD84315)
+      ..color = const Color(0xFF7F1319) // Burnished iron crimson
       ..style = PaintingStyle.fill;
 
-    // Small mounting flange connecting rim to backboard
+    // Small mounting flange connecting rim to backboard faceplate and vertical pole
     final bracketRect = Rect.fromCenter(
-      center: const Offset(0, -0.15),
-      width: 0.3,
-      height: 0.2,
+      center: const Offset(0, -0.10),
+      width: 0.28,
+      height: 0.16,
     );
     canvas.drawRect(bracketRect, bracketPaint);
 
+    // Top crest metallic highlight
+    final highlightPaint = Paint()
+      ..color = const Color(0xFFEF4444)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.02;
+    canvas.drawLine(
+      const Offset(-0.13, -0.17),
+      const Offset(0.13, -0.17),
+      highlightPaint,
+    );
+
+    // Heavy mounting bolts
     final boltPaint = Paint()
       ..color = const Color(0xFF1E293B)
       ..style = PaintingStyle.fill;
-    canvas.drawCircle(const Offset(-0.08, -0.15), 0.025, boltPaint);
-    canvas.drawCircle(const Offset(0.08, -0.15), 0.025, boltPaint);
+    canvas.drawCircle(const Offset(-0.08, -0.10), 0.024, boltPaint);
+    canvas.drawCircle(const Offset(0.08, -0.10), 0.024, boltPaint);
   }
 
   void _renderFrontRim(Canvas canvas) {
@@ -111,9 +144,24 @@ class FrontRimVisual extends PositionComponent {
       height: hoopDepth,
     );
 
-    // 1. Base vibrant orange rim arc (bottom half from 0 to pi)
+    // 1. Deep underside rim shadow for metallic depth
+    final underRimPaint = Paint()
+      ..color = const Color(0xFF6B1116)
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = 0.09;
+
+    canvas.drawArc(
+      Rect.fromCenter(center: const Offset(0, 0.010), width: hoopWidth, height: hoopDepth),
+      0,
+      math.pi,
+      false,
+      underRimPaint,
+    );
+
+    // 2. Base burnished iron crimson rim arc (bottom half from 0 to pi)
     final frontRimPaint = Paint()
-      ..color = const Color(0xFFFF5722)
+      ..color = const Color(0xFF9E1B22)
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
       ..strokeWidth = 0.08;
@@ -126,15 +174,15 @@ class FrontRimVisual extends PositionComponent {
       frontRimPaint,
     );
 
-    // 2. Specular metallic highlight along the top crest
+    // 3. Specular metallic highlight along the top crest
     final highlightPaint = Paint()
-      ..color = const Color(0xFFFFAB91)
+      ..color = const Color(0xFFEF4444)
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
-      ..strokeWidth = 0.03;
+      ..strokeWidth = 0.022;
 
     final highlightRect = Rect.fromCenter(
-      center: const Offset(0, -0.015),
+      center: const Offset(0, -0.008),
       width: hoopWidth - 0.06,
       height: hoopDepth,
     );
@@ -147,9 +195,9 @@ class FrontRimVisual extends PositionComponent {
       highlightPaint,
     );
 
-    // 3. Circular rim tips at the left and right collision pivots
+    // 4. Circular rim tips at the left and right collision pivots
     final pivotPaint = Paint()
-      ..color = const Color(0xFFFF5722)
+      ..color = const Color(0xFF9E1B22)
       ..style = PaintingStyle.fill;
 
     canvas.drawCircle(Offset(-hoopWidth / 2, 0), 0.045, pivotPaint);
@@ -181,7 +229,7 @@ class FrontRimVisual extends PositionComponent {
       final y = (hoopDepth / 2) * math.sin(angle);
       topPoints.add(Offset(x, y));
 
-      final bx = x * bottomWidthRatio;
+      final bx = x * bottomWidthRatio + _currentSway;
       final by = netDepth;
       bottomPoints.add(Offset(bx, by));
     }
@@ -199,7 +247,7 @@ class FrontRimVisual extends PositionComponent {
       final curDepth = hoopDepth * (1.0 - (1.0 - bottomWidthRatio) * yFrac);
 
       final ribRect = Rect.fromCenter(
-        center: Offset(0, curY),
+        center: Offset(_currentSway * yFrac, curY),
         width: curWidth,
         height: curDepth,
       );
@@ -216,7 +264,7 @@ class FrontRimVisual extends PositionComponent {
       for (int k = 1; k < cordCount; k++) {
         final t = k / cordCount;
         final angle = t * math.pi;
-        final kx = (curWidth / 2) * math.cos(angle);
+        final kx = _currentSway * yFrac + (curWidth / 2) * math.cos(angle);
         final ky = curY + (curDepth / 2) * math.sin(angle);
         canvas.drawCircle(Offset(kx, ky), 0.02, knotPaint);
       }
