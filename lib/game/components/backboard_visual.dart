@@ -97,7 +97,7 @@ class BackboardVisual extends PositionComponent {
     canvas.translate(size.x / 2, size.y / 2);
 
     _renderWallDropShadow(canvas);
-    _renderWallMounts(canvas);
+    _renderPole(canvas);
     _renderScoopedBackboard(canvas);
     _renderRearRim(canvas);
     _renderRearNet(canvas);
@@ -106,119 +106,133 @@ class BackboardVisual extends PositionComponent {
   }
 
   void _renderWallDropShadow(Canvas canvas) {
-    // Soft, deep diffuse shadow projected onto the distant back wall
-    // Reflects that the hoop is suspended forward in the 3D room volume
+    // Soft, realistic ambient drop shadow cast onto the back wall directly behind backboard
     final shadowPaint = Paint()
-      ..color = const Color(0x55000000)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
+      ..color = const Color(0x3B000000)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 0.22);
 
     final shadowPath =
-        _buildBackboardPath(3.7, 2.5, const Offset(0.10, -0.82));
+        _buildBackboardPath(3.6, 2.4, const Offset(0.08, -0.94));
     canvas.drawPath(shadowPath, shadowPaint);
 
-    // Boom arm diffuse shadow projected back onto the wall
-    final boomShadowPaint = Paint()
-      ..color = const Color(0x35000000)
-      ..strokeWidth = 0.25
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
+    // Subtle drop shadow cast by the vertical pole onto the back wall
+    final poleShadowPaint = Paint()
+      ..color = const Color(0x28000000)
+      ..strokeWidth = 0.22
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 0.16);
 
-    canvas.drawLine(const Offset(-0.85, -1.6), const Offset(-0.55, -2.4), boomShadowPaint);
-    canvas.drawLine(const Offset(0.85, -1.6), const Offset(0.55, -2.4), boomShadowPaint);
-    canvas.drawLine(const Offset(-0.85, -0.4), const Offset(-0.55, -1.1), boomShadowPaint);
-    canvas.drawLine(const Offset(0.85, -0.4), const Offset(0.55, -1.1), boomShadowPaint);
+    canvas.drawLine(
+      const Offset(0.08, -0.15),
+      const Offset(0.08, 7.8),
+      poleShadowPaint,
+    );
   }
 
-  void _renderWallMounts(Canvas canvas) {
-    // Industrial 3D cantilever steel truss boom extending forward from the distant wall
-    final steelPaint = Paint()
-      ..color = const Color(0xFF334155) // Dark slate structural steel
-      ..style = PaintingStyle.fill;
+  void _renderPole(Canvas canvas) {
+    const poleWidth = 0.22;
+    const topY = -0.30;
+    const bottomY = 7.80; // Hardwood floor entry depth under hoop
 
-    final highlightPaint = Paint()
-      ..color = const Color(0x5094A3B8) // Steel top edge highlight
+    final poleRect = Rect.fromLTRB(
+      -poleWidth / 2,
+      topY,
+      poleWidth / 2,
+      bottomY,
+    );
+
+    // 1. Pole floor contact shadow on the hardwood
+    final floorShadowPaint = Paint()
+      ..color = const Color(0x60000000)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 0.08);
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: const Offset(0, bottomY + 0.03),
+        width: poleWidth * 2.2,
+        height: 0.12,
+      ),
+      floorShadowPaint,
+    );
+
+    // 2. 3D Cylindrical lighting gradient for metallic post
+    final polePaint = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+        stops: [0.0, 0.22, 0.50, 0.82, 1.0],
+        colors: [
+          Color(0xFFCBD5E1), // Left rim shadow
+          Color(0xFFFFFFFF), // Left-center specular reflection crest
+          Color(0xFFF1F5F9), // Center body
+          Color(0xFFE2E8F0), // Right midtone
+          Color(0xFF94A3B8), // Right shadow edge
+        ],
+      ).createShader(poleRect);
+
+    canvas.drawRect(poleRect, polePaint);
+
+    // 3. Subtle longitudinal edge outline for crisp definition
+    final poleEdgePaint = Paint()
+      ..color = const Color(0x3064748B)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.04;
-
-    final darkShadowPaint = Paint()
-      ..color = const Color(0xFF1E293B)
-      ..style = PaintingStyle.fill;
-
-    // 1. Distant wall mounting anchor plate
-    final anchorPlate = Rect.fromCenter(
-      center: const Offset(0, -1.8),
-      width: 1.6,
-      height: 1.8,
+      ..strokeWidth = 0.02;
+    canvas.drawLine(
+      const Offset(-poleWidth / 2, topY),
+      const Offset(-poleWidth / 2, bottomY),
+      poleEdgePaint,
     );
-    canvas.drawRect(anchorPlate, darkShadowPaint);
-    canvas.drawRect(
-      anchorPlate,
+    canvas.drawLine(
+      const Offset(poleWidth / 2, topY),
+      const Offset(poleWidth / 2, bottomY),
+      poleEdgePaint,
+    );
+
+    // 4. Ground base collar flange where pole anchors into the court floor
+    final collarRect = RRect.fromRectAndRadius(
+      Rect.fromCenter(
+        center: const Offset(0, bottomY),
+        width: poleWidth * 1.65,
+        height: 0.16,
+      ),
+      const Radius.circular(0.04),
+    );
+
+    final collarPaint = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+        colors: [
+          Color(0xFF94A3B8),
+          Color(0xFFF1F5F9),
+          Color(0xFF64748B),
+        ],
+      ).createShader(collarRect.outerRect);
+
+    canvas.drawRRect(collarRect, collarPaint);
+    canvas.drawRRect(
+      collarRect,
       Paint()
-        ..color = const Color(0x3064748B)
+        ..color = const Color(0xFF475569)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 0.04,
+        ..strokeWidth = 0.025,
     );
 
-    // Anchor bolt studs on the distant wall plate
-    final boltPaint = Paint()..color = const Color(0xFF64748B);
-    for (final boltOffset in const [
-      Offset(-0.7, -2.5),
-      Offset(0.7, -2.5),
-      Offset(-0.7, -1.1),
-      Offset(0.7, -1.1),
-    ]) {
-      canvas.drawCircle(boltOffset, 0.04, boltPaint);
-    }
-
-    // 2. Cantilever Diagonal Steel Truss Boom Arms (reaching forward to backboard)
-    final boomPath = Path();
-
-    // Upper Left Boom Arm
-    boomPath.moveTo(-0.95, -1.8);
-    boomPath.lineTo(-0.60, -2.55);
-    boomPath.lineTo(-0.50, -2.55);
-    boomPath.lineTo(-0.85, -1.8);
-    boomPath.close();
-
-    // Upper Right Boom Arm
-    boomPath.moveTo(0.85, -1.8);
-    boomPath.lineTo(0.50, -2.55);
-    boomPath.lineTo(0.60, -2.55);
-    boomPath.lineTo(0.95, -1.8);
-    boomPath.close();
-
-    // Lower Left Diagonal Compression Strut
-    boomPath.moveTo(-0.95, -0.35);
-    boomPath.lineTo(-0.60, -1.15);
-    boomPath.lineTo(-0.50, -1.15);
-    boomPath.lineTo(-0.85, -0.35);
-    boomPath.close();
-
-    // Lower Right Diagonal Compression Strut
-    boomPath.moveTo(0.85, -0.35);
-    boomPath.lineTo(0.50, -1.15);
-    boomPath.lineTo(0.60, -1.15);
-    boomPath.lineTo(0.95, -0.35);
-    boomPath.close();
-
-    canvas.drawPath(boomPath, steelPaint);
-    canvas.drawPath(boomPath, highlightPaint);
-
-    // 3. Steel X-Bracing across the boom
-    final bracePaint = Paint()
-      ..color = const Color(0xFF475569)
-      ..strokeWidth = 0.06;
-
-    canvas.drawLine(const Offset(-0.85, -1.7), const Offset(0.85, -0.45), bracePaint);
-    canvas.drawLine(const Offset(0.85, -1.7), const Offset(-0.85, -0.45), bracePaint);
-
-    // 4. Heavy horizontal crossbeams directly behind the backboard
-    final topBeam = Rect.fromCenter(center: const Offset(0, -1.75), width: 2.1, height: 0.16);
-    final botBeam = Rect.fromCenter(center: const Offset(0, -0.40), width: 2.1, height: 0.16);
-
-    canvas.drawRect(topBeam, steelPaint);
-    canvas.drawRect(topBeam, highlightPaint);
-    canvas.drawRect(botBeam, steelPaint);
-    canvas.drawRect(botBeam, highlightPaint);
+    // 5. Backboard mounting collar & gusset directly behind the hoop
+    final mountCollar = Rect.fromCenter(
+      center: const Offset(0, -0.22),
+      width: poleWidth * 1.45,
+      height: 0.22,
+    );
+    canvas.drawRect(
+      mountCollar,
+      Paint()..color = const Color(0xFF64748B),
+    );
+    canvas.drawRect(
+      mountCollar,
+      Paint()
+        ..color = const Color(0xFF334155)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.025,
+    );
   }
 
   void _renderScoopedBackboard(Canvas canvas) {
@@ -229,21 +243,29 @@ class BackboardVisual extends PositionComponent {
     final outerPath = _buildBackboardPath(boardWidth, boardHeight, boardCenter);
     final innerPath = _buildBackboardPath(boardWidth * 0.90, boardHeight * 0.90, boardCenter);
 
-    // 1. Glossy white backboard face plate
+    // 1. 3D Acrylic edge bevel (subtle thickness rim)
+    final bevelPaint = Paint()
+      ..color = const Color(0xFFE2E8F0)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.12
+      ..strokeJoin = StrokeJoin.round;
+    canvas.drawPath(outerPath, bevelPaint);
+
+    // 2. Glossy white backboard face plate
     final facePaint = Paint()
       ..color = const Color(0xFFFAFAFA)
       ..style = PaintingStyle.fill;
     canvas.drawPath(outerPath, facePaint);
 
-    // Subtle gloss gradient sheen across backboard
+    // 3. Subtle gloss sheen gradient
     final sheenPaint = Paint()
       ..shader = LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-        colors: [
-          const Color(0x25FFFFFF),
+        colors: const [
+          Color(0x20FFFFFF),
           Colors.transparent,
-          const Color(0x10000000),
+          Color(0x0C000000),
         ],
         stops: const [0.0, 0.5, 1.0],
       ).createShader(
@@ -255,7 +277,41 @@ class BackboardVisual extends PositionComponent {
       );
     canvas.drawPath(outerPath, sheenPaint);
 
-    // 2. Outer bold red contour line
+    // 4. Diagonal glass specular streak (GamePigeon signature acrylic reflection)
+    canvas.save();
+    canvas.clipPath(outerPath);
+
+    final streakPaint = Paint()
+      ..shader = LinearGradient(
+        begin: const Alignment(-0.85, -1.0),
+        end: const Alignment(0.85, 1.0),
+        stops: const [0.0, 0.30, 0.38, 0.46, 0.54, 1.0],
+        colors: const [
+          Color(0x00FFFFFF),
+          Color(0x00FFFFFF),
+          Color(0x28FFFFFF),
+          Color(0x42FFFFFF),
+          Color(0x10FFFFFF),
+          Color(0x00FFFFFF),
+        ],
+      ).createShader(
+        Rect.fromCenter(
+          center: boardCenter,
+          width: boardWidth * 1.4,
+          height: boardHeight * 1.4,
+        ),
+      );
+    canvas.drawRect(
+      Rect.fromCenter(
+        center: boardCenter,
+        width: boardWidth * 1.5,
+        height: boardHeight * 1.5,
+      ),
+      streakPaint,
+    );
+    canvas.restore();
+
+    // 5. Outer bold red contour line
     final outerRedPaint = Paint()
       ..color = const Color(0xFFDC2626)
       ..style = PaintingStyle.stroke
@@ -264,7 +320,7 @@ class BackboardVisual extends PositionComponent {
       ..strokeWidth = 0.08;
     canvas.drawPath(outerPath, outerRedPaint);
 
-    // 3. Inner parallel red accent line (signature GamePigeon double border)
+    // 6. Inner parallel red accent line (signature GamePigeon double border)
     final innerRedPaint = Paint()
       ..color = const Color(0xFFDC2626)
       ..style = PaintingStyle.stroke
@@ -273,16 +329,16 @@ class BackboardVisual extends PositionComponent {
       ..strokeWidth = 0.035;
     canvas.drawPath(innerPath, innerRedPaint);
 
-    // 4. Regulation target rectangle directly above the rim
+    // 7. Regulation target rectangle directly above the rim
     final targetRect = Rect.fromCenter(
-      center: const Offset(0, -0.65),
-      width: 1.0,
-      height: 0.75,
+      center: const Offset(0, -0.66),
+      width: 0.98,
+      height: 0.72,
     );
     final targetPaint = Paint()
       ..color = const Color(0xFFDC2626)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.06;
+      ..strokeWidth = 0.065;
     canvas.drawRect(targetRect, targetPaint);
   }
 
