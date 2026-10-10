@@ -110,7 +110,7 @@ class FrontRimVisual extends PositionComponent {
       ..color = const Color(0xFF7F1319) // Burnished iron crimson
       ..style = PaintingStyle.fill;
 
-    // Small mounting flange connecting rim to backboard
+    // Small mounting flange connecting rim to backboard faceplate and vertical pole
     final bracketRect = Rect.fromCenter(
       center: const Offset(0, -0.10),
       width: 0.28,
@@ -118,11 +118,23 @@ class FrontRimVisual extends PositionComponent {
     );
     canvas.drawRect(bracketRect, bracketPaint);
 
+    // Top crest metallic highlight
+    final highlightPaint = Paint()
+      ..color = const Color(0xFFEF4444)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.02;
+    canvas.drawLine(
+      const Offset(-0.13, -0.17),
+      const Offset(0.13, -0.17),
+      highlightPaint,
+    );
+
+    // Heavy mounting bolts
     final boltPaint = Paint()
       ..color = const Color(0xFF1E293B)
       ..style = PaintingStyle.fill;
-    canvas.drawCircle(const Offset(-0.08, -0.10), 0.022, boltPaint);
-    canvas.drawCircle(const Offset(0.08, -0.10), 0.022, boltPaint);
+    canvas.drawCircle(const Offset(-0.08, -0.10), 0.024, boltPaint);
+    canvas.drawCircle(const Offset(0.08, -0.10), 0.024, boltPaint);
   }
 
   void _renderFrontRim(Canvas canvas) {
