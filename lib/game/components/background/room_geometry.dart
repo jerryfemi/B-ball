@@ -29,8 +29,8 @@ class RoomGeometry {
   });
 
   factory RoomGeometry.fromScreenSize(double width, double height) {
-    // Horizon placed at 59% of viewport height (matching GamePigeon grounded perspective)
-    final horizon = height * 0.59;
+    // Horizon placed at 60.5% of viewport height (grounded court floor, tall back wall)
+    final horizon = height * 0.605;
     final vp = Offset(width / 2, horizon);
 
     // Distant back wall spans across width, from top down to horizon
