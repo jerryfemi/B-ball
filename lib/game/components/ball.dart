@@ -60,6 +60,8 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
       radius: 0.125,
       onWallImpact: (impactPt) {
         if (!isMounted) return;
+        // Minimum impact velocity threshold: only trigger puff on solid hits
+        if (physics.vel.length < 1.2) return;
         final wallF2D = camera3D.projectToForge2D(
           impactPt.x,
           impactPt.y,
@@ -256,17 +258,23 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
         final zScale = camera3D.scaleAtDepth(physics.pos.z);
         final visualRadius = radius * zScale * 1.38;
         final shadowScale = 1.0 + heightAboveFloor * 0.16;
-        final blurMeters = (0.05 + heightAboveFloor * 0.06).clamp(0.05, 0.35);
-
-        final shadowPaint = Paint()
-          ..color = Color.fromRGBO(0, 0, 0, shadowAlpha)
-          ..maskFilter = MaskFilter.blur(BlurStyle.normal, blurMeters);
-
         final shadowRect = Rect.fromCenter(
           center: shadowLocalOffset,
           width: visualRadius * 2.2 * shadowScale,
           height: visualRadius * 0.42 * shadowScale, // Perspective flattening
         );
+
+        final shadowPaint = Paint()
+          ..shader = ui.Gradient.radial(
+            shadowLocalOffset,
+            visualRadius * 1.1 * shadowScale,
+            [
+              Color.fromRGBO(0, 0, 0, shadowAlpha),
+              Color.fromRGBO(0, 0, 0, shadowAlpha * 0.45),
+              const Color(0x00000000),
+            ],
+            const [0.0, 0.55, 1.0],
+          );
         canvas.drawOval(shadowRect, shadowPaint);
       }
     }
@@ -332,7 +340,17 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
         0.60,
       );
 
-      if (wallShadowAlpha > 0.01) {
+      // Check if wall shadow is occluded by the backboard:
+      // If the ball is in front of the board (Z < backboardZ) within the backboard frame,
+      // the solid board occludes the wall shadow so it does not bleed across the glass.
+      final bool inBackboardFrame =
+          physics.pos.x.abs() <= BallPhysics3D.backboardMaxX &&
+          physics.pos.y >= BallPhysics3D.backboardMinY &&
+          physics.pos.y <= BallPhysics3D.backboardMaxY;
+      final bool occludedByBoard =
+          inBackboardFrame && physics.pos.z < BallPhysics3D.backboardZ;
+
+      if (!occludedByBoard && wallShadowAlpha > 0.01) {
         // Overhead arena spotlight: casts shadow slightly downward on the vertical wall
         final double shadowY = physics.pos.y - (0.04 + distToWall * 0.08);
         final wallF2D = camera3D.projectToForge2D(
