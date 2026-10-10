@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 
@@ -23,16 +24,16 @@ class BackboardVisual extends PositionComponent {
     this.hoopWidth = 1.8,
     this.hoopDepth = 0.15,
   }) : super(
-          position: position,
-          size: Vector2(6.0, 20.0),
-          anchor: Anchor.center,
-          priority: 1,
-        );
+         position: position,
+         size: Vector2(6.0, 20.0),
+         anchor: Anchor.center,
+         priority: 1,
+       );
 
   @override
   void update(double dt) {
     super.update(dt);
-    
+
     final balls = parent?.children.whereType<Basketball>() ?? [];
     bool ballInNet = false;
     double maxDepth = 0.9;
@@ -47,7 +48,7 @@ class BackboardVisual extends PositionComponent {
           ballInNet = true;
           double stretchDepth = ball.body.position.y - 5.0 + ball.radius * 0.7;
           if (stretchDepth > maxDepth) maxDepth = stretchDepth;
-          targetWidth = 0.85; 
+          targetWidth = 0.85;
 
           // Impart lateral sway from ball horizontal speed
           _swayVelocity = (ball.body.linearVelocity.x * 0.35).clamp(-2.0, 2.0);
@@ -75,7 +76,8 @@ class BackboardVisual extends PositionComponent {
       _currentNetDepth = _currentNetDepth.clamp(0.70, 1.45);
 
       double widthForce =
-          kStiffness * (0.55 - _currentBottomWidth) - kDamping * _netWidthVelocity;
+          kStiffness * (0.55 - _currentBottomWidth) -
+          kDamping * _netWidthVelocity;
       _netWidthVelocity += widthForce * clampedDt;
       _currentBottomWidth += _netWidthVelocity * clampedDt;
       _currentBottomWidth = _currentBottomWidth.clamp(0.38, 0.92);
@@ -111,8 +113,7 @@ class BackboardVisual extends PositionComponent {
       ..color = const Color(0x3B000000)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 0.22);
 
-    final shadowPath =
-        _buildBackboardPath(3.6, 2.4, const Offset(0.08, -0.94));
+    final shadowPath = _buildBackboardPath(3.6, 2.4, const Offset(0.08, -0.94));
     canvas.drawPath(shadowPath, shadowPaint);
 
     // Subtle drop shadow cast by the vertical pole onto the back wall
@@ -200,11 +201,7 @@ class BackboardVisual extends PositionComponent {
       ..shader = const LinearGradient(
         begin: Alignment.centerLeft,
         end: Alignment.centerRight,
-        colors: [
-          Color(0xFF94A3B8),
-          Color(0xFFF1F5F9),
-          Color(0xFF64748B),
-        ],
+        colors: [Color(0xFF94A3B8), Color(0xFFF1F5F9), Color(0xFF64748B)],
       ).createShader(collarRect.outerRect);
 
     canvas.drawRRect(collarRect, collarPaint);
@@ -222,10 +219,7 @@ class BackboardVisual extends PositionComponent {
       width: poleWidth * 1.45,
       height: 0.22,
     );
-    canvas.drawRect(
-      mountCollar,
-      Paint()..color = const Color(0xFF64748B),
-    );
+    canvas.drawRect(mountCollar, Paint()..color = const Color(0xFF64748B));
     canvas.drawRect(
       mountCollar,
       Paint()
@@ -241,7 +235,11 @@ class BackboardVisual extends PositionComponent {
     const boardCenter = Offset(0, -1.02);
 
     final outerPath = _buildBackboardPath(boardWidth, boardHeight, boardCenter);
-    final innerPath = _buildBackboardPath(boardWidth * 0.90, boardHeight * 0.90, boardCenter);
+    final innerPath = _buildBackboardPath(
+      boardWidth * 0.90,
+      boardHeight * 0.90,
+      boardCenter,
+    );
 
     // 1. 3D Acrylic edge bevel (subtle thickness rim)
     final bevelPaint = Paint()
@@ -259,22 +257,23 @@ class BackboardVisual extends PositionComponent {
 
     // 3. Subtle gloss sheen gradient
     final sheenPaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: const [
-          Color(0x20FFFFFF),
-          Colors.transparent,
-          Color(0x0C000000),
-        ],
-        stops: const [0.0, 0.5, 1.0],
-      ).createShader(
-        Rect.fromCenter(
-          center: boardCenter,
-          width: boardWidth,
-          height: boardHeight,
-        ),
-      );
+      ..shader =
+          LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: const [
+              Color(0x20FFFFFF),
+              Colors.transparent,
+              Color(0x0C000000),
+            ],
+            stops: const [0.0, 0.5, 1.0],
+          ).createShader(
+            Rect.fromCenter(
+              center: boardCenter,
+              width: boardWidth,
+              height: boardHeight,
+            ),
+          );
     canvas.drawPath(outerPath, sheenPaint);
 
     // 4. Diagonal glass specular streak (GamePigeon signature acrylic reflection)
@@ -282,25 +281,26 @@ class BackboardVisual extends PositionComponent {
     canvas.clipPath(outerPath);
 
     final streakPaint = Paint()
-      ..shader = LinearGradient(
-        begin: const Alignment(-0.85, -1.0),
-        end: const Alignment(0.85, 1.0),
-        stops: const [0.0, 0.30, 0.38, 0.46, 0.54, 1.0],
-        colors: const [
-          Color(0x00FFFFFF),
-          Color(0x00FFFFFF),
-          Color(0x28FFFFFF),
-          Color(0x42FFFFFF),
-          Color(0x10FFFFFF),
-          Color(0x00FFFFFF),
-        ],
-      ).createShader(
-        Rect.fromCenter(
-          center: boardCenter,
-          width: boardWidth * 1.4,
-          height: boardHeight * 1.4,
-        ),
-      );
+      ..shader =
+          LinearGradient(
+            begin: const Alignment(-0.85, -1.0),
+            end: const Alignment(0.85, 1.0),
+            stops: const [0.0, 0.30, 0.38, 0.46, 0.54, 1.0],
+            colors: const [
+              Color(0x00FFFFFF),
+              Color(0x00FFFFFF),
+              Color(0x28FFFFFF),
+              Color(0x42FFFFFF),
+              Color(0x10FFFFFF),
+              Color(0x00FFFFFF),
+            ],
+          ).createShader(
+            Rect.fromCenter(
+              center: boardCenter,
+              width: boardWidth * 1.4,
+              height: boardHeight * 1.4,
+            ),
+          );
     canvas.drawRect(
       Rect.fromCenter(
         center: boardCenter,
@@ -418,23 +418,19 @@ class BackboardVisual extends PositionComponent {
 
     // Top half of rim ellipse (from pi to 2*pi): curves upwards/away
     final rearRimPaint = Paint()
-      ..color = const Color(0xFF751117) // Shaded deep iron crimson
+      ..color =
+          const Color(0xFF751117) // Shaded deep iron crimson
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
       ..strokeWidth = 0.08;
 
-    canvas.drawArc(
-      rimRect,
-      math.pi,
-      math.pi,
-      false,
-      rearRimPaint,
-    );
+    canvas.drawArc(rimRect, math.pi, math.pi, false, rearRimPaint);
   }
 
   void _renderRearNet(Canvas canvas) {
     final rearNetPaint = Paint()
-      ..color = const Color(0x5094A3B8) // Translucent rear cords
+      ..color =
+          const Color(0x5094A3B8) // Translucent rear cords
       ..style = PaintingStyle.stroke
       ..strokeWidth = 0.025;
 
@@ -471,13 +467,7 @@ class BackboardVisual extends PositionComponent {
         height: curDepth,
       );
 
-      canvas.drawArc(
-        ribRect,
-        math.pi,
-        math.pi,
-        false,
-        rearNetPaint,
-      );
+      canvas.drawArc(ribRect, math.pi, math.pi, false, rearNetPaint);
     }
   }
 }
