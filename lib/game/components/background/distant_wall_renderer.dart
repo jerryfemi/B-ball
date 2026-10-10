@@ -3,56 +3,60 @@ import 'package:flutter/material.dart';
 
 import 'room_geometry.dart';
 
-/// Renders the distant gymnasium back wall across the room:
-/// - Fine-scale running-bond clay bricks (scaled to distant perspective)
-/// - Lower protective gym wall padding in deep navy slate with collegiate accent stripe
-/// - Wooden baseboard molding trim
-/// - Atmospheric distance haze overlay (depth of field contrast softness)
+/// Renders the authentic GamePigeon exposed red clay brick gym back wall:
+/// - Full-height running-bond clay brickwork with sandy charcoal mortar recesses
+/// - Rich terracotta, burnt sienna, rust, and crimson color modulation
+/// - Distinct micro-bevel highlights and shadow edges on every brick
+/// - Sleek dark hardwood baseboard trim meeting the court floor
+/// - Atmospheric distance lighting & depth gradient
 class DistantWallRenderer {
+  // Rich exposed clay brick palette sampled from GamePigeon
   static const List<Color> _brickColors = [
-    Color(0xFFA33B27),
-    Color(0xFF8F2F1E),
-    Color(0xFFB54631),
-    Color(0xFF7C2617),
-    Color(0xFF993724),
-    Color(0xFFAB412D),
+    Color(0xFFA63C27), // Classic terracotta
+    Color(0xFF8F2F1E), // Burnt sienna
+    Color(0xFFBD4A32), // Vibrant rust
+    Color(0xFF7A2517), // Deep aged crimson
+    Color(0xFF9D3925), // Rich warm clay
+    Color(0xFFB1432D), // Amber brick
+    Color(0xFF882C1B), // Dark roast terracotta
+    Color(0xFFC05239), // Soft sunlit rust
   ];
 
   void render(Canvas canvas, RoomGeometry geom) {
     final wallRect = geom.backWallRect;
 
     canvas.save();
-    // Clip strictly within the distant back wall boundary
     canvas.clipRect(wallRect);
 
-    // 1. Sandy mortar base
-    final mortarPaint = Paint()..color = const Color(0xFF6B5A4D);
+    // 1. Sandy dark charcoal mortar bed
+    final mortarPaint = Paint()..color = const Color(0xFF3B322B);
     canvas.drawRect(wallRect, mortarPaint);
 
-    // 2. Fine-Scale Distant Clay Bricks (scaled down to convey 15m distance)
-    const brickWidth = 22.0;
-    const brickHeight = 9.0;
-    const mortarGap = 1.8;
+    // 2. Running-Bond Exposed Clay Bricks (Calibrated to GamePigeon visual scale)
+    const brickWidth = 38.0;
+    const brickHeight = 15.0;
+    const mortarGap = 2.2;
     const stepX = brickWidth + mortarGap;
     const stepY = brickHeight + mortarGap;
 
     final brickPaint = Paint()..style = PaintingStyle.fill;
     final highlightPaint = Paint()
-      ..color = const Color(0x18FFFFFF)
-      ..strokeWidth = 0.6;
+      ..color = const Color(0x22FFFFFF)
+      ..strokeWidth = 0.8;
     final shadowPaint = Paint()
-      ..color = const Color(0x28000000)
-      ..strokeWidth = 0.6;
+      ..color = const Color(0x3E000000)
+      ..strokeWidth = 0.8;
 
     int row = 0;
-    for (double y = wallRect.top; y < wallRect.bottom; y += stepY) {
+    for (double y = wallRect.top - (brickHeight * 0.5); y < wallRect.bottom; y += stepY) {
       final isOdd = row % 2 == 1;
       final startX = isOdd ? wallRect.left - brickWidth / 2 : wallRect.left;
       int col = 0;
 
       for (double x = startX; x < wallRect.right + brickWidth; x += stepX) {
-        final colorIndex = ((row * 13) + (col * 7)) % _brickColors.length;
-        brickPaint.color = _brickColors[colorIndex];
+        // High-entropy pseudo-random hash to prevent repeating diagonal patterns
+        final hash = ((row * 37) ^ (col * 19) ^ 0x5A) % _brickColors.length;
+        brickPaint.color = _brickColors[hash];
 
         final bRect = Rect.fromLTWH(
           x,
@@ -60,98 +64,76 @@ class DistantWallRenderer {
           brickWidth,
           math.min(brickHeight, wallRect.bottom - y),
         );
-        final rRect = RRect.fromRectAndRadius(bRect, const Radius.circular(0.8));
-        canvas.drawRRect(rRect, brickPaint);
 
-        canvas.drawLine(
-          Offset(bRect.left + 0.5, bRect.top + 0.5),
-          Offset(bRect.right - 0.5, bRect.top + 0.5),
-          highlightPaint,
-        );
-        canvas.drawLine(
-          Offset(bRect.left + 0.5, bRect.bottom - 0.5),
-          Offset(bRect.right - 0.5, bRect.bottom - 0.5),
-          shadowPaint,
-        );
+        if (bRect.bottom > wallRect.top && bRect.top < wallRect.bottom) {
+          final rRect = RRect.fromRectAndRadius(bRect, const Radius.circular(1.2));
+          canvas.drawRRect(rRect, brickPaint);
+
+          // Top & Left subtle catch-light highlight
+          canvas.drawLine(
+            Offset(bRect.left + 0.8, bRect.top + 0.8),
+            Offset(bRect.right - 0.8, bRect.top + 0.8),
+            highlightPaint,
+          );
+          canvas.drawLine(
+            Offset(bRect.left + 0.8, bRect.top + 0.8),
+            Offset(bRect.left + 0.8, bRect.bottom - 0.8),
+            highlightPaint,
+          );
+
+          // Bottom & Right drop shadow into mortar
+          canvas.drawLine(
+            Offset(bRect.left + 0.8, bRect.bottom - 0.8),
+            Offset(bRect.right - 0.8, bRect.bottom - 0.8),
+            shadowPaint,
+          );
+          canvas.drawLine(
+            Offset(bRect.right - 0.8, bRect.top + 0.8),
+            Offset(bRect.right - 0.8, bRect.bottom - 0.8),
+            shadowPaint,
+          );
+        }
 
         col++;
       }
       row++;
     }
 
-    // 3. Lower Protective Gym Wall Padding
-    _renderGymWallPads(canvas, geom);
+    // 3. Dark Hardwood / Rubber Baseboard Trim at Baseline Joint
+    const baseboardHeight = 5.0;
+    final baseboardRect = Rect.fromLTWH(
+      wallRect.left,
+      wallRect.bottom - baseboardHeight,
+      wallRect.width,
+      baseboardHeight,
+    );
+    final baseboardPaint = Paint()..color = const Color(0xFF18120C);
+    canvas.drawRect(baseboardRect, baseboardPaint);
 
-    // 4. Wooden / Rubber Baseboard Trim
-    final trimPaint = Paint()..color = const Color(0xFF140D07);
-    canvas.drawRect(
-      Rect.fromLTWH(wallRect.left, geom.horizonY - 3.5, wallRect.width, 3.5),
-      trimPaint,
+    // Crisp highlight bevel along top edge of baseboard
+    canvas.drawLine(
+      Offset(wallRect.left, wallRect.bottom - baseboardHeight),
+      Offset(wallRect.right, wallRect.bottom - baseboardHeight),
+      Paint()
+        ..color = const Color(0x35FFFFFF)
+        ..strokeWidth = 1.0,
     );
 
-    // 5. Atmospheric Distance Haze & Contrast Softening
-    final hazePaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
+    // 4. Atmospheric Gym Lighting Vignette on Wall
+    // Centers warmth around hoop, subtly shading top and corners
+    final wallLightPaint = Paint()
+      ..shader = RadialGradient(
+        center: Alignment(0.0, -0.2),
+        radius: 1.1,
         colors: const [
-          Color(0x350F172A), // Soft dark haze at top
-          Color(0x120F172A), // Clearer in center
-          Color(0x400F172A), // Grounding shadow meeting floor
+          Color(0x00000000), // Pure crisp brick in center
+          Color(0x12000000), // Gentle shading
+          Color(0x38000000), // Rich moody vignette near borders
         ],
-        stops: const [0.0, 0.5, 1.0],
+        stops: const [0.0, 0.55, 1.0],
       ).createShader(wallRect);
-    canvas.drawRect(wallRect, hazePaint);
+    canvas.drawRect(wallRect, wallLightPaint);
 
     canvas.restore();
-  }
-
-  void _renderGymWallPads(Canvas canvas, RoomGeometry geom) {
-    final wallRect = geom.backWallRect;
-    final padHeight = wallRect.height * 0.32;
-    final padTop = geom.horizonY - padHeight;
-    final padBottom = geom.horizonY - 3.5;
-    final padRect = Rect.fromLTRB(wallRect.left, padTop, wallRect.right, padBottom);
-
-    // Navy slate vinyl base
-    final padBasePaint = Paint()
-      ..shader = const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          Color(0xFF1E293B),
-          Color(0xFF0F172A),
-        ],
-      ).createShader(padRect);
-    canvas.drawRect(padRect, padBasePaint);
-
-    // Vertical cushion segments
-    const segmentWidth = 24.0;
-    final creasePaint = Paint()
-      ..color = const Color(0x40000000)
-      ..strokeWidth = 1.2;
-    final cushionHighlightPaint = Paint()
-      ..color = const Color(0x15FFFFFF)
-      ..strokeWidth = 1.0;
-
-    for (double x = wallRect.left; x < wallRect.right; x += segmentWidth) {
-      // Crease between cushions
-      canvas.drawLine(Offset(x, padTop), Offset(x, padBottom), creasePaint);
-      // Soft vertical highlight down the center of each cushion
-      canvas.drawLine(
-        Offset(x + segmentWidth / 2, padTop + 2),
-        Offset(x + segmentWidth / 2, padBottom - 2),
-        cushionHighlightPaint,
-      );
-    }
-
-    // Top protective cap border with collegiate gold line
-    canvas.drawLine(
-      Offset(wallRect.left, padTop),
-      Offset(wallRect.right, padTop),
-      Paint()
-        ..color = const Color(0xFFFACC15)
-        ..strokeWidth = 2.0,
-    );
   }
 }
