@@ -261,32 +261,8 @@ class CourtFloorRenderer {
     final endY = geom.screenHeight;
     final centerX = geom.screenWidth / 2.0;
 
-    const streakWidth = 26.0;
-    final streakRect = Rect.fromLTRB(
-      centerX - streakWidth / 2,
-      startY,
-      centerX + streakWidth / 2,
-      endY,
-    );
-
-    // Dual-pass vertical reflection:
-    // Pass 1: Soft diffuse glow
-    final diffusePaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: const [
-          Color(0x55FFFFFF), // Bright directly beneath pole
-          Color(0x30FFFFFF), // Soft midtone along key
-          Color(0x0AFFFFFF), // Gentle fade toward foreground
-          Colors.transparent,
-        ],
-        stops: const [0.0, 0.25, 0.70, 1.0],
-      ).createShader(streakRect);
-    canvas.drawRect(streakRect, diffusePaint);
-
-    // Pass 2: Sharp specular core line
-    final coreWidth = 6.0;
+    // Single clean center specular reflection line directly beneath the pole
+    const coreWidth = 6.0;
     final coreRect = Rect.fromLTRB(
       centerX - coreWidth / 2,
       startY,
@@ -298,12 +274,12 @@ class CourtFloorRenderer {
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: const [
-          Color(0x90FFFFFF), // Intense specular white reflection core
-          Color(0x45FFFFFF),
-          Color(0x10FFFFFF),
+          Color(0x95FFFFFF), // Crisp specular white reflection core directly under pole
+          Color(0x50FFFFFF), // Midtone fade along the key
+          Color(0x15FFFFFF), // Soft fade into foreground
           Colors.transparent,
         ],
-        stops: const [0.0, 0.20, 0.65, 1.0],
+        stops: const [0.0, 0.22, 0.65, 1.0],
       ).createShader(coreRect);
     canvas.drawRect(coreRect, corePaint);
   }
