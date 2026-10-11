@@ -141,16 +141,23 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                const ScoreboardPlayerAvatar(),
-                const SizedBox(width: 8.0),
-                _buildTrapezoidalConsole(),
-                const SizedBox(width: 8.0),
-                ScoreboardHelpBadge(onTap: widget.onHelpTapped),
-              ],
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  const ScoreboardPlayerAvatar(),
+                  const SizedBox(width: 6.0),
+                  ScoreboardPauseBadge(game: widget.game),
+                  const SizedBox(width: 8.0),
+                  _buildTrapezoidalConsole(),
+                  const SizedBox(width: 8.0),
+                  const ScoreboardMuteBadge(),
+                  const SizedBox(width: 6.0),
+                  ScoreboardHelpBadge(onTap: widget.onHelpTapped),
+                ],
+              ),
             ),
             HotStreakPill(streakNotifier: widget.game.streakNotifier),
           ],
