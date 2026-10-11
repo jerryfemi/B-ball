@@ -572,6 +572,15 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     );
 
     game.recordShotAttempt();
+    game.recordShotTelemetry(
+      startX: physics.pos.x,
+      startY: physics.pos.y,
+      startZ: physics.pos.z,
+      vx: launchVel.x,
+      vy: launchVel.y,
+      vz: launchVel.z,
+      backspin: 14.0,
+    );
     physics.launch(launchVel, backspin: 14.0);
     onLaunched?.call();
   }
