@@ -63,6 +63,15 @@ class GameRoundStats {
       totalShots > 0 ? (madeShots / totalShots * 100.0) : 0.0;
 }
 
+/// Reactive ValueNotifier subclass allowing direct notification triggers on internal state mutations.
+class MatchSessionNotifier extends ValueNotifier<MatchSession?> {
+  MatchSessionNotifier(super.value);
+
+  void notify() {
+    notifyListeners();
+  }
+}
+
 class BasketballGame extends Forge2DGame {
   BasketballGame() : super(gravity: Vector2(0, 30.0));
 
@@ -105,8 +114,8 @@ class BasketballGame extends Forge2DGame {
       ValueNotifier<ScoreEvent?>(null);
 
   // Match Mode & 1v1 turn progression
-  final ValueNotifier<MatchSession?> matchSessionNotifier =
-      ValueNotifier<MatchSession?>(null);
+  final MatchSessionNotifier matchSessionNotifier =
+      MatchSessionNotifier(null);
   final ValueNotifier<int> player1MatchScoreNotifier = ValueNotifier<int>(0);
   final ValueNotifier<int> player2MatchScoreNotifier = ValueNotifier<int>(0);
 
@@ -221,9 +230,11 @@ class BasketballGame extends Forge2DGame {
     final session = matchSessionNotifier.value;
     if (session != null) {
       if (session.activePlayerIndex == 0) {
-        player1MatchScoreNotifier.value = session.player1.totalScore + score;
+        player1MatchScoreNotifier.value =
+            session.player1.scoreUpToRound(session.currentRoundIndex) + score;
       } else {
-        player2MatchScoreNotifier.value = session.player2.totalScore + score;
+        player2MatchScoreNotifier.value =
+            session.player2.scoreUpToRound(session.currentRoundIndex) + score;
       }
     }
 
@@ -308,8 +319,16 @@ class BasketballGame extends Forge2DGame {
     required bool isBankShot,
   }) {
     if (gameStateNotifier.value == GameModeState.replay) {
-      score += points;
-      scoreNotifier.value = score;
+      final session = matchSessionNotifier.value;
+      if (session != null &&
+          session.phase == MatchTurnPhase.watchingOpponentReplay) {
+        // Increment opponent's live scoreboard bay as each ghost basket is made
+        if (session.activePlayerIndex == 1) {
+          player1MatchScoreNotifier.value += points;
+        } else {
+          player2MatchScoreNotifier.value += points;
+        }
+      }
       final event = ScoreEvent(
         points: points,
         isSwish: isSwish,
@@ -363,8 +382,13 @@ class BasketballGame extends Forge2DGame {
     player1MatchScoreNotifier.value = session.player1.totalScore;
     player2MatchScoreNotifier.value = session.player2.totalScore;
 
-    session.phase = MatchTurnPhase.turnComplete;
-    matchSessionNotifier.value = session;
+    if (session.isFinalRound && session.activePlayerIndex == 1) {
+      // Both players have completed all rounds! Direct to Winner Podium!
+      session.phase = MatchTurnPhase.matchComplete;
+    } else {
+      session.phase = MatchTurnPhase.turnComplete;
+    }
+    matchSessionNotifier.notify();
     gameStateNotifier.value = GameModeState.gameOver;
   }
 
@@ -497,20 +521,20 @@ class BasketballGame extends Forge2DGame {
     if (session.activePlayerIndex == 0) {
       // Player 1 finished -> Hand over to Player 2
       session.activePlayerIndex = 1;
-      // Start opponent replay automatically for Player 2
+      matchSessionNotifier.notify();
       startOpponentReplay();
     } else {
       // Player 2 finished their turn
       if (session.isFinalRound) {
         // All rounds complete -> show celebratory Match Winner Podium
         session.phase = MatchTurnPhase.matchComplete;
-        matchSessionNotifier.value = session;
+        matchSessionNotifier.notify();
         gameStateNotifier.value = GameModeState.gameOver;
       } else {
         // Advance to next round (e.g. Round 1 -> Round 2)
         session.currentRoundIndex++;
         session.activePlayerIndex = 0; // Back to Player 1
-        // Start opponent replay automatically for Player 1
+        matchSessionNotifier.notify();
         startOpponentReplay();
       }
     }
@@ -535,8 +559,11 @@ class BasketballGame extends Forge2DGame {
     final session = matchSessionNotifier.value;
     if (session == null) return;
 
+    player1MatchScoreNotifier.value = session.player1.totalScore;
+    player2MatchScoreNotifier.value = session.player2.totalScore;
+
     session.phase = MatchTurnPhase.playingTurn;
-    matchSessionNotifier.value = session;
+    matchSessionNotifier.notify();
     activeGhostTelemetry = null;
 
     _prepareTurn();
@@ -553,7 +580,20 @@ class BasketballGame extends Forge2DGame {
     }
 
     session.phase = MatchTurnPhase.watchingOpponentReplay;
-    matchSessionNotifier.value = session;
+    matchSessionNotifier.notify();
+
+    // Start opponent score at baseline prior to this round
+    final opponent = session.opponentPlayer;
+    final opponentBaseline = opponent.scoreUpToRound(session.currentRoundIndex);
+    if (session.activePlayerIndex == 1) {
+      // Opponent is Player 1 (YOU bay)
+      player1MatchScoreNotifier.value = opponentBaseline;
+      player2MatchScoreNotifier.value = session.player2.totalScore;
+    } else {
+      // Opponent is Player 2 (THEM bay)
+      player1MatchScoreNotifier.value = session.player1.totalScore;
+      player2MatchScoreNotifier.value = opponentBaseline;
+    }
 
     activeGhostTelemetry = opponentTelemetry;
     _nextGhostShotIndex = 0;
@@ -583,8 +623,12 @@ class BasketballGame extends Forge2DGame {
 
     final session = matchSessionNotifier.value;
     if (session != null) {
+      // Snap both players' scores to their full completed totals
+      player1MatchScoreNotifier.value = session.player1.totalScore;
+      player2MatchScoreNotifier.value = session.player2.totalScore;
+
       session.phase = MatchTurnPhase.playingTurn;
-      matchSessionNotifier.value = session;
+      matchSessionNotifier.notify();
     }
 
     _prepareTurn();
