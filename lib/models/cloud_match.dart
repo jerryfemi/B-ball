@@ -13,16 +13,86 @@ enum MatchStatus {
   completed,
 
   /// Cancelled or expired.
-  abandoned;
+  abandoned,
+
+  /// Fallback for forward compatibility with newer clients.
+  unknown;
 
   String get key => name;
 
   static MatchStatus fromKey(String? key) {
-    return MatchStatus.values.firstWhere(
-      (e) => e.name == key,
-      orElse: () => MatchStatus.active,
+    if (key == null) return MatchStatus.active;
+    for (final val in MatchStatus.values) {
+      if (val.name == key) return val;
+    }
+    return MatchStatus.unknown;
+  }
+}
+
+/// Final outcome evaluation of a completed match.
+enum MatchOutcome {
+  inProgress,
+  player1Won,
+  player2Won,
+  tie,
+}
+
+/// Compact per-round shooting statistics preserved across all rounds for the podium.
+class RoundSummaryStats {
+  final int roundIndex;
+  final int score;
+  final int madeShots;
+  final int totalShots;
+  final int swishes;
+  final int bestStreak;
+
+  const RoundSummaryStats({
+    required this.roundIndex,
+    required this.score,
+    required this.madeShots,
+    required this.totalShots,
+    required this.swishes,
+    required this.bestStreak,
+  });
+
+  factory RoundSummaryStats.fromTelemetry(int roundIndex, RoundTelemetry telemetry) {
+    int streak = 0;
+    int maxStreak = 0;
+    for (final s in telemetry.shots) {
+      if (s.isMake) {
+        streak++;
+        if (streak > maxStreak) maxStreak = streak;
+      } else {
+        streak = 0;
+      }
+    }
+    return RoundSummaryStats(
+      roundIndex: roundIndex,
+      score: telemetry.roundScore,
+      madeShots: telemetry.madeShots,
+      totalShots: telemetry.totalShots,
+      swishes: telemetry.shots.where((s) => s.isSwish).length,
+      bestStreak: maxStreak,
     );
   }
+
+  Map<String, dynamic> toMap() => {
+    'r': roundIndex,
+    's': score,
+    'm': madeShots,
+    't': totalShots,
+    'sw': swishes,
+    'st': bestStreak,
+  };
+
+  factory RoundSummaryStats.fromMap(Map<String, dynamic> map) => RoundSummaryStats(
+    roundIndex: (map['r'] as num?)?.toInt() ?? 1,
+    score: (map['s'] as num?)?.toInt() ?? 0,
+    madeShots: (map['m'] as num?)?.toInt() ?? 0,
+    totalShots: (map['t'] as num?)?.toInt() ?? 0,
+    swishes: (map['sw'] as num?)?.toInt() ?? 0,
+    bestStreak: (map['st'] as num?)?.toInt() ?? 0,
+  );
 }
 
 /// Participant metadata and round performance in a cloud match.
@@ -31,27 +101,52 @@ class CloudPlayer {
   final String displayName;
   final String avatarEmoji;
   final List<int> roundScores;
+  final List<RoundSummaryStats> roundSummaries;
 
   const CloudPlayer({
     required this.uid,
     required this.displayName,
     required this.avatarEmoji,
     required this.roundScores,
+    this.roundSummaries = const [],
   });
 
   int get totalScore => roundScores.fold(0, (acc, s) => acc + s);
+
+  /// Total successful shots made across all played rounds.
+  int get totalMadeShots =>
+      roundSummaries.fold(0, (acc, s) => acc + s.madeShots);
+
+  /// Total shot attempts taken across all played rounds.
+  int get totalAttemptedShots =>
+      roundSummaries.fold(0, (acc, s) => acc + s.totalShots);
+
+  /// Overall match shooting accuracy percentage (0.0 to 100.0).
+  double get overallAccuracy => totalAttemptedShots > 0
+      ? (totalMadeShots / totalAttemptedShots * 100.0)
+      : 0.0;
+
+  /// Total clean swishes scored across all played rounds.
+  int get totalSwishes =>
+      roundSummaries.fold(0, (acc, s) => acc + s.swishes);
+
+  /// Longest consecutive shot streak achieved during any round in the match.
+  int get bestStreakAcrossMatch => roundSummaries.fold(
+      0, (acc, s) => s.bestStreak > acc ? s.bestStreak : acc);
 
   CloudPlayer copyWith({
     String? uid,
     String? displayName,
     String? avatarEmoji,
     List<int>? roundScores,
+    List<RoundSummaryStats>? roundSummaries,
   }) {
     return CloudPlayer(
       uid: uid ?? this.uid,
       displayName: displayName ?? this.displayName,
       avatarEmoji: avatarEmoji ?? this.avatarEmoji,
       roundScores: roundScores ?? this.roundScores,
+      roundSummaries: roundSummaries ?? this.roundSummaries,
     );
   }
 
@@ -60,6 +155,7 @@ class CloudPlayer {
     'displayName': displayName,
     'avatarEmoji': avatarEmoji,
     'roundScores': roundScores,
+    'roundSummaries': roundSummaries.map((s) => s.toMap()).toList(),
   };
 
   factory CloudPlayer.fromMap(Map<String, dynamic> map) => CloudPlayer(
@@ -68,6 +164,10 @@ class CloudPlayer {
     avatarEmoji: map['avatarEmoji'] as String? ?? '🏀',
     roundScores: (map['roundScores'] as List<dynamic>?)
             ?.map((e) => (e as num).toInt())
+            .toList() ??
+        [],
+    roundSummaries: (map['roundSummaries'] as List<dynamic>?)
+            ?.map((e) => RoundSummaryStats.fromMap(e as Map<String, dynamic>))
             .toList() ??
         [],
   );
@@ -171,11 +271,31 @@ class CloudMatch {
     return null;
   }
 
+  /// Evaluates overall match outcome with explicit enum support.
+  MatchOutcome get outcome {
+    if (status != MatchStatus.completed || player2 == null) {
+      return MatchOutcome.inProgress;
+    }
+    if (player1.totalScore > player2!.totalScore) {
+      return MatchOutcome.player1Won;
+    }
+    if (player2!.totalScore > player1.totalScore) {
+      return MatchOutcome.player2Won;
+    }
+    return MatchOutcome.tie;
+  }
+
+  /// UID of the match winner, or null if tie or in progress.
   String? get winnerUid {
-    if (status != MatchStatus.completed || player2 == null) return null;
-    if (player1.totalScore > player2!.totalScore) return player1.uid;
-    if (player2!.totalScore > player1.totalScore) return player2!.uid;
-    return null; // Tie
+    switch (outcome) {
+      case MatchOutcome.player1Won:
+        return player1.uid;
+      case MatchOutcome.player2Won:
+        return player2?.uid;
+      case MatchOutcome.inProgress:
+      case MatchOutcome.tie:
+        return null;
+    }
   }
 
   CloudMatch copyWith({
@@ -234,35 +354,53 @@ class CloudMatch {
     'chat': chat.map((c) => c.toMap()).toList(),
   };
 
+  /// Safely deserializes document map, resilient against corrupted or partial documents.
   factory CloudMatch.fromMap(Map<String, dynamic> map, String docId) {
-    return CloudMatch(
-      id: docId,
-      joinCode: map['joinCode'] as String? ?? '',
-      status: MatchStatus.fromKey(map['status'] as String?),
-      createdAt: (map['createdAt'] as num?)?.toInt() ?? 0,
-      updatedAt: (map['updatedAt'] as num?)?.toInt() ?? 0,
-      playerIds: (map['playerIds'] as List<dynamic>?)
-              ?.map((e) => e.toString())
-              .toList() ??
-          [],
-      player1: CloudPlayer.fromMap(map['player1'] as Map<String, dynamic>? ?? {}),
-      player2: map['player2'] != null
-          ? CloudPlayer.fromMap(map['player2'] as Map<String, dynamic>)
-          : null,
-      totalRounds: (map['totalRounds'] as num?)?.toInt() ?? 2,
-      roundDurationSeconds: (map['roundDurationSeconds'] as num?)?.toInt() ?? 60,
-      currentRound: (map['currentRound'] as num?)?.toInt() ?? 1,
-      activeTurnPlayerUid: map['activeTurnPlayerUid'] as String? ?? '',
-      latestTelemetry: map['latestTelemetry'] != null
-          ? RoundTelemetry.fromJson(map['latestTelemetry'] as Map<String, dynamic>)
-          : null,
-      latestTelemetryRound: (map['latestTelemetryRound'] as num?)?.toInt(),
-      latestTelemetryShooterUid: map['latestTelemetryShooterUid'] as String?,
-      chat: (map['chat'] as List<dynamic>?)
-              ?.map((e) => CloudChatMessage.fromMap(e as Map<String, dynamic>))
-              .toList() ??
-          [],
-    );
+    try {
+      return CloudMatch(
+        id: docId,
+        joinCode: map['joinCode'] as String? ?? docId,
+        status: MatchStatus.fromKey(map['status'] as String?),
+        createdAt: (map['createdAt'] as num?)?.toInt() ?? 0,
+        updatedAt: (map['updatedAt'] as num?)?.toInt() ?? 0,
+        playerIds: (map['playerIds'] as List<dynamic>?)
+                ?.map((e) => e.toString())
+                .toList() ??
+            [],
+        player1: CloudPlayer.fromMap(map['player1'] as Map<String, dynamic>? ?? {}),
+        player2: map['player2'] != null
+            ? CloudPlayer.fromMap(map['player2'] as Map<String, dynamic>)
+            : null,
+        totalRounds: (map['totalRounds'] as num?)?.toInt() ?? 2,
+        roundDurationSeconds: (map['roundDurationSeconds'] as num?)?.toInt() ?? 60,
+        currentRound: (map['currentRound'] as num?)?.toInt() ?? 1,
+        activeTurnPlayerUid: map['activeTurnPlayerUid'] as String? ?? '',
+        latestTelemetry: map['latestTelemetry'] != null
+            ? RoundTelemetry.fromJson(map['latestTelemetry'] as Map<String, dynamic>)
+            : null,
+        latestTelemetryRound: (map['latestTelemetryRound'] as num?)?.toInt(),
+        latestTelemetryShooterUid: map['latestTelemetryShooterUid'] as String?,
+        chat: (map['chat'] as List<dynamic>?)
+                ?.map((e) => CloudChatMessage.fromMap(e as Map<String, dynamic>))
+                .toList() ??
+            [],
+      );
+    } catch (e) {
+      // Return safe fallback rather than crashing the inbox
+      return CloudMatch(
+        id: docId,
+        joinCode: docId,
+        status: MatchStatus.unknown,
+        createdAt: 0,
+        updatedAt: 0,
+        playerIds: const [],
+        player1: const CloudPlayer(uid: '', displayName: 'Unknown', avatarEmoji: '🏀', roundScores: []),
+        totalRounds: 2,
+        roundDurationSeconds: 60,
+        currentRound: 1,
+        activeTurnPlayerUid: '',
+      );
+    }
   }
 
   factory CloudMatch.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
