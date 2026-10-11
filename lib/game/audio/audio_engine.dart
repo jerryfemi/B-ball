@@ -141,8 +141,8 @@ class AudioEngine {
     _safeHaptic(HapticFeedback.vibrate);
   }
 
-  /// Master volume scale for all sound effects (reduced by 25% from 1.0 -> 0.75).
-  static const double masterVolume = 0.75;
+  /// Master volume scale for all sound effects (scaled to 60%).
+  static const double masterVolume = 0.60;
 
   /// Plays from a pre-allocated pooled player with error handling.
   /// Reuses existing [AudioPlayer] instances and catches both sync and async failures.
