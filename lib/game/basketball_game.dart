@@ -36,6 +36,12 @@ class BasketballGame extends Forge2DGame {
   int bestStreak = 0;
   void Function(ScoreEvent event)? onScoreEvent;
 
+  // Reactive ValueNotifiers for zero-overhead Flutter UI binding
+  final ValueNotifier<int> scoreNotifier = ValueNotifier<int>(0);
+  final ValueNotifier<int> streakNotifier = ValueNotifier<int>(0);
+  final ValueNotifier<ScoreEvent?> scoreEventNotifier =
+      ValueNotifier<ScoreEvent?>(null);
+
   void registerScore({required bool isSwish, required bool isBankShot}) {
     currentStreak++;
     if (currentStreak > bestStreak) {
@@ -56,11 +62,16 @@ class BasketballGame extends Forge2DGame {
       isBankShot: isBankShot,
       streak: currentStreak,
     );
+
+    scoreNotifier.value = score;
+    streakNotifier.value = currentStreak;
+    scoreEventNotifier.value = event;
     onScoreEvent?.call(event);
   }
 
   void resetStreak() {
     currentStreak = 0;
+    streakNotifier.value = 0;
   }
 
   @override
@@ -173,5 +184,13 @@ class BasketballGame extends Forge2DGame {
       final viewfinder = camera.viewfinder as Forge2DViewfinder;
       viewfinder.metersToPixels = size.y / worldHeightInMeters;
     }
+  }
+
+  @override
+  void onRemove() {
+    scoreNotifier.dispose();
+    streakNotifier.dispose();
+    scoreEventNotifier.dispose();
+    super.onRemove();
   }
 }
