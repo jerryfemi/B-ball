@@ -25,7 +25,6 @@ class RoundIntermissionOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final shooter = session.activePlayer;
-    final recipient = session.activePlayerIndex == 0 ? session.player2 : session.player1;
     final roundScore = shooter.roundScores.isNotEmpty ? shooter.roundScores.last : 0;
 
     return Center(
@@ -233,11 +232,13 @@ class RoundIntermissionOverlay extends StatelessWidget {
                   ),
                   const SizedBox(height: 8.0),
                   Text(
-                    "${recipient.name} will watch your ghost shots & take their turn",
+                    session.activePlayerIndex == 0
+                        ? "Pass device to ${session.player2.name}. They will watch your replay & shoot!"
+                        : "Pass device to ${session.player1.name}. You will watch their replay & shoot!",
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       color: Color(0xFF64748B),
-                      fontSize: 11.0,
+                      fontSize: 11.5,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
