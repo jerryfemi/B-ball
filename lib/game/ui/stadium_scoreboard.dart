@@ -139,61 +139,65 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
     return ValueListenableBuilder<MatchSession?>(
       valueListenable: widget.game.matchSessionNotifier,
       builder: (context, matchSession, _) {
-        final is1v1 = matchSession != null;
-        final isWatchingReplay =
-            is1v1 && matchSession.phase == MatchTurnPhase.watchingOpponentReplay;
-
-        // When watching opponent replay, highlight the opponent whose shots are actively flying into the net.
-        // When shooting live, highlight the active shooter.
-        final int shootingPlayerIndex = is1v1
-            ? (isWatchingReplay
-                ? (matchSession.activePlayerIndex == 0 ? 1 : 0)
-                : matchSession.activePlayerIndex)
-            : 0;
-
-        final p1Active = shootingPlayerIndex == 0;
-        final p2Active = shootingPlayerIndex == 1;
-
-        return SafeArea(
-          bottom: false,
-          child: Padding(
-            padding: const EdgeInsets.only(top: 8.0, left: 12.0, right: 12.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      ScoreboardPlayerAvatar(
-                        isActive: p1Active,
-                        label: is1v1 ? matchSession.player1.name : 'You',
-                      ),
-                      const SizedBox(width: 6.0),
-                      ScoreboardPauseBadge(game: widget.game),
-                      const SizedBox(width: 8.0),
-                      _buildTrapezoidalConsole(matchSession, shootingPlayerIndex),
-                      const SizedBox(width: 8.0),
-                      const ScoreboardMuteBadge(),
-                      const SizedBox(width: 6.0),
-                      if (is1v1)
-                        ScoreboardOpponentAvatar(
-                          isActive: p2Active,
-                          label: matchSession.player2.name,
-                        )
-                      else
-                        ScoreboardHelpBadge(onTap: widget.onHelpTapped),
-                    ],
-                  ),
-                ),
-                HotStreakPill(streakNotifier: widget.game.streakNotifier),
-              ],
-            ),
-          ),
-        );
+        return _buildLayout(context, matchSession);
       },
+    );
+  }
+
+  Widget _buildLayout(BuildContext context, MatchSession? matchSession) {
+    final is1v1 = matchSession != null;
+    final isWatchingReplay =
+        is1v1 && matchSession.phase == MatchTurnPhase.watchingOpponentReplay;
+
+    // When watching opponent replay, highlight the opponent whose shots are actively flying into the net.
+    // When shooting live, highlight the active shooter.
+    final int shootingPlayerIndex = is1v1
+        ? (isWatchingReplay
+            ? (matchSession.activePlayerIndex == 0 ? 1 : 0)
+            : matchSession.activePlayerIndex)
+        : 0;
+
+    final p1Active = shootingPlayerIndex == 0;
+    final p2Active = shootingPlayerIndex == 1;
+
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.only(top: 8.0, left: 12.0, right: 12.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  ScoreboardPlayerAvatar(
+                    isActive: p1Active,
+                    label: is1v1 ? matchSession.player1.name : 'You',
+                  ),
+                  const SizedBox(width: 6.0),
+                  ScoreboardPauseBadge(game: widget.game),
+                  const SizedBox(width: 8.0),
+                  _buildTrapezoidalConsole(matchSession, shootingPlayerIndex),
+                  const SizedBox(width: 8.0),
+                  const ScoreboardMuteBadge(),
+                  const SizedBox(width: 6.0),
+                  if (is1v1)
+                    ScoreboardOpponentAvatar(
+                      isActive: p2Active,
+                      label: matchSession.player2.name,
+                    )
+                  else
+                    ScoreboardHelpBadge(onTap: widget.onHelpTapped),
+                ],
+              ),
+            ),
+            HotStreakPill(streakNotifier: widget.game.streakNotifier),
+          ],
+        ),
+      ),
     );
   }
 

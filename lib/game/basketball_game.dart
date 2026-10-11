@@ -64,11 +64,49 @@ class GameRoundStats {
 }
 
 /// Reactive ValueNotifier subclass allowing direct notification triggers on internal state mutations.
+///
+/// Resilient to reads after [dispose] — returns null instead of crashing,
+/// which prevents JSNoSuchMethodError on Flutter Web hot restarts.
 class MatchSessionNotifier extends ValueNotifier<MatchSession?> {
   MatchSessionNotifier(super.value);
 
+  bool _isDisposed = false;
+  bool get isDisposed => _isDisposed;
+
   void notify() {
-    notifyListeners();
+    if (!_isDisposed) {
+      notifyListeners();
+    }
+  }
+
+  @override
+  MatchSession? get value => _isDisposed ? null : super.value;
+
+  @override
+  set value(MatchSession? newValue) {
+    if (!_isDisposed) {
+      super.value = newValue;
+    }
+  }
+
+  @override
+  void dispose() {
+    _isDisposed = true;
+    super.dispose();
+  }
+
+  @override
+  void addListener(VoidCallback listener) {
+    if (!_isDisposed) {
+      super.addListener(listener);
+    }
+  }
+
+  @override
+  void removeListener(VoidCallback listener) {
+    if (!_isDisposed) {
+      super.removeListener(listener);
+    }
   }
 }
 
