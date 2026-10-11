@@ -4,10 +4,12 @@ import '../../../models/cloud_match.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/firestore_match_service.dart';
 
-/// Flanking circular scoreboard button for the 1v1 Match Hub.
+/// Clean stadium scoreboard header badge for 1v1 Matches.
 ///
-/// Features an animated heartbeat pulse and shake/wobble effect
-/// when it's your turn to shoot, inviting immediate action.
+/// Follows strict arena guidelines:
+/// - Idle: Plain chat bubble icon with neutral border.
+/// - Your move: Amber ring with count badge, gentle single pulse on new turn arrival.
+/// - Single shared Firestore broadcast stream listener (zero duplicate queries).
 class InboxNotificationBadge extends StatefulWidget {
   final VoidCallback onTap;
   final String? activeMatchId;
@@ -24,92 +26,46 @@ class InboxNotificationBadge extends StatefulWidget {
 
 class _InboxNotificationBadgeState extends State<InboxNotificationBadge>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _heartbeatController;
+  late final AnimationController _pulseController;
   late final Animation<double> _scaleAnimation;
-  late final Animation<double> _shakeAnimation;
   int _prevWaitingCount = 0;
+  String? _currentStreamUid;
+  Stream<List<CloudMatch>>? _matchesStream;
 
   @override
   void initState() {
     super.initState();
-    _heartbeatController = AnimationController(
+    _pulseController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1400),
+      duration: const Duration(milliseconds: 400),
     );
 
-    // Realistic "lub-dub... pause" heartbeat sequence
     _scaleAnimation = TweenSequence<double>([
       TweenSequenceItem(
-        tween: Tween<double>(begin: 1.0, end: 1.25)
+        tween: Tween<double>(begin: 1.0, end: 1.22)
             .chain(CurveTween(curve: Curves.easeOutCubic)),
-        weight: 15,
-      ),
-      TweenSequenceItem(
-        tween: Tween<double>(begin: 1.25, end: 1.0)
-            .chain(CurveTween(curve: Curves.easeInCubic)),
-        weight: 15,
-      ),
-      TweenSequenceItem(
-        tween: Tween<double>(begin: 1.0, end: 1.15)
-            .chain(CurveTween(curve: Curves.easeOutCubic)),
-        weight: 15,
-      ),
-      TweenSequenceItem(
-        tween: Tween<double>(begin: 1.15, end: 1.0)
-            .chain(CurveTween(curve: Curves.easeInCubic)),
-        weight: 15,
-      ),
-      TweenSequenceItem(
-        tween: ConstantTween<double>(1.0),
-        weight: 40,
-      ),
-    ]).animate(_heartbeatController);
-
-    // Subtle rotational arcade wobble
-    _shakeAnimation = TweenSequence<double>([
-      TweenSequenceItem(
-        tween: Tween<double>(begin: 0.0, end: -0.1)
-            .chain(CurveTween(curve: Curves.easeInOut)),
-        weight: 15,
-      ),
-      TweenSequenceItem(
-        tween: Tween<double>(begin: -0.1, end: 0.1)
-            .chain(CurveTween(curve: Curves.easeInOut)),
-        weight: 20,
-      ),
-      TweenSequenceItem(
-        tween: Tween<double>(begin: 0.1, end: 0.0)
-            .chain(CurveTween(curve: Curves.easeInOut)),
-        weight: 15,
-      ),
-      TweenSequenceItem(
-        tween: ConstantTween<double>(0.0),
         weight: 50,
       ),
-    ]).animate(_heartbeatController);
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 1.22, end: 1.0)
+            .chain(CurveTween(curve: Curves.easeInCubic)),
+        weight: 50,
+      ),
+    ]).animate(_pulseController);
   }
 
   @override
   void dispose() {
-    _heartbeatController.dispose();
+    _pulseController.dispose();
     super.dispose();
   }
 
-  void _updateAnimation(int turnsWaiting) {
-    if (turnsWaiting > 0) {
-      if (!_heartbeatController.isAnimating) {
-        _heartbeatController.repeat();
-      }
-      if (_prevWaitingCount == 0 && turnsWaiting > 0) {
-        HapticFeedback.mediumImpact();
-      }
-    } else {
-      if (_heartbeatController.isAnimating) {
-        _heartbeatController.stop();
-        _heartbeatController.reset();
-      }
+  void _onTurnsUpdated(int count) {
+    if (count > _prevWaitingCount) {
+      _pulseController.forward(from: 0.0);
+      HapticFeedback.lightImpact();
     }
-    _prevWaitingCount = turnsWaiting;
+    _prevWaitingCount = count;
   }
 
   @override
@@ -117,12 +73,18 @@ class _InboxNotificationBadgeState extends State<InboxNotificationBadge>
     return ValueListenableBuilder<UserProfile?>(
       valueListenable: AuthService.instance.currentUserNotifier,
       builder: (context, user, _) {
-        if (user == null) {
+        if (user == null || user.uid.isEmpty) {
           return _buildButton(turnsWaiting: 0);
         }
 
+        if (_currentStreamUid != user.uid) {
+          _currentStreamUid = user.uid;
+          _matchesStream = FirestoreMatchService.instance.streamUserMatches(user.uid);
+        }
+
         return StreamBuilder<List<CloudMatch>>(
-          stream: FirestoreMatchService.instance.streamUserMatches(user.uid),
+          stream: _matchesStream,
+          initialData: FirestoreMatchService.instance.getCachedUserMatches(user.uid),
           builder: (context, snapshot) {
             final matches = snapshot.data ?? [];
             final activeId = widget.activeMatchId;
@@ -133,7 +95,7 @@ class _InboxNotificationBadgeState extends State<InboxNotificationBadge>
                     (activeId == null || m.id != activeId))
                 .length;
 
-            _updateAnimation(turnsWaiting);
+            _onTurnsUpdated(turnsWaiting);
 
             return _buildButton(turnsWaiting: turnsWaiting);
           },
@@ -145,20 +107,8 @@ class _InboxNotificationBadgeState extends State<InboxNotificationBadge>
   Widget _buildButton({required int turnsWaiting}) {
     final hasTurns = turnsWaiting > 0;
 
-    return AnimatedBuilder(
-      animation: _heartbeatController,
-      builder: (context, child) {
-        final scale = hasTurns ? _scaleAnimation.value : 1.0;
-        final rotation = hasTurns ? _shakeAnimation.value : 0.0;
-
-        return Transform.scale(
-          scale: scale,
-          child: Transform.rotate(
-            angle: rotation,
-            child: child,
-          ),
-        );
-      },
+    return ScaleTransition(
+      scale: _scaleAnimation,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -174,32 +124,21 @@ class _InboxNotificationBadgeState extends State<InboxNotificationBadge>
                 width: 34.0,
                 height: 34.0,
                 decoration: BoxDecoration(
-                  color: hasTurns
-                      ? const Color(0xFF0F172A)
-                      : const Color(0xFF1E2638),
+                  color: const Color(0xFF161F2E),
                   shape: BoxShape.circle,
                   border: Border.all(
                     color: hasTurns
-                        ? const Color(0xFF38BDF8)
+                        ? const Color(0xFFF59E0B) // Amber ring when your move
                         : const Color(0xFF334155),
-                    width: hasTurns ? 2.0 : 1.0,
+                    width: hasTurns ? 2.0 : 1.2,
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: hasTurns
-                          ? const Color(0xFF38BDF8).withValues(alpha: 0.4)
-                          : const Color(0x33000000),
-                      blurRadius: hasTurns ? 8.0 : 4.0,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
                 ),
                 child: Center(
                   child: Icon(
-                    Icons.forum_rounded,
-                    size: 18.0,
+                    Icons.chat_bubble_outline_rounded,
+                    size: 16.0,
                     color: hasTurns
-                        ? const Color(0xFF38BDF8)
+                        ? const Color(0xFFF59E0B)
                         : const Color(0xFF94A3B8),
                   ),
                 ),
@@ -209,25 +148,22 @@ class _InboxNotificationBadgeState extends State<InboxNotificationBadge>
                   right: -4,
                   top: -4,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                    width: 17,
+                    height: 17,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFEF4444),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.white, width: 1.2),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFFEF4444).withValues(alpha: 0.8),
-                          blurRadius: 6,
-                        ),
-                      ],
+                      color: const Color(0xFFF59E0B),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: const Color(0xFF0F172A), width: 1.5),
                     ),
-                    child: Text(
-                      '$turnsWaiting',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 9,
-                        fontWeight: FontWeight.w900,
-                        height: 1.0,
+                    child: Center(
+                      child: Text(
+                        '$turnsWaiting',
+                        style: const TextStyle(
+                          color: Color(0xFF0F172A),
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w900,
+                          height: 1.0,
+                        ),
                       ),
                     ),
                   ),
