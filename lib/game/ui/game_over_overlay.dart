@@ -6,6 +6,7 @@ import 'game_over/game_over_header.dart';
 import 'game_over/game_over_stats_grid.dart';
 import 'game_over/play_again_button.dart';
 import 'game_over/see_replay_button.dart';
+import 'match/match_setup_dialog.dart';
 
 /// Celebratory Game Over recap modal shown when the 60-second round clock expires.
 ///
@@ -135,7 +136,15 @@ class _GameOverOverlayState extends State<GameOverOverlay>
                           SizedBox(
                             width: double.infinity,
                             child: OutlinedButton(
-                              onPressed: () => widget.game.startPassAndPlayMatch(),
+                              onPressed: () async {
+                                final config = await MatchSetupDialog.show(
+                                  context,
+                                  initialConfig: widget.game.currentMatchConfig,
+                                );
+                                if (config != null) {
+                                  widget.game.startPassAndPlayMatch(config: config);
+                                }
+                              },
                               style: OutlinedButton.styleFrom(
                                 backgroundColor: const Color(0x180284C7),
                                 foregroundColor: const Color(0xFF38BDF8),
@@ -154,13 +163,15 @@ class _GameOverOverlayState extends State<GameOverOverlay>
                                   Icon(Icons.sports_basketball_rounded, size: 20.0),
                                   SizedBox(width: 8.0),
                                   Text(
-                                    'PLAY 1V1 MATCH (2 ROUNDS)',
+                                    '1V1 PASS & PLAY MATCH',
                                     style: TextStyle(
                                       fontSize: 13.5,
                                       fontWeight: FontWeight.w800,
                                       letterSpacing: 1.0,
                                     ),
                                   ),
+                                  SizedBox(width: 6.0),
+                                  Icon(Icons.tune_rounded, size: 16.0),
                                 ],
                               ),
                             ),
