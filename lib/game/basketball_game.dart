@@ -11,6 +11,7 @@ import 'components/hoop_physics.dart';
 import 'components/ball.dart';
 import 'components/ghost_ball.dart';
 import 'components/ground.dart';
+import 'match/match_session.dart';
 import 'telemetry/shot_telemetry.dart';
 
 /// Encapsulates details of a made basketball shot.
@@ -102,6 +103,12 @@ class BasketballGame extends Forge2DGame {
       ValueNotifier<GameRoundStats?>(null);
   final ValueNotifier<ScoreEvent?> scoreEventNotifier =
       ValueNotifier<ScoreEvent?>(null);
+
+  // Match Mode & 1v1 turn progression
+  final ValueNotifier<MatchSession?> matchSessionNotifier =
+      ValueNotifier<MatchSession?>(null);
+  final ValueNotifier<int> player1MatchScoreNotifier = ValueNotifier<int>(0);
+  final ValueNotifier<int> player2MatchScoreNotifier = ValueNotifier<int>(0);
 
   bool get isPaused => isPausedNotifier.value;
   bool _isManuallyPaused = false;
@@ -211,6 +218,15 @@ class BasketballGame extends Forge2DGame {
     scoreEventNotifier.value = event;
     onScoreEvent?.call(event);
 
+    final session = matchSessionNotifier.value;
+    if (session != null) {
+      if (session.activePlayerIndex == 0) {
+        player1MatchScoreNotifier.value = session.player1.totalScore + score;
+      } else {
+        player2MatchScoreNotifier.value = session.player2.totalScore + score;
+      }
+    }
+
     // If game ended, update stats in case of buzzer-beater basket
     if (gameStateNotifier.value == GameModeState.gameOver) {
       _compileStats();
@@ -251,7 +267,7 @@ class BasketballGame extends Forge2DGame {
         final nextTime = timeRemainingNotifier.value - 1;
         timeRemainingNotifier.value = nextTime;
         if (nextTime <= 0) {
-          stopReplayMode();
+          _onReplayFinished();
         }
       }
 
@@ -264,7 +280,7 @@ class BasketballGame extends Forge2DGame {
             : 0.0;
         if (activeReplayBalls.isEmpty &&
             _roundElapsedSeconds >= lastShotTimeSec + 2.5) {
-          stopReplayMode();
+          _onReplayFinished();
         }
       }
     }
@@ -310,8 +326,18 @@ class BasketballGame extends Forge2DGame {
     }
   }
 
+  void _onReplayFinished() {
+    final session = matchSessionNotifier.value;
+    if (session != null &&
+        session.phase == MatchTurnPhase.watchingOpponentReplay) {
+      // Finished watching opponent's performance: start current player's turn!
+      skipOpponentReplayAndStartTurn();
+    } else {
+      stopReplayMode();
+    }
+  }
+
   void _onTimeExpired() {
-    gameStateNotifier.value = GameModeState.gameOver;
     AudioEngine.playBuzzer();
     lastRoundTelemetry = RoundTelemetry(
       roundScore: score,
@@ -319,7 +345,42 @@ class BasketballGame extends Forge2DGame {
       totalShots: totalShots,
       shots: List.unmodifiable(_currentRoundShots),
     );
-    _compileStats();
+
+    final session = matchSessionNotifier.value;
+    if (session != null) {
+      _finishMatchTurn(session);
+    } else {
+      gameStateNotifier.value = GameModeState.gameOver;
+      _compileStats();
+    }
+  }
+
+  void _finishMatchTurn(MatchSession session) {
+    session.activePlayer.roundScores.add(score);
+    if (lastRoundTelemetry != null) {
+      session.activePlayer.roundTelemetries.add(lastRoundTelemetry!);
+    }
+    player1MatchScoreNotifier.value = session.player1.totalScore;
+    player2MatchScoreNotifier.value = session.player2.totalScore;
+
+    if (session.activePlayerIndex == 0) {
+      // Player 1 finished -> Hand over to Player 2
+      session.activePlayerIndex = 1;
+      session.phase = MatchTurnPhase.turnComplete;
+    } else {
+      // Player 2 finished
+      if (session.isFinalRound) {
+        // Complete match!
+        session.phase = MatchTurnPhase.matchComplete;
+      } else {
+        // Advance round (e.g. Round 1 -> Round 2)
+        session.currentRoundIndex++;
+        session.activePlayerIndex = 0; // Back to Player 1
+        session.phase = MatchTurnPhase.turnComplete;
+      }
+    }
+    matchSessionNotifier.value = session;
+    gameStateNotifier.value = GameModeState.gameOver;
   }
 
   void _compileStats() {
@@ -409,6 +470,123 @@ class BasketballGame extends Forge2DGame {
     bankCount = 0;
     bestStreakInRound = 0;
     _secondAccumulator = 0.0;
+
+    scoreNotifier.value = 0;
+    streakNotifier.value = 0;
+    timeRemainingNotifier.value = roundDurationSeconds;
+    statsNotifier.value = null;
+    gameStateNotifier.value = GameModeState.ready;
+
+    if (isPaused) {
+      resumeGame();
+    }
+
+    // Clear active balls from world
+    final existingBalls = world.children.whereType<Basketball>().toList();
+    for (final b in existingBalls) {
+      b.removeFromParent();
+    }
+
+    final existingGhosts = world.children.whereType<GhostBasketball>().toList();
+    for (final g in existingGhosts) {
+      g.removeFromParent();
+    }
+
+    _spawnReadyBall(animate: true);
+  }
+
+  void startPassAndPlayMatch({int totalRounds = 2}) {
+    final session = MatchSession(
+      mode: MatchGameMode.passAndPlay1v1,
+      totalRounds: totalRounds,
+      currentRoundIndex: 0,
+      activePlayerIndex: 0,
+      phase: MatchTurnPhase.playingTurn,
+    );
+    matchSessionNotifier.value = session;
+    player1MatchScoreNotifier.value = 0;
+    player2MatchScoreNotifier.value = 0;
+
+    _prepareTurn();
+  }
+
+  void startMatchTurn() {
+    final session = matchSessionNotifier.value;
+    if (session == null) return;
+
+    session.phase = MatchTurnPhase.playingTurn;
+    matchSessionNotifier.value = session;
+    activeGhostTelemetry = null;
+
+    _prepareTurn();
+  }
+
+  void startOpponentReplay() {
+    final session = matchSessionNotifier.value;
+    if (session == null) return;
+
+    final opponentTelemetry = session.opponentPlayer.latestTelemetry;
+    if (opponentTelemetry == null || opponentTelemetry.shots.isEmpty) {
+      startMatchTurn();
+      return;
+    }
+
+    session.phase = MatchTurnPhase.watchingOpponentReplay;
+    matchSessionNotifier.value = session;
+
+    activeGhostTelemetry = opponentTelemetry;
+    _nextGhostShotIndex = 0;
+    _roundElapsedSeconds = 0.0;
+    _secondAccumulator = 0.0;
+    timeRemainingNotifier.value = roundDurationSeconds;
+
+    if (isPaused) {
+      resumeGame();
+    }
+
+    // Clear live balls
+    final existingBalls = world.children.whereType<Basketball>().toList();
+    for (final b in existingBalls) {
+      b.removeFromParent();
+    }
+
+    gameStateNotifier.value = GameModeState.replay;
+  }
+
+  void skipOpponentReplayAndStartTurn() {
+    final existingGhosts = world.children.whereType<GhostBasketball>().toList();
+    for (final g in existingGhosts) {
+      g.removeFromParent();
+    }
+    activeGhostTelemetry = null;
+
+    final session = matchSessionNotifier.value;
+    if (session != null) {
+      session.phase = MatchTurnPhase.playingTurn;
+      matchSessionNotifier.value = session;
+    }
+
+    _prepareTurn();
+  }
+
+  void exitToSoloMode() {
+    matchSessionNotifier.value = null;
+    restartRound();
+  }
+
+  void _prepareTurn() {
+    score = 0;
+    currentStreak = 0;
+    totalShots = 0;
+    madeShots = 0;
+    swishCount = 0;
+    bankCount = 0;
+    bestStreakInRound = 0;
+    _secondAccumulator = 0.0;
+    _roundElapsedSeconds = 0.0;
+    _currentRoundShots.clear();
+    _nextGhostShotIndex = 0;
+    activeGhostTelemetry = null;
 
     scoreNotifier.value = 0;
     streakNotifier.value = 0;
@@ -569,6 +747,9 @@ class BasketballGame extends Forge2DGame {
     isGhostModeNotifier.dispose();
     statsNotifier.dispose();
     scoreEventNotifier.dispose();
+    matchSessionNotifier.dispose();
+    player1MatchScoreNotifier.dispose();
+    player2MatchScoreNotifier.dispose();
     super.onRemove();
   }
 }
