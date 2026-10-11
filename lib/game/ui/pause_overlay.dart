@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../audio/audio_engine.dart';
 import '../basketball_game.dart';
+import 'match/match_setup_dialog.dart';
 
 /// Frosted obsidian glass Pause Overlay displayed when mid-round action is paused.
 ///
@@ -215,42 +216,93 @@ class _PauseOverlayState extends State<PauseOverlay>
                       ),
                       const SizedBox(height: 10.0),
 
-                      // 4. Secondary Action: Restart Round / Exit Match
+                      // 4. Secondary Action: Restart Round / Exit Match / 1v1 Setup
                       ValueListenableBuilder(
                         valueListenable: widget.game.matchSessionNotifier,
                         builder: (context, session, _) {
                           final isMatch = session != null;
-                          return SizedBox(
-                            width: double.infinity,
-                            height: 42.0,
-                            child: OutlinedButton(
-                              onPressed: () {
-                                if (isMatch) {
-                                  widget.game.exitToSoloMode();
-                                } else {
-                                  widget.game.restartRound();
-                                }
-                              },
-                              style: OutlinedButton.styleFrom(
-                                side: const BorderSide(
-                                  color: Color(0x4494A3B8),
-                                  width: 1.0,
+                          return Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(
+                                width: double.infinity,
+                                height: 42.0,
+                                child: OutlinedButton(
+                                  onPressed: () async {
+                                    final config = await MatchSetupDialog.show(
+                                      context,
+                                      initialConfig: widget.game.currentMatchConfig,
+                                    );
+                                    if (config != null) {
+                                      widget.game.startPassAndPlayMatch(config: config);
+                                    }
+                                  },
+                                  style: OutlinedButton.styleFrom(
+                                    side: const BorderSide(
+                                      color: Color(0x6638BDF8),
+                                      width: 1.0,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(14.0),
+                                    ),
+                                    backgroundColor: const Color(0x180284C7),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      const Icon(
+                                        Icons.tune_rounded,
+                                        size: 16.0,
+                                        color: Color(0xFF38BDF8),
+                                      ),
+                                      const SizedBox(width: 8.0),
+                                      Text(
+                                        isMatch ? 'MATCH SETTINGS' : 'START 1V1 MATCH',
+                                        style: const TextStyle(
+                                          color: Color(0xFF38BDF8),
+                                          fontSize: 13.0,
+                                          fontWeight: FontWeight.w800,
+                                          letterSpacing: 1.0,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14.0),
-                                ),
-                                backgroundColor: const Color(0x1E334155),
                               ),
-                              child: Text(
-                                isMatch ? 'EXIT MATCH TO SOLO' : 'RESTART ROUND',
-                                style: const TextStyle(
-                                  color: Color(0xFFCBD5E1),
-                                  fontSize: 13.0,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 1.0,
+                              const SizedBox(height: 8.0),
+                              SizedBox(
+                                width: double.infinity,
+                                height: 42.0,
+                                child: OutlinedButton(
+                                  onPressed: () {
+                                    if (isMatch) {
+                                      widget.game.exitToSoloMode();
+                                    } else {
+                                      widget.game.restartRound();
+                                    }
+                                  },
+                                  style: OutlinedButton.styleFrom(
+                                    side: const BorderSide(
+                                      color: Color(0x4494A3B8),
+                                      width: 1.0,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(14.0),
+                                    ),
+                                    backgroundColor: const Color(0x1E334155),
+                                  ),
+                                  child: Text(
+                                    isMatch ? 'EXIT MATCH TO SOLO' : 'RESTART ROUND',
+                                    style: const TextStyle(
+                                      color: Color(0xFFCBD5E1),
+                                      fontSize: 13.0,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 1.0,
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
+                            ],
                           );
                         },
                       ),
