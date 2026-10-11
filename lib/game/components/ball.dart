@@ -38,7 +38,29 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     return _cachedCamera!;
   }
 
+  // ── Static GPU Shader Program Cache ──
+  static Future<ui.FragmentProgram?>? _programFuture;
+  static ui.FragmentProgram? _cachedProgram;
+
+  /// Loads and statically caches the GPU [FragmentProgram] across all basketball instances.
+  /// Pre-warming this during [BasketballGame.onLoad] completely eliminates feeder-spawn compilation hitches.
+  static Future<ui.FragmentProgram?> loadProgram() {
+    if (_cachedProgram != null) return Future.value(_cachedProgram);
+    return _programFuture ??= () async {
+      try {
+        final program =
+            await ui.FragmentProgram.fromAsset('shaders/basketball.frag');
+        _cachedProgram = program;
+        return program;
+      } catch (e) {
+        debugPrint('Failed to load basketball shader: $e');
+        return null;
+      }
+    }();
+  }
+
   ui.FragmentProgram? _program;
+  ui.FragmentShader? _shader;
   bool isEntering = false;
   double enterProgress = 0.0;
 
@@ -118,17 +140,16 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
       _streakEvaluated = true;
       game.resetStreak();
     }
+    _shader?.dispose();
+    _shader = null;
     super.onRemove();
   }
 
   @override
   Future<void> onLoad() async {
     await super.onLoad();
-    try {
-      _program = await ui.FragmentProgram.fromAsset('shaders/basketball.frag');
-    } catch (e) {
-      debugPrint('Failed to load basketball shader: $e');
-    }
+    _program = _cachedProgram ?? await loadProgram();
+    _shader = _program?.fragmentShader();
   }
 
   @override
@@ -406,8 +427,8 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     canvas.save();
     canvas.scale(scaleFactor);
 
-    if (_program != null) {
-      final shader = _program!.fragmentShader();
+    if (_shader != null) {
+      final shader = _shader!;
 
       final transform = canvas.getTransform();
       final logicalCenterX = transform[12];
