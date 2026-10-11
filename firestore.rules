@@ -1,0 +1,76 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isUser(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // User profile documents
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isUser(userId);
+      allow delete: if false;
+    }
+
+    // Match documents keyed by 6-character joinCode
+    match /matches/{matchId} {
+
+      function isParticipant() {
+        return isAuthenticated() && 
+          (request.auth.uid in resource.data.playerIds);
+      }
+
+      function isOpenForJoining() {
+        return resource.data.status == 'waitingForOpponent';
+      }
+
+      function isJoining() {
+        return isOpenForJoining() &&
+          request.auth.uid != resource.data.player1.uid &&
+          request.resource.data.player2.uid == request.auth.uid &&
+          request.resource.data.status == 'active' &&
+          request.resource.data.playerIds.size() == 2 &&
+          request.resource.data.playerIds.hasAll([resource.data.player1.uid, request.auth.uid]);
+      }
+
+      function isSubmittingTurn() {
+        return isParticipant() &&
+          resource.data.status == 'active' &&
+          request.auth.uid == resource.data.activeTurnPlayerUid &&
+          request.resource.data.chat.size() <= 50;
+      }
+
+      function isSendingBanter() {
+        return isParticipant() &&
+          request.resource.data.chat.size() <= 50 &&
+          request.resource.data.chat.size() == resource.data.chat.size() + 1;
+      }
+
+      // Read allowed if player is a participant OR looking up an open room by code
+      allow read: if isAuthenticated() && (isParticipant() || isOpenForJoining());
+
+      // Create allowed only for authenticated player as player1 with initial state
+      allow create: if isAuthenticated() &&
+        request.resource.data.player1.uid == request.auth.uid &&
+        request.resource.data.playerIds == [request.auth.uid] &&
+        request.resource.data.status == 'waitingForOpponent' &&
+        request.resource.data.joinCode == matchId &&
+        request.resource.data.currentRound == 1 &&
+        request.resource.data.activeTurnPlayerUid == request.auth.uid &&
+        request.resource.data.chat.size() == 0;
+
+      // Update allowed for atomic join, active turn submission, or banter
+      allow update: if isJoining() || isSubmittingTurn() || isSendingBanter();
+
+      // No client-side match deletion
+      allow delete: if false;
+    }
+  }
+}
