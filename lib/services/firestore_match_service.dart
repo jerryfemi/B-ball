@@ -380,8 +380,26 @@ class FirestoreMatchService {
     });
   }
 
+  /// Fetches a single match document by ID or join code.
+  Future<CloudMatch?> getMatch(String matchId) async {
+    final clean = matchId.trim().toUpperCase();
+    final doc = await _matchesRef.doc(clean).get();
+    if (!doc.exists) return null;
+    return CloudMatch.fromFirestore(doc);
+  }
+
+  final Map<String, List<CloudMatch>> _cachedUserMatches = {};
+
+  /// Retrieves the most recent memory-cached matches for instant zero-latency UI rendering.
+  List<CloudMatch> getCachedUserMatches(String userUid) =>
+      _cachedUserMatches[userUid] ?? const [];
+
   /// Streams active matches for the Match Inbox ("Your Turn" vs "Waiting for Opponent").
+  /// Firestore's native SDK automatically pools query listeners and emits current cache immediately.
   Stream<List<CloudMatch>> streamUserMatches(String userUid) {
+    if (userUid.isEmpty) {
+      return Stream.value(const <CloudMatch>[]);
+    }
     return _matchesRef
         .where('playerIds', arrayContains: userUid)
         .snapshots()
@@ -390,6 +408,7 @@ class FirestoreMatchService {
           .map((doc) => CloudMatch.fromFirestore(doc))
           .toList();
       matches.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      _cachedUserMatches[userUid] = matches;
       return matches;
     });
   }
