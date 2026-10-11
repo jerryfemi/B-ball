@@ -1,0 +1,154 @@
+import 'package:flutter/material.dart';
+
+import '../telemetry/shot_telemetry.dart';
+import 'match_config.dart';
+
+export 'match_config.dart';
+
+/// Game modes supported by the basketball engine.
+enum MatchGameMode {
+  solo,
+  passAndPlay1v1,
+}
+
+/// Phases within a turn-based 1v1 match cycle.
+enum MatchTurnPhase {
+  /// Active round where the current player shoots live.
+  playingTurn,
+
+  /// Spectating the opponent's recorded round trajectory before shooting.
+  watchingOpponentReplay,
+
+  /// Intermission between turns/rounds (shows stats & turn handoff).
+  turnComplete,
+
+  /// Final match conclusion displaying the Winner Podium.
+  matchComplete,
+}
+
+/// State and recorded history for an individual match participant.
+class PlayerMatchState {
+  final String id;
+  final String name;
+  final String avatar;
+  final Color accentColor;
+  final List<int> roundScores;
+  final List<RoundTelemetry> roundTelemetries;
+
+  PlayerMatchState({
+    required this.id,
+    required this.name,
+    this.avatar = '🏀',
+    required this.accentColor,
+    List<int>? roundScores,
+    List<RoundTelemetry>? roundTelemetries,
+  })  : roundScores = roundScores ?? [],
+        roundTelemetries = roundTelemetries ?? [];
+
+  int get totalScore => roundScores.fold(0, (acc, s) => acc + s);
+
+  /// Total successful shots made across all played rounds.
+  int get totalMadeShots =>
+      roundTelemetries.fold(0, (acc, t) => acc + t.madeShots);
+
+  /// Total shot attempts taken across all played rounds.
+  int get totalAttemptedShots =>
+      roundTelemetries.fold(0, (acc, t) => acc + t.totalShots);
+
+  /// Overall match shooting accuracy percentage (0.0 to 100.0).
+  double get overallAccuracy => totalAttemptedShots > 0
+      ? (totalMadeShots / totalAttemptedShots * 100.0)
+      : 0.0;
+
+  /// Total clean swishes scored across all played rounds.
+  int get totalSwishes => roundTelemetries.fold(
+      0, (acc, t) => acc + t.shots.where((s) => s.isSwish).length);
+
+  /// Longest consecutive shot streak achieved during any round in the match.
+  int get bestStreakAcrossMatch => roundTelemetries.fold(0, (acc, t) {
+        int streak = 0;
+        int maxS = 0;
+        for (final s in t.shots) {
+          if (s.isMake) {
+            streak++;
+            if (streak > maxS) maxS = streak;
+          } else {
+            streak = 0;
+          }
+        }
+        return maxS > acc ? maxS : acc;
+      });
+
+  /// Returns aggregate score accumulated strictly before [roundIndex].
+  int scoreUpToRound(int roundIndex) {
+    int total = 0;
+    for (int i = 0; i < roundIndex && i < roundScores.length; i++) {
+      total += roundScores[i];
+    }
+    return total;
+  }
+
+  RoundTelemetry? get latestTelemetry =>
+      roundTelemetries.isNotEmpty ? roundTelemetries.last : null;
+}
+
+/// Orchestrates multi-round 1v1 turn progression and match telemetry.
+class MatchSession {
+  final MatchGameMode mode;
+  final MatchConfig config;
+  final int totalRounds;
+  int currentRoundIndex; // 0-indexed (0 = Round 1, 1 = Round 2)
+  int activePlayerIndex; // 0 = Player 1 ("YOU"), 1 = Player 2 ("THEM")
+  final PlayerMatchState player1;
+  final PlayerMatchState player2;
+  MatchTurnPhase phase;
+
+  MatchSession({
+    this.mode = MatchGameMode.passAndPlay1v1,
+    MatchConfig? config,
+    int? totalRounds,
+    this.currentRoundIndex = 0,
+    this.activePlayerIndex = 0,
+    PlayerMatchState? player1,
+    PlayerMatchState? player2,
+    this.phase = MatchTurnPhase.playingTurn,
+  })  : config = config ?? const MatchConfig(),
+        totalRounds = totalRounds ?? (config?.totalRounds ?? 2),
+        player1 = player1 ??
+            PlayerMatchState(
+              id: 'p1',
+              name: (config?.player1Name.isNotEmpty ?? false)
+                  ? config!.player1Name
+                  : 'You',
+              avatar: config?.player1Avatar ?? '🏀',
+              accentColor: const Color(0xFF22C55E),
+            ),
+        player2 = player2 ??
+            PlayerMatchState(
+              id: 'p2',
+              name: (config?.player2Name.isNotEmpty ?? false)
+                  ? config!.player2Name
+                  : 'Them',
+              avatar: config?.player2Avatar ?? '🎯',
+              accentColor: const Color(0xFF38BDF8),
+            );
+
+  int get currentRoundNumber => currentRoundIndex + 1;
+  bool get isFinalRound => currentRoundNumber >= totalRounds;
+
+  PlayerMatchState get activePlayer =>
+      activePlayerIndex == 0 ? player1 : player2;
+
+  PlayerMatchState get opponentPlayer =>
+      activePlayerIndex == 0 ? player2 : player1;
+
+  /// Returns the winning player, or null if the match is tied.
+  PlayerMatchState? get overallWinner {
+    if (player1.totalScore > player2.totalScore) return player1;
+    if (player2.totalScore > player1.totalScore) return player2;
+    return null;
+  }
+
+  bool get isTie => player1.totalScore == player2.totalScore;
+}
+

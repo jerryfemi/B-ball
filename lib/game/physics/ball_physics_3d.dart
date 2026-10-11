@@ -73,6 +73,9 @@ class BallPhysics3D {
 
   final void Function(Vector3 impactPoint)? onWallImpact;
   final void Function({required bool isSwish, required bool isBankShot})? onScored;
+  final void Function(double speed)? onRimImpact;
+  final void Function(double speed)? onBackboardImpact;
+  final void Function(double speed)? onFloorImpact;
 
   BallPhysics3D({
     Vector3? initialPos,
@@ -81,6 +84,9 @@ class BallPhysics3D {
     this.yaw = -0.42,
     this.onWallImpact,
     this.onScored,
+    this.onRimImpact,
+    this.onBackboardImpact,
+    this.onFloorImpact,
   }) : pos = initialPos ?? Vector3(0.0, 0.25, 0.0),
        vel = Vector3.zero(),
        angularVel = Vector3.zero();
@@ -250,10 +256,12 @@ class BallPhysics3D {
       // Backspin "kiss and drop" on back rim emerges naturally from friction coupling.
       // Front rim grazes that should roll in DO roll in — the normal handles it.
       // Side rattles produce unique bounces based on contact geometry.
+      final impactSpeed = vel.length;
       final n = Vector3(nx, ny, nz);
       _contact(n, e: 0.60, mu: 0.25);
 
       hasClankedRim = true;
+      onRimImpact?.call(impactSpeed);
     }
   }
 
@@ -269,6 +277,7 @@ class BallPhysics3D {
         if (vel.z > 0) {
           pos.z = backboardZ - radius - 0.001;
           hasBankedBackboard = true;
+          final impactSpeed = vel.length;
 
           // Check if hitting inside the regulation shooter's square
           final isShootersSquare = pos.x.abs() <= shootersSquareHalfWidth &&
@@ -278,6 +287,7 @@ class BallPhysics3D {
           // Physical tempered-glass impulse contact (e=0.62, μ=0.12)
           final n = Vector3(0.0, 0.0, -1.0);
           _contact(n, e: 0.62, mu: 0.12);
+          onBackboardImpact?.call(impactSpeed);
 
           if (isShootersSquare) {
             // Dynamic Bank Shot Guidance:
@@ -390,11 +400,13 @@ class BallPhysics3D {
       pos.y = radius;
 
       if (vel.y < 0) {
-        if (vel.y.abs() > 0.35) {
+        final impactSpeed = vel.y.abs();
+        if (impactSpeed > 0.35) {
           bounceCount++;
           // Floor contact: normal pointing up, hardwood restitution + high friction
           final n = Vector3(0, 1, 0);
           _contact(n, e: 0.62, mu: 0.50);
+          onFloorImpact?.call(impactSpeed);
         } else {
           // Very low bounce energy — transition to rolling and settling
           vel.y = 0.0;
