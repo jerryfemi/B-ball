@@ -33,6 +33,7 @@ enum GameModeState {
   ready,
   playing,
   gameOver,
+  replay,
 }
 
 /// Detailed shooting metrics compiled at the conclusion of a 60-second round.
@@ -240,6 +241,32 @@ class BasketballGame extends Forge2DGame {
           _onTimeExpired();
         }
       }
+    } else if (gameStateNotifier.value == GameModeState.replay && !isPaused) {
+      _roundElapsedSeconds += dt;
+      _playGhostShotsIfNeeded();
+
+      _secondAccumulator += dt;
+      if (_secondAccumulator >= 1.0) {
+        _secondAccumulator -= 1.0;
+        final nextTime = timeRemainingNotifier.value - 1;
+        timeRemainingNotifier.value = nextTime;
+        if (nextTime <= 0) {
+          stopReplayMode();
+        }
+      }
+
+      // Check if all replay shots have executed and settled
+      final ghost = activeGhostTelemetry;
+      if (ghost != null && _nextGhostShotIndex >= ghost.shots.length) {
+        final activeReplayBalls = world.children.whereType<GhostBasketball>();
+        final double lastShotTimeSec = ghost.shots.isNotEmpty
+            ? (ghost.shots.last.timestampMs / 1000.0)
+            : 0.0;
+        if (activeReplayBalls.isEmpty &&
+            _roundElapsedSeconds >= lastShotTimeSec + 2.5) {
+          stopReplayMode();
+        }
+      }
     }
   }
 
@@ -264,7 +291,20 @@ class BasketballGame extends Forge2DGame {
     required bool isSwish,
     required bool isBankShot,
   }) {
-    ghostScoreNotifier.value += points;
+    if (gameStateNotifier.value == GameModeState.replay) {
+      score += points;
+      scoreNotifier.value = score;
+      final event = ScoreEvent(
+        points: points,
+        isSwish: isSwish,
+        isBankShot: isBankShot,
+        streak: 0,
+      );
+      scoreEventNotifier.value = event;
+      onScoreEvent?.call(event);
+    } else {
+      ghostScoreNotifier.value += points;
+    }
     if (isSwish) {
       AudioEngine.playSwish();
     }
@@ -299,10 +339,58 @@ class BasketballGame extends Forge2DGame {
     );
   }
 
-  void restartRound({bool enableGhostReplay = true}) {
+  void startReplayMode() {
+    if (lastRoundTelemetry == null || lastRoundTelemetry!.shots.isEmpty) return;
+
+    activeGhostTelemetry = lastRoundTelemetry;
+    isGhostModeNotifier.value = false;
+    ghostScoreNotifier.value = 0;
+    _nextGhostShotIndex = 0;
+    _roundElapsedSeconds = 0.0;
+    _secondAccumulator = 0.0;
+
+    score = 0;
+    currentStreak = 0;
+    scoreNotifier.value = 0;
+    streakNotifier.value = 0;
+    timeRemainingNotifier.value = roundDurationSeconds;
+
+    if (isPaused) {
+      resumeGame();
+    }
+
+    // Clear active balls from world
+    final existingBalls = world.children.whereType<Basketball>().toList();
+    for (final b in existingBalls) {
+      b.removeFromParent();
+    }
+
+    final existingGhosts = world.children.whereType<GhostBasketball>().toList();
+    for (final g in existingGhosts) {
+      g.removeFromParent();
+    }
+
+    gameStateNotifier.value = GameModeState.replay;
+  }
+
+  void stopReplayMode() {
+    final existingGhosts = world.children.whereType<GhostBasketball>().toList();
+    for (final g in existingGhosts) {
+      g.removeFromParent();
+    }
+    activeGhostTelemetry = null;
+
+    if (lastRoundTelemetry != null) {
+      gameStateNotifier.value = GameModeState.gameOver;
+    } else {
+      restartRound();
+    }
+  }
+
+  void restartRound({bool enableGhostReplay = false}) {
     if (enableGhostReplay && lastRoundTelemetry != null) {
       activeGhostTelemetry = lastRoundTelemetry;
-      isGhostModeNotifier.value = true;
+      isGhostModeNotifier.value = false;
     } else {
       activeGhostTelemetry = null;
       isGhostModeNotifier.value = false;
