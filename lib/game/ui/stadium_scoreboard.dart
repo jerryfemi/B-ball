@@ -191,7 +191,10 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
                   const ScoreboardMuteBadge(),
                   if (widget.onInboxTapped != null) ...[
                     const SizedBox(width: 5.0),
-                    InboxNotificationBadge(onTap: widget.onInboxTapped!),
+                    InboxNotificationBadge(
+                      onTap: widget.onInboxTapped!,
+                      activeMatchId: matchSession?.cloudMatchId,
+                    ),
                   ],
                   if (is1v1) ...[
                     const SizedBox(width: 5.0),

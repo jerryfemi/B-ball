@@ -10,10 +10,12 @@ import '../../../services/firestore_match_service.dart';
 /// when it's your turn to shoot, inviting immediate action.
 class InboxNotificationBadge extends StatefulWidget {
   final VoidCallback onTap;
+  final String? activeMatchId;
 
   const InboxNotificationBadge({
     super.key,
     required this.onTap,
+    this.activeMatchId,
   });
 
   @override
@@ -123,9 +125,12 @@ class _InboxNotificationBadgeState extends State<InboxNotificationBadge>
           stream: FirestoreMatchService.instance.streamUserMatches(user.uid),
           builder: (context, snapshot) {
             final matches = snapshot.data ?? [];
+            final activeId = widget.activeMatchId;
             final turnsWaiting = matches
                 .where((m) =>
-                    m.isMyTurn(user.uid) && m.status != MatchStatus.completed)
+                    m.isMyTurn(user.uid) &&
+                    m.status != MatchStatus.completed &&
+                    (activeId == null || m.id != activeId))
                 .length;
 
             _updateAnimation(turnsWaiting);
@@ -171,20 +176,20 @@ class _InboxNotificationBadgeState extends State<InboxNotificationBadge>
                 decoration: BoxDecoration(
                   color: hasTurns
                       ? const Color(0xFF0F172A)
-                      : const Color(0xDDFFFFFF),
+                      : const Color(0xFF1E2638),
                   shape: BoxShape.circle,
                   border: Border.all(
                     color: hasTurns
-                        ? const Color(0xFF00FFCC)
-                        : const Color(0x66FFFFFF),
+                        ? const Color(0xFF38BDF8)
+                        : const Color(0xFF334155),
                     width: hasTurns ? 2.0 : 1.0,
                   ),
                   boxShadow: [
                     BoxShadow(
                       color: hasTurns
-                          ? const Color(0xFF00FFCC).withValues(alpha: 0.5)
+                          ? const Color(0xFF38BDF8).withValues(alpha: 0.4)
                           : const Color(0x33000000),
-                      blurRadius: hasTurns ? 10.0 : 6.0,
+                      blurRadius: hasTurns ? 8.0 : 4.0,
                       offset: const Offset(0, 2),
                     ),
                   ],
@@ -194,8 +199,8 @@ class _InboxNotificationBadgeState extends State<InboxNotificationBadge>
                     Icons.forum_rounded,
                     size: 18.0,
                     color: hasTurns
-                        ? const Color(0xFF00FFCC)
-                        : const Color(0xFF1E293B),
+                        ? const Color(0xFF38BDF8)
+                        : const Color(0xFF94A3B8),
                   ),
                 ),
               ),
