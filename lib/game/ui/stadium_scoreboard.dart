@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../basketball_game.dart';
+import '../match/match_session.dart';
 import 'scoreboard/hot_streak_pill.dart';
+import 'scoreboard/round_indicator_badge.dart';
 import 'scoreboard/scoreboard_bay.dart';
 import 'scoreboard/scoreboard_flank_badges.dart';
 import 'scoreboard/trapezoid_scoreboard_painter.dart';
@@ -134,39 +136,59 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      bottom: false,
-      child: Padding(
-        padding: const EdgeInsets.only(top: 8.0, left: 12.0, right: 12.0),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  const ScoreboardPlayerAvatar(),
-                  const SizedBox(width: 6.0),
-                  ScoreboardPauseBadge(game: widget.game),
-                  const SizedBox(width: 8.0),
-                  _buildTrapezoidalConsole(),
-                  const SizedBox(width: 8.0),
-                  const ScoreboardMuteBadge(),
-                  const SizedBox(width: 6.0),
-                  ScoreboardHelpBadge(onTap: widget.onHelpTapped),
-                ],
-              ),
+    return ValueListenableBuilder<MatchSession?>(
+      valueListenable: widget.game.matchSessionNotifier,
+      builder: (context, matchSession, _) {
+        final is1v1 = matchSession != null;
+        final p1Active = is1v1 ? matchSession.activePlayerIndex == 0 : true;
+        final p2Active = is1v1 ? matchSession.activePlayerIndex == 1 : false;
+
+        return SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 8.0, left: 12.0, right: 12.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      ScoreboardPlayerAvatar(
+                        isActive: p1Active,
+                        label: is1v1 ? matchSession.player1.name : 'You',
+                      ),
+                      const SizedBox(width: 6.0),
+                      ScoreboardPauseBadge(game: widget.game),
+                      const SizedBox(width: 8.0),
+                      _buildTrapezoidalConsole(matchSession),
+                      const SizedBox(width: 8.0),
+                      const ScoreboardMuteBadge(),
+                      const SizedBox(width: 6.0),
+                      if (is1v1)
+                        ScoreboardOpponentAvatar(
+                          isActive: p2Active,
+                          label: matchSession.player2.name,
+                        )
+                      else
+                        ScoreboardHelpBadge(onTap: widget.onHelpTapped),
+                    ],
+                  ),
+                ),
+                HotStreakPill(streakNotifier: widget.game.streakNotifier),
+              ],
             ),
-            HotStreakPill(streakNotifier: widget.game.streakNotifier),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildTrapezoidalConsole() {
+  Widget _buildTrapezoidalConsole(MatchSession? matchSession) {
+    final is1v1 = matchSession != null;
+
     return CustomPaint(
       painter: const TrapezoidScoreboardPainter(),
       child: Container(
@@ -176,7 +198,7 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
         ),
         constraints: const BoxConstraints(
           minWidth: 260.0,
-          maxWidth: 320.0,
+          maxWidth: 330.0,
           minHeight: 56.0,
         ),
         child: Row(
@@ -186,18 +208,37 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
           children: [
             ScoreboardBay(
               label: 'YOU',
-              valueListenable: widget.game.scoreNotifier,
-              scaleAnimation: _scoreScaleAnimation,
+              valueListenable: is1v1
+                  ? widget.game.player1MatchScoreNotifier
+                  : widget.game.scoreNotifier,
+              scaleAnimation: (is1v1 && matchSession.activePlayerIndex == 0) || !is1v1
+                  ? _scoreScaleAnimation
+                  : null,
             ),
             const SizedBox(width: 10.0),
-            ScoreboardClockBay(
-              timeRemainingNotifier: widget.game.timeRemainingNotifier,
-              urgentGlowAnimation: _urgentGlowAnimation,
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ScoreboardClockBay(
+                  timeRemainingNotifier: widget.game.timeRemainingNotifier,
+                  urgentGlowAnimation: _urgentGlowAnimation,
+                ),
+                if (is1v1)
+                  RoundIndicatorBadge(
+                    currentRound: matchSession.currentRoundNumber,
+                    totalRounds: matchSession.totalRounds,
+                  ),
+              ],
             ),
             const SizedBox(width: 10.0),
             ScoreboardBay(
-              label: 'BEST',
-              valueListenable: widget.game.bestScoreNotifier,
+              label: is1v1 ? 'THEM' : 'BEST',
+              valueListenable: is1v1
+                  ? widget.game.player2MatchScoreNotifier
+                  : widget.game.bestScoreNotifier,
+              scaleAnimation: (is1v1 && matchSession.activePlayerIndex == 1)
+                  ? _scoreScaleAnimation
+                  : null,
             ),
           ],
         ),
