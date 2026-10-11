@@ -324,6 +324,7 @@ class BasketballGame extends Forge2DGame {
 
   @override
   void onRemove() {
+    AudioEngine.dispose();
     scoreNotifier.dispose();
     streakNotifier.dispose();
     timeRemainingNotifier.dispose();
