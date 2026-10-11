@@ -4,6 +4,8 @@ on:
   workflow_dispatch:
   push:
     branches:
+      - firebase
+      - main
       - 3D-arc
 
 jobs:
