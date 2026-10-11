@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+import 'dart:ui' as ui;
 import 'package:flame_forge2d/flame_forge2d.dart';
 import 'package:flutter/material.dart';
 import 'package:forge2d/forge2d.dart' as forge2d;
@@ -7,20 +9,22 @@ import '../basketball_game.dart';
 import '../physics/ball_physics_3d.dart';
 import '../physics/perspective_camera.dart';
 import '../telemetry/shot_telemetry.dart';
+import 'ball.dart';
 
-/// Holographic ghost basketball replaying an opponent's recorded shot.
+/// Translucent replay basketball recreating recorded shots.
 ///
 /// Features:
-/// 1. Pure ballistic 3D physics matching live basketball kinematics
-/// 2. Ethereal translucent neon cyan aesthetic with halo glow & basketball ribbing
-/// 3. Synchronized 3D perspective foreshortening & dynamic floor drop shadow
-/// 4. Non-interactive (zero touch drag callbacks, passes cleanly through live balls)
-/// 5. Automatically dispatches ghost score notifications to the dual scoreboard
+/// 1. Exact visual parity with regulation basketball (GLSL fragment shader, textures & spin)
+/// 2. Rendered at semi-transparent ~55% opacity for clear distinction without sci-fi artifacts
+/// 3. Realistic hardwood floor drop shadow and backboard contact shadow
+/// 4. Synchronized 3D perspective foreshortening
+/// 5. Non-interactive (passes cleanly through live balls with zero user touch capture)
 class GhostBasketball extends BodyComponent<BasketballGame> {
   final RecordedShot shot;
   final double radius;
 
   late final BallPhysics3D physics;
+  ui.FragmentShader? _shader;
 
   PerspectiveCamera3D? _cachedCamera;
   Vector2? _lastCameraSize;
@@ -55,11 +59,20 @@ class GhostBasketball extends BodyComponent<BasketballGame> {
   @override
   Future<void> onLoad() async {
     await super.onLoad();
+    final program = await Basketball.loadProgram();
+    _shader = program?.fragmentShader();
     // Launch recorded trajectory immediately on spawn
     physics.launch(
       Vector3(shot.vx, shot.vy, shot.vz),
       backspin: shot.backspin,
     );
+  }
+
+  @override
+  void onRemove() {
+    _shader?.dispose();
+    _shader = null;
+    super.onRemove();
   }
 
   @override
@@ -79,7 +92,7 @@ class GhostBasketball extends BodyComponent<BasketballGame> {
       density: 1.0,
       material: SurfaceMaterial(friction: 0.8, restitution: 0.82),
       filter: forge2d.Filter(
-        categoryBits: 0x0010, // Ghost category
+        categoryBits: 0x0010, // Ghost/replay category
         maskBits: 0, // Zero physical collision with live balls
       ),
     );
@@ -135,18 +148,20 @@ class GhostBasketball extends BodyComponent<BasketballGame> {
 
   @override
   void render(Canvas canvas) {
-    final double opacity = physics.timeSinceLaunch > 2.2
+    final double fadeOut = physics.timeSinceLaunch > 2.2
         ? (1.0 - (physics.timeSinceLaunch - 2.2) / 1.8).clamp(0.0, 1.0)
         : 1.0;
 
-    if (opacity <= 0.01) return;
+    // Semi-transparent: 0.55 base opacity, smoothly fading out towards the end
+    final double totalOpacity = (0.55 * fadeOut).clamp(0.0, 1.0);
+    if (totalOpacity <= 0.01) return;
 
     canvas.saveLayer(
       null,
-      Paint()..color = Color.fromRGBO(255, 255, 255, opacity),
+      Paint()..color = Color.fromRGBO(255, 255, 255, totalOpacity),
     );
 
-    // 1. Ethereal Cyan Floor Drop Shadow
+    // 1. Continuous Hardwood Floor Drop Shadow
     final bool onCourtFloor =
         physics.pos.z <= BallPhysics3D.wallZ &&
         physics.pos.x.abs() <= BallPhysics3D.halfWidth;
@@ -157,92 +172,131 @@ class GhostBasketball extends BodyComponent<BasketballGame> {
         0.0,
         physics.pos.z,
       );
-      final floorOffset = Offset(
+      final shadowLocalOffset = Offset(
         floorF2D.dx - body.position.x,
         floorF2D.dy - body.position.y,
       );
 
-      final double maxDropH = (BallPhysics3D.rimCenter.y + 1.5).clamp(
-        1.0,
-        10.0,
-      );
-      final double floorProximity =
-          (1.0 - (physics.pos.y / maxDropH)).clamp(0.0, 1.0);
-      final double zScale = camera3D.scaleAtDepth(physics.pos.z);
-      final double visualRadius = radius * zScale * 1.38;
-      final double shadowSpread = 0.50 + (1.0 - floorProximity) * 1.10;
+      final heightAboveFloor = (physics.pos.y - physics.radius).clamp(0.0, 8.0);
+      final shadowAlpha =
+          (0.52 / (1.0 + heightAboveFloor * 0.40)).clamp(0.0, 0.52);
 
-      final shadowRect = Rect.fromCenter(
-        center: floorOffset,
-        width: visualRadius * 2.0 * shadowSpread,
-        height: visualRadius * 0.70 * shadowSpread,
-      );
+      if (shadowAlpha > 0.01) {
+        final zScale = camera3D.scaleAtDepth(physics.pos.z);
+        final visualRadius = radius * zScale * 1.38;
+        final shadowScale = 1.0 + heightAboveFloor * 0.16;
+        final shadowRect = Rect.fromCenter(
+          center: shadowLocalOffset,
+          width: visualRadius * 2.2 * shadowScale,
+          height: visualRadius * 0.42 * shadowScale,
+        );
 
-      final shadowPaint = Paint()
-        ..shader = RadialGradient(
-          colors: [
-            Color.fromRGBO(56, 189, 248, 0.40 * floorProximity),
-            Color.fromRGBO(14, 165, 233, 0.15 * floorProximity),
-            Colors.transparent,
-          ],
-          stops: const [0.0, 0.55, 1.0],
-        ).createShader(shadowRect);
-
-      canvas.drawOval(shadowRect, shadowPaint);
+        final shadowPaint = Paint()
+          ..shader = ui.Gradient.radial(
+            shadowLocalOffset,
+            visualRadius * 1.1 * shadowScale,
+            [
+              Color.fromRGBO(0, 0, 0, shadowAlpha),
+              Color.fromRGBO(0, 0, 0, shadowAlpha * 0.45),
+              const Color(0x00000000),
+            ],
+            const [0.0, 0.55, 1.0],
+          );
+        canvas.drawOval(shadowRect, shadowPaint);
+      }
     }
 
-    // 2. 3D Scale Foreshortening
+    // 2. Dynamic Backboard Glass Proximity Contact Shadow
+    final double distToBoard =
+        (BallPhysics3D.backboardZ - (physics.pos.z + physics.radius))
+            .clamp(0.0, 0.35);
+    final bool inBoardFrame =
+        physics.pos.x.abs() <= BallPhysics3D.backboardMaxX + 0.05 &&
+        physics.pos.y >= BallPhysics3D.backboardMinY - 0.05 &&
+        physics.pos.y <= BallPhysics3D.backboardMaxY + 0.05;
+
+    if (distToBoard < 0.35 && inBoardFrame) {
+      final double boardProximity = 1.0 - (distToBoard / 0.35);
+      final double boardShadowAlpha = (boardProximity * 0.42).clamp(0.0, 0.42);
+
+      if (boardShadowAlpha > 0.01) {
+        final double shadowY = physics.pos.y - (0.02 + distToBoard * 0.05);
+        final boardF2D = camera3D.projectToForge2D(
+          physics.pos.x,
+          shadowY,
+          BallPhysics3D.backboardZ,
+        );
+        final boardShadowOffset = Offset(
+          boardF2D.dx - body.position.x,
+          boardF2D.dy - body.position.y,
+        );
+
+        final boardZScale = camera3D.scaleAtDepth(BallPhysics3D.backboardZ);
+        final boardVisualRadius = radius * boardZScale * 1.38;
+        final shadowSpread = 1.0 + (1.0 - boardProximity) * 0.30;
+        final blurMeters =
+            (0.03 + (1.0 - boardProximity) * 0.10).clamp(0.02, 0.16);
+
+        final boardShadowPaint = Paint()
+          ..color = Color.fromRGBO(0, 0, 0, boardShadowAlpha)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, blurMeters);
+
+        final boardShadowRect = Rect.fromCenter(
+          center: boardShadowOffset,
+          width: boardVisualRadius * 1.9 * shadowSpread,
+          height: boardVisualRadius * 1.9 * shadowSpread,
+        );
+        canvas.drawOval(boardShadowRect, boardShadowPaint);
+      }
+    }
+
+    // 3. Monotonic Perspective Foreshortening based on exact 3D Z-depth
     final scaleFactor = 1.38 * camera3D.scaleAtDepth(physics.pos.z);
+
     canvas.save();
     canvas.scale(scaleFactor);
 
-    // Outer cyan halo aura
-    final haloPaint = Paint()
-      ..color = const Color(0x5538BDF8)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 0.18);
-    canvas.drawCircle(Offset.zero, radius * 1.12, haloPaint);
+    if (_shader != null) {
+      final shader = _shader!;
 
-    // Holographic core sphere
-    final coreRect = Rect.fromCircle(center: Offset.zero, radius: radius);
-    final corePaint = Paint()
-      ..shader = const RadialGradient(
-        center: Alignment(-0.35, -0.40),
-        radius: 0.90,
-        colors: [
-          Color(0xF0E0F2FE), // Bright neon cyan specular apex
-          Color(0xCC38BDF8), // Electric cyan body
-          Color(0x990284C7), // Deep azure rim
-          Color(0x660369A1), // Soft perimeter shadow
-        ],
-        stops: [0.0, 0.45, 0.85, 1.0],
-      ).createShader(coreRect);
-    canvas.drawCircle(Offset.zero, radius, corePaint);
+      final transform = canvas.getTransform();
+      final logicalCenterX = transform[12];
+      final logicalCenterY = transform[13];
+      final logicalScale = math.sqrt(
+        transform[0] * transform[0] + transform[1] * transform[1],
+      );
 
-    // Glowing basketball seam markings
-    final seamPaint = Paint()
-      ..color = const Color(0xAAFFFFFF)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.035;
+      final dpr = WidgetsBinding
+          .instance
+          .platformDispatcher
+          .views
+          .first
+          .devicePixelRatio;
 
-    // Outer perimeter rim stroke
-    canvas.drawCircle(Offset.zero, radius, seamPaint);
+      final physicalCenterX = logicalCenterX * dpr;
+      final physicalCenterY = logicalCenterY * dpr;
+      final physicalRadius = radius * logicalScale * dpr;
 
-    // Horizontal equator seam
-    canvas.drawLine(
-      Offset(-radius * 0.92, 0),
-      Offset(radius * 0.92, 0),
-      seamPaint,
-    );
+      shader.setFloat(0, physicalCenterX);
+      shader.setFloat(1, physicalCenterY);
+      shader.setFloat(2, physicalRadius);
+      shader.setFloat(3, physics.yaw);
+      shader.setFloat(4, physics.pitch);
+      shader.setFloat(5, radius);
 
-    // Curved side ribs
-    final ribPath = Path()
-      ..moveTo(0, -radius * 0.92)
-      ..quadraticBezierTo(radius * 0.55, 0, 0, radius * 0.92)
-      ..moveTo(0, -radius * 0.92)
-      ..quadraticBezierTo(-radius * 0.55, 0, 0, radius * 0.92);
-    canvas.drawPath(ribPath, seamPaint);
+      final paint = Paint()..shader = shader;
+      final rect = Rect.fromCenter(
+        center: Offset.zero,
+        width: radius * 2.2,
+        height: radius * 2.2,
+      );
+      canvas.drawRect(rect, paint);
+    } else {
+      final paint = Paint()..color = const Color(0xFFFF6F00);
+      canvas.drawCircle(Offset.zero, radius, paint);
+    }
 
     canvas.restore();
-    canvas.restore();
+    canvas.restore(); // Restore opacity saveLayer
   }
 }
