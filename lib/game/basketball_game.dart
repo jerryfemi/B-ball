@@ -3,6 +3,7 @@ import 'package:flame/components.dart';
 import 'package:flame_forge2d/flame_forge2d.dart';
 import 'package:flutter/material.dart';
 
+import 'audio/audio_engine.dart';
 import 'components/background.dart';
 import 'components/backboard_visual.dart';
 import 'components/front_rim_visual.dart';
@@ -157,6 +158,7 @@ class BasketballGame extends Forge2DGame {
 
   void _onTimeExpired() {
     gameStateNotifier.value = GameModeState.gameOver;
+    AudioEngine.playBuzzer();
     _compileStats();
   }
 
@@ -208,6 +210,7 @@ class BasketballGame extends Forge2DGame {
   @override
   Future<void> onLoad() async {
     await super.onLoad();
+    await AudioEngine.init();
 
     // 1. Fluid Full-Screen Viewport
     final metersToPixels = size.y / worldHeightInMeters;
