@@ -89,17 +89,17 @@ class MatchWinnerPodiumOverlay extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 12.0),
-                  Text(
-                    isTie
-                        ? 'MATCH TIED!'
-                        : (isP1Winner ? 'YOU WIN!' : 'THEM WINS!'),
-                    style: TextStyle(
-                      color: bannerColor,
-                      fontSize: 24.0,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1.5,
+                    Text(
+                      isTie
+                          ? 'MATCH TIED!'
+                          : (isP1Winner ? 'YOU WIN!' : 'OPPONENT WINS!'),
+                      style: TextStyle(
+                        color: bannerColor,
+                        fontSize: 24.0,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.5,
+                      ),
                     ),
-                  ),
                   const SizedBox(height: 4.0),
                   Text(
                     '${session.totalRounds}-ROUND 1V1 MATCH FINAL',
