@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../basketball_game.dart';
+import '../match/match_session.dart';
 import 'floating_score_toast.dart';
 import 'game_over_overlay.dart';
 import 'game_rules_dialog.dart';
+import 'match/match_winner_podium_overlay.dart';
+import 'match/round_intermission_overlay.dart';
 import 'pause_overlay.dart';
 import 'replay_hud_overlay.dart';
 import 'stadium_scoreboard.dart';
@@ -72,12 +75,30 @@ class GameHudOverlay extends StatelessWidget {
           },
         ),
 
-        // 4. Game Over Recap Overlay (Only visible when 60s expires)
+        // 4. Game Over / Match Intermission / Match Winner Podium Overlays
         ValueListenableBuilder<GameModeState>(
           valueListenable: game.gameStateNotifier,
           builder: (context, state, _) {
             if (state == GameModeState.gameOver) {
-              return GameOverOverlay(game: game);
+              return ValueListenableBuilder<MatchSession?>(
+                valueListenable: game.matchSessionNotifier,
+                builder: (context, session, _) {
+                  if (session != null) {
+                    if (session.phase == MatchTurnPhase.matchComplete) {
+                      return MatchWinnerPodiumOverlay(
+                        game: game,
+                        session: session,
+                      );
+                    } else if (session.phase == MatchTurnPhase.turnComplete) {
+                      return RoundIntermissionOverlay(
+                        game: game,
+                        session: session,
+                      );
+                    }
+                  }
+                  return GameOverOverlay(game: game);
+                },
+              );
             }
             return const SizedBox.shrink();
           },
