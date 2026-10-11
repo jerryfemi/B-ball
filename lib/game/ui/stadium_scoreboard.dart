@@ -140,8 +140,19 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
       valueListenable: widget.game.matchSessionNotifier,
       builder: (context, matchSession, _) {
         final is1v1 = matchSession != null;
-        final p1Active = is1v1 ? matchSession.activePlayerIndex == 0 : true;
-        final p2Active = is1v1 ? matchSession.activePlayerIndex == 1 : false;
+        final isWatchingReplay =
+            is1v1 && matchSession.phase == MatchTurnPhase.watchingOpponentReplay;
+
+        // When watching opponent replay, highlight the opponent whose shots are actively flying into the net.
+        // When shooting live, highlight the active shooter.
+        final int shootingPlayerIndex = is1v1
+            ? (isWatchingReplay
+                ? (matchSession.activePlayerIndex == 0 ? 1 : 0)
+                : matchSession.activePlayerIndex)
+            : 0;
+
+        final p1Active = shootingPlayerIndex == 0;
+        final p2Active = shootingPlayerIndex == 1;
 
         return SafeArea(
           bottom: false,
@@ -163,7 +174,7 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
                       const SizedBox(width: 6.0),
                       ScoreboardPauseBadge(game: widget.game),
                       const SizedBox(width: 8.0),
-                      _buildTrapezoidalConsole(matchSession),
+                      _buildTrapezoidalConsole(matchSession, shootingPlayerIndex),
                       const SizedBox(width: 8.0),
                       const ScoreboardMuteBadge(),
                       const SizedBox(width: 6.0),
@@ -186,7 +197,7 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
     );
   }
 
-  Widget _buildTrapezoidalConsole(MatchSession? matchSession) {
+  Widget _buildTrapezoidalConsole(MatchSession? matchSession, int shootingPlayerIndex) {
     final is1v1 = matchSession != null;
 
     return CustomPaint(
@@ -211,7 +222,7 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
               valueListenable: is1v1
                   ? widget.game.player1MatchScoreNotifier
                   : widget.game.scoreNotifier,
-              scaleAnimation: (is1v1 && matchSession.activePlayerIndex == 0) || !is1v1
+              scaleAnimation: (is1v1 && shootingPlayerIndex == 0) || !is1v1
                   ? _scoreScaleAnimation
                   : null,
             ),
@@ -236,7 +247,7 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
               valueListenable: is1v1
                   ? widget.game.player2MatchScoreNotifier
                   : widget.game.bestScoreNotifier,
-              scaleAnimation: (is1v1 && matchSession.activePlayerIndex == 1)
+              scaleAnimation: (is1v1 && shootingPlayerIndex == 1)
                   ? _scoreScaleAnimation
                   : null,
             ),
