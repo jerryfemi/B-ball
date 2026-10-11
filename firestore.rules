@@ -42,7 +42,7 @@ service cloud.firestore {
 
       function isSubmittingTurn() {
         return isParticipant() &&
-          resource.data.status == 'active' &&
+          (resource.data.status == 'active' || resource.data.status == 'waitingForOpponent') &&
           request.auth.uid == resource.data.activeTurnPlayerUid &&
           request.resource.data.chat.size() <= 50;
       }
