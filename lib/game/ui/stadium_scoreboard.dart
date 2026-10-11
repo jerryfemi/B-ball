@@ -195,9 +195,20 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
               urgentGlowAnimation: _urgentGlowAnimation,
             ),
             const SizedBox(width: 10.0),
-            ScoreboardBay(
-              label: 'BEST',
-              valueListenable: widget.game.bestScoreNotifier,
+            ValueListenableBuilder<bool>(
+              valueListenable: widget.game.isGhostModeNotifier,
+              builder: (context, isGhost, _) {
+                if (isGhost) {
+                  return ScoreboardBay(
+                    label: 'GHOST',
+                    valueListenable: widget.game.ghostScoreNotifier,
+                  );
+                }
+                return ScoreboardBay(
+                  label: 'BEST',
+                  valueListenable: widget.game.bestScoreNotifier,
+                );
+              },
             ),
           ],
         ),
