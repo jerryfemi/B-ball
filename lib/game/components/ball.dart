@@ -7,6 +7,7 @@ import 'package:forge2d/forge2d.dart' as forge2d;
 import 'package:flutter/material.dart';
 import 'package:vector_math/vector_math_64.dart' show Vector3;
 
+import '../audio/audio_engine.dart';
 import '../basketball_game.dart';
 import '../physics/ball_physics_3d.dart';
 import '../physics/perspective_camera.dart';
@@ -76,9 +77,24 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
           ),
         );
       },
+      onRimImpact: (speed) {
+        if (!isMounted) return;
+        AudioEngine.playRimClank(speed);
+      },
+      onBackboardImpact: (speed) {
+        if (!isMounted) return;
+        AudioEngine.playBackboardThud(speed);
+      },
+      onFloorImpact: (speed) {
+        if (!isMounted) return;
+        AudioEngine.playFloorBounce(speed);
+      },
       onScored: ({required bool isSwish, required bool isBankShot}) {
         if (!isMounted) return;
         _streakEvaluated = true;
+        if (isSwish) {
+          AudioEngine.playSwish();
+        }
         game.registerScore(isSwish: isSwish, isBankShot: isBankShot);
       },
     );
