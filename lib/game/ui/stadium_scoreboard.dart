@@ -176,6 +176,7 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
                   ScoreboardPlayerAvatar(
                     isActive: p1Active,
                     label: is1v1 ? matchSession.player1.name : 'You',
+                    avatar: is1v1 ? matchSession.player1.avatar : '🏀',
                   ),
                   const SizedBox(width: 6.0),
                   ScoreboardPauseBadge(game: widget.game),
@@ -188,6 +189,7 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
                     ScoreboardOpponentAvatar(
                       isActive: p2Active,
                       label: matchSession.player2.name,
+                      avatar: matchSession.player2.avatar,
                     )
                   else
                     ScoreboardHelpBadge(onTap: widget.onHelpTapped),
