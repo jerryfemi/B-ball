@@ -582,9 +582,11 @@ class BasketballGame extends Forge2DGame {
     session.phase = MatchTurnPhase.watchingOpponentReplay;
     matchSessionNotifier.notify();
 
-    // Start opponent score at baseline prior to this round
+    // Start opponent score at baseline strictly prior to the round being replayed
     final opponent = session.opponentPlayer;
-    final opponentBaseline = opponent.scoreUpToRound(session.currentRoundIndex);
+    final replayedRoundIndex =
+        (opponent.roundTelemetries.length - 1).clamp(0, session.totalRounds - 1);
+    final opponentBaseline = opponent.scoreUpToRound(replayedRoundIndex);
     if (session.activePlayerIndex == 1) {
       // Opponent is Player 1 (YOU bay)
       player1MatchScoreNotifier.value = opponentBaseline;
