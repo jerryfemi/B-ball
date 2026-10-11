@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 
+import '../../services/auth_service.dart';
+import '../../services/firestore_match_service.dart';
 import '../basketball_game.dart';
 import '../match/match_session.dart';
 import 'floating_score_toast.dart';
 import 'game_over_overlay.dart';
 import 'game_rules_dialog.dart';
+import 'inbox/inbox_notification_badge.dart';
+import 'inbox/match_inbox_sheet.dart';
+import 'match/match_setup_dialog.dart';
 import 'match/match_winner_podium_overlay.dart';
 import 'match/round_intermission_overlay.dart';
 import 'pause_overlay.dart';
@@ -12,13 +17,6 @@ import 'replay_hud_overlay.dart';
 import 'stadium_scoreboard.dart';
 
 /// Top-level Game HUD Overlay mounted via Flame's [GameWidget.overlayBuilderMap].
-///
-/// Combines:
-/// 1. Authentic GamePigeon 3-Bay Electronic LED Scoreboard Header with Pause & Mute controls
-/// 2. Interactive rules "?" button with auto-pause synchronization
-/// 3. In-flight floating score toast spawner (+3 SWISH!, +3 BANK SHOT!, +2 PTS)
-/// 4. Frosted obsidian glass Pause Overlay during active pauses
-/// 5. 60-second buzzer-beater Game Over recap modal with shooting statistics
 class GameHudOverlay extends StatelessWidget {
   final BasketballGame game;
 
@@ -38,6 +36,50 @@ class GameHudOverlay extends StatelessWidget {
     }
   }
 
+  Future<void> _handleInboxTapped(BuildContext context) async {
+    final wasPlaying = game.gameStateNotifier.value == GameModeState.playing;
+    if (wasPlaying) {
+      game.pauseGame(manual: true);
+    }
+    await MatchInboxSheet.show(
+      context,
+      onPlayMatch: (match) {
+        final myUid = AuthService.instance.currentUser?.uid ?? '';
+        game.startCloudMatch(match, myUid);
+      },
+      onCreateMatch: () async {
+        final config = await MatchSetupDialog.show(
+          context,
+          initialConfig: game.currentMatchConfig,
+        );
+        if (config != null) {
+          final user = await AuthService.instance.ensureAuthenticated();
+          final profile = AuthService.instance.currentUser ??
+              UserProfile(
+                uid: user.uid,
+                displayName: user.displayName ?? 'Player',
+                avatarEmoji: '🏀',
+              );
+          final newMatch = await FirestoreMatchService.instance.createMatch(
+            config: config,
+            player1Profile: profile,
+          );
+          game.startCloudMatch(newMatch, profile.uid);
+        }
+      },
+      onViewPodium: (match) {
+        final myUid = AuthService.instance.currentUser?.uid ?? '';
+        final session = MatchSession.fromCloudMatch(match, myUid);
+        session.phase = MatchTurnPhase.matchComplete;
+        game.matchSessionNotifier.value = session;
+        game.gameStateNotifier.value = GameModeState.gameOver;
+      },
+    );
+    if (wasPlaying && game.isPaused) {
+      game.resumeGame();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Stack(
@@ -49,6 +91,15 @@ class GameHudOverlay extends StatelessWidget {
           child: StadiumScoreboard(
             game: game,
             onHelpTapped: () => _handleHelpTapped(context),
+          ),
+        ),
+
+        // 2. Top-Right Floating Match Inbox Badge
+        Positioned(
+          top: MediaQuery.of(context).padding.top + 6,
+          right: 12,
+          child: InboxNotificationBadge(
+            onTap: () => _handleInboxTapped(context),
           ),
         ),
 

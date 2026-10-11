@@ -1,8 +1,12 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flame/components.dart';
 import 'package:flame_forge2d/flame_forge2d.dart';
 import 'package:flutter/material.dart';
 
+import '../models/cloud_match.dart';
+import '../services/auth_service.dart';
+import '../services/firestore_match_service.dart';
 import 'audio/audio_engine.dart';
 import 'components/background.dart';
 import 'components/backboard_visual.dart';
@@ -422,7 +426,26 @@ class BasketballGame extends Forge2DGame {
     player1MatchScoreNotifier.value = session.player1.totalScore;
     player2MatchScoreNotifier.value = session.player2.totalScore;
 
-    if (session.isFinalRound && session.activePlayerIndex == 1) {
+    if (session.mode == MatchGameMode.onlineCloud1v1 &&
+        session.cloudMatchId != null &&
+        lastRoundTelemetry != null) {
+      final user = AuthService.instance.currentUser;
+      if (user != null) {
+        unawaited(FirestoreMatchService.instance.submitTurn(
+          matchId: session.cloudMatchId!,
+          shooterUid: user.uid,
+          roundIndex: session.currentRoundNumber,
+          telemetry: lastRoundTelemetry!,
+        ));
+      }
+    }
+
+    final isBothFinished = session.isFinalRound &&
+        (session.mode == MatchGameMode.onlineCloud1v1
+            ? session.player2.roundScores.length >= session.totalRounds
+            : session.activePlayerIndex == 1);
+
+    if (isBothFinished) {
       // Both players have completed all rounds! Direct to Winner Podium!
       session.phase = MatchTurnPhase.matchComplete;
     } else {
@@ -602,6 +625,23 @@ class BasketballGame extends Forge2DGame {
     player2MatchScoreNotifier.value = 0;
 
     _prepareTurn();
+  }
+
+  /// Initiates or resumes an online asynchronous 1v1 match from a synced [CloudMatch].
+  void startCloudMatch(CloudMatch match, String myUid) {
+    final session = MatchSession.fromCloudMatch(match, myUid);
+    currentMatchConfig = session.config;
+    currentRoundDurationSeconds = match.roundDurationSeconds;
+    matchSessionNotifier.value = session;
+
+    player1MatchScoreNotifier.value = session.player1.totalScore;
+    player2MatchScoreNotifier.value = session.player2.totalScore;
+
+    if (session.phase == MatchTurnPhase.watchingOpponentReplay) {
+      startOpponentReplay();
+    } else {
+      startMatchTurn();
+    }
   }
 
   void startMatchTurn() {

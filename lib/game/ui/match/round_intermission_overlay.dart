@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../basketball_game.dart';
 import '../../match/match_session.dart';
+import '../inbox/share_turn_sheet.dart';
 
 /// Turn completion & handoff modal shown between match turns (GamePigeon style).
 ///
@@ -184,30 +185,44 @@ class RoundIntermissionOverlay extends StatelessWidget {
                   ),
                   const SizedBox(height: 20.0),
 
-                  // 4. Primary "SEND GAME" Button (GamePigeon Style)
+                  // 4. Primary Action Button (GamePigeon Style)
                   SizedBox(
                     width: double.infinity,
                     child: DecoratedBox(
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [
-                            Color(0xFF22C55E),
-                            Color(0xFF16A34A),
-                          ],
+                        gradient: LinearGradient(
+                          colors: session.mode == MatchGameMode.onlineCloud1v1
+                              ? [const Color(0xFF2563EB), const Color(0xFF1D4ED8)]
+                              : [const Color(0xFF22C55E), const Color(0xFF16A34A)],
                         ),
                         borderRadius: BorderRadius.circular(18.0),
-                        boxShadow: const [
+                        boxShadow: [
                           BoxShadow(
-                            color: Color(0x5522C55E),
+                            color: (session.mode == MatchGameMode.onlineCloud1v1
+                                    ? const Color(0xFF2563EB)
+                                    : const Color(0xFF22C55E))
+                                .withValues(alpha: 0.35),
                             blurRadius: 18.0,
-                            offset: Offset(0, 6),
+                            offset: const Offset(0, 6),
                           ),
                         ],
                       ),
                       child: Material(
                         color: Colors.transparent,
                         child: InkWell(
-                          onTap: () => game.sendMatchTurn(),
+                          onTap: () {
+                            if (session.mode == MatchGameMode.onlineCloud1v1) {
+                              ShareTurnSheet.show(
+                                context,
+                                joinCode: session.cloudMatchId ?? '',
+                                roundIndex: session.currentRoundNumber,
+                                roundScore: roundScore,
+                                opponentName: session.player2.name,
+                              );
+                            } else {
+                              game.sendMatchTurn();
+                            }
+                          },
                           borderRadius: BorderRadius.circular(18.0),
                           child: Padding(
                             padding: const EdgeInsets.symmetric(
@@ -217,19 +232,23 @@ class RoundIntermissionOverlay extends StatelessWidget {
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                const Icon(
-                                  Icons.send_rounded,
+                                Icon(
+                                  session.mode == MatchGameMode.onlineCloud1v1
+                                      ? Icons.share_rounded
+                                      : Icons.send_rounded,
                                   color: Colors.white,
                                   size: 20.0,
                                 ),
                                 const SizedBox(width: 8.0),
                                 Text(
-                                  'SEND GAME ➔',
+                                  session.mode == MatchGameMode.onlineCloud1v1
+                                      ? 'SHARE / NUDGE OPPONENT ➔'
+                                      : 'SEND GAME ➔',
                                   style: const TextStyle(
                                     color: Colors.white,
-                                    fontSize: 16.0,
+                                    fontSize: 15.0,
                                     fontWeight: FontWeight.w900,
-                                    letterSpacing: 1.2,
+                                    letterSpacing: 1.0,
                                   ),
                                 ),
                               ],
@@ -241,9 +260,11 @@ class RoundIntermissionOverlay extends StatelessWidget {
                   ),
                   const SizedBox(height: 8.0),
                   Text(
-                    session.activePlayerIndex == 0
-                        ? "Pass device to ${session.player2.name} (${session.player2.avatar}). They will watch your replay & shoot!"
-                        : "Pass device to ${session.player1.name} (${session.player1.avatar}). They will watch your replay & shoot!",
+                    session.mode == MatchGameMode.onlineCloud1v1
+                        ? "Turn uploaded to cloud! Share code ${session.cloudMatchId} or link with ${session.player2.name} to notify them."
+                        : (session.activePlayerIndex == 0
+                            ? "Pass device to ${session.player2.name} (${session.player2.avatar}). They will watch your replay & shoot!"
+                            : "Pass device to ${session.player1.name} (${session.player1.avatar}). They will watch your replay & shoot!"),
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       color: Color(0xFF64748B),
