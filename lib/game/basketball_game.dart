@@ -210,7 +210,10 @@ class BasketballGame extends Forge2DGame {
   @override
   Future<void> onLoad() async {
     await super.onLoad();
-    await AudioEngine.init();
+    await Future.wait([
+      AudioEngine.init(),
+      Basketball.loadProgram(),
+    ]);
 
     // 1. Fluid Full-Screen Viewport
     final metersToPixels = size.y / worldHeightInMeters;
