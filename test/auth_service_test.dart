@@ -9,6 +9,7 @@ void main() {
         displayName: 'GhostShooter',
         avatarEmoji: '⚡',
         isAnonymous: true,
+        isFirebaseVerified: true,
       );
 
       final json = profile.toJson();
@@ -18,6 +19,7 @@ void main() {
       expect(reconstructed.displayName, equals('GhostShooter'));
       expect(reconstructed.avatarEmoji, equals('⚡'));
       expect(reconstructed.isAnonymous, isTrue);
+      expect(reconstructed.isFirebaseVerified, isTrue);
     });
 
     test('copyWith updates specified fields only', () {
@@ -26,17 +28,20 @@ void main() {
         displayName: 'Player1',
         avatarEmoji: '🏀',
         isAnonymous: true,
+        isFirebaseVerified: false,
       );
 
       final updated = original.copyWith(
         displayName: 'Champion',
         avatarEmoji: '👑',
+        isFirebaseVerified: true,
       );
 
       expect(updated.uid, equals('uid_initial'));
       expect(updated.displayName, equals('Champion'));
       expect(updated.avatarEmoji, equals('👑'));
       expect(updated.isAnonymous, isTrue);
+      expect(updated.isFirebaseVerified, isTrue);
     });
   });
 }
