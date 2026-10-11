@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../firebase_options.dart';
+import 'friends_service.dart';
 
 /// Exception thrown when an online feature is attempted without valid Firebase authentication.
 class AuthRequiredException implements Exception {
@@ -161,6 +162,9 @@ class AuthService {
     );
 
     currentUserNotifier.value = profile;
+    if (isVerified) {
+      unawaited(FriendsService.instance.publishMyProfile(profile));
+    }
 
     // Listen to background auth changes
     if (firebaseReady) {
@@ -229,10 +233,12 @@ class AuthService {
       }
     } catch (_) {}
 
-    currentUserNotifier.value = current.copyWith(
+    final updated = current.copyWith(
       displayName: newName,
       avatarEmoji: newAvatar,
     );
+    currentUserNotifier.value = updated;
+    unawaited(FriendsService.instance.publishMyProfile(updated));
   }
 
   /// Links the anonymous guest account with a permanent credential (Google, Email, etc.)
