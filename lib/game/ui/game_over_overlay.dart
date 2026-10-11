@@ -119,9 +119,43 @@ class _GameOverOverlayState extends State<GameOverOverlay>
                           GameOverHeader(stats: stats),
                           const SizedBox(height: 22.0),
                           GameOverStatsGrid(stats: stats),
-                          const SizedBox(height: 24.0),
+                          const SizedBox(height: 20.0),
+                          if (widget.game.lastRoundTelemetry != null &&
+                              widget.game.lastRoundTelemetry!.shots.isNotEmpty) ...[
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12.0,
+                                vertical: 6.0,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0x2238BDF8),
+                                borderRadius: BorderRadius.circular(12.0),
+                                border: Border.all(
+                                  color: const Color(0x6638BDF8),
+                                  width: 1.0,
+                                ),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text('👻', style: TextStyle(fontSize: 14.0)),
+                                  SizedBox(width: 6.0),
+                                  Text(
+                                    'GHOST READY: Next round replays your shots!',
+                                    style: TextStyle(
+                                      color: Color(0xFF38BDF8),
+                                      fontSize: 11.0,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 12.0),
+                          ],
                           PlayAgainButton(
-                            onPressed: () => widget.game.restartRound(),
+                            onPressed: () => widget.game.restartRound(enableGhostReplay: true),
                           ),
                         ],
                       ),
