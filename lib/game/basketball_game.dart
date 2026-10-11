@@ -363,22 +363,7 @@ class BasketballGame extends Forge2DGame {
     player1MatchScoreNotifier.value = session.player1.totalScore;
     player2MatchScoreNotifier.value = session.player2.totalScore;
 
-    if (session.activePlayerIndex == 0) {
-      // Player 1 finished -> Hand over to Player 2
-      session.activePlayerIndex = 1;
-      session.phase = MatchTurnPhase.turnComplete;
-    } else {
-      // Player 2 finished
-      if (session.isFinalRound) {
-        // Complete match!
-        session.phase = MatchTurnPhase.matchComplete;
-      } else {
-        // Advance round (e.g. Round 1 -> Round 2)
-        session.currentRoundIndex++;
-        session.activePlayerIndex = 0; // Back to Player 1
-        session.phase = MatchTurnPhase.turnComplete;
-      }
-    }
+    session.phase = MatchTurnPhase.turnComplete;
     matchSessionNotifier.value = session;
     gameStateNotifier.value = GameModeState.gameOver;
   }
@@ -448,7 +433,13 @@ class BasketballGame extends Forge2DGame {
     }
   }
 
-  void restartRound({bool enableGhostReplay = false}) {
+  void restartRound({bool enableGhostReplay = false, bool resetToSolo = true}) {
+    if (resetToSolo) {
+      matchSessionNotifier.value = null;
+      player1MatchScoreNotifier.value = 0;
+      player2MatchScoreNotifier.value = 0;
+    }
+
     if (enableGhostReplay && lastRoundTelemetry != null) {
       activeGhostTelemetry = lastRoundTelemetry;
       isGhostModeNotifier.value = false;
@@ -493,6 +484,36 @@ class BasketballGame extends Forge2DGame {
     }
 
     _spawnReadyBall(animate: true);
+  }
+
+  /// Dispatches the completed turn to the recipient (GamePigeon turn handoff).
+  ///
+  /// Immediately transitions recipient to automatically spectate the opponent's
+  /// recorded ghost round, with an omnipresent "SKIP" trigger to jump into shooting.
+  void sendMatchTurn() {
+    final session = matchSessionNotifier.value;
+    if (session == null) return;
+
+    if (session.activePlayerIndex == 0) {
+      // Player 1 finished -> Hand over to Player 2
+      session.activePlayerIndex = 1;
+      // Start opponent replay automatically for Player 2
+      startOpponentReplay();
+    } else {
+      // Player 2 finished their turn
+      if (session.isFinalRound) {
+        // All rounds complete -> show celebratory Match Winner Podium
+        session.phase = MatchTurnPhase.matchComplete;
+        matchSessionNotifier.value = session;
+        gameStateNotifier.value = GameModeState.gameOver;
+      } else {
+        // Advance to next round (e.g. Round 1 -> Round 2)
+        session.currentRoundIndex++;
+        session.activePlayerIndex = 0; // Back to Player 1
+        // Start opponent replay automatically for Player 1
+        startOpponentReplay();
+      }
+    }
   }
 
   void startPassAndPlayMatch({int totalRounds = 2}) {
@@ -571,7 +592,10 @@ class BasketballGame extends Forge2DGame {
 
   void exitToSoloMode() {
     matchSessionNotifier.value = null;
-    restartRound();
+    player1MatchScoreNotifier.value = 0;
+    player2MatchScoreNotifier.value = 0;
+    activeGhostTelemetry = null;
+    restartRound(resetToSolo: true);
   }
 
   void _prepareTurn() {
