@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "30987418661",
+    "project_id": "game-arcade-bball",
+    "storage_bucket": "game-arcade-bball.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:30987418661:android:6b91d76128f407984293cc",
+        "android_client_info": {
+          "package_name": "com.example.b_ball"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDOCyUILntoW_YzM_GcjaLfaXawXRld4PU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
