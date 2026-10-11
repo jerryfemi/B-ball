@@ -101,6 +101,12 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
     _msgController.clear();
     HapticFeedback.lightImpact();
 
+    await FriendsService.instance.sendDirectMessage(
+      fromUid: widget.myUid,
+      toUid: widget.friend.uid,
+      message: msg,
+    );
+
     if (_currentMatch != null) {
       await FirestoreMatchService.instance.sendChatMessage(
         matchId: _currentMatch!.id,
@@ -200,7 +206,27 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
 
               // Chat banter message stream
               Expanded(
-                child: _buildChatList(_currentMatch?.chat ?? const []),
+                child: StreamBuilder<List<CloudChatMessage>>(
+                  stream: FriendsService.instance.streamDirectChat(
+                    myUid: widget.myUid,
+                    friendUid: widget.friend.uid,
+                  ),
+                  builder: (context, snapshot) {
+                    final directChat = snapshot.data ?? const [];
+                    final matchChat = _currentMatch?.chat ?? const [];
+                    final allChat = <String, CloudChatMessage>{};
+                    for (final m in matchChat) {
+                      allChat[m.id] = m;
+                    }
+                    for (final m in directChat) {
+                      allChat[m.id] = m;
+                    }
+                    final sortedChat = allChat.values.toList()
+                      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
+                    return _buildChatList(sortedChat);
+                  },
+                ),
               ),
 
               // Banter Chips
