@@ -1,12 +1,15 @@
+import 'dart:async';
 import 'package:flame/game.dart';
 import 'package:flame_forge2d/flame_forge2d.dart';
 import 'package:flutter/material.dart';
 import 'game/basketball_game.dart';
 import 'game/ui/game_hud_overlay.dart';
+import 'services/auth_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeForge2D();
+  unawaited(AuthService.instance.initialize());
   runApp(const BasketballApp());
 }
 
