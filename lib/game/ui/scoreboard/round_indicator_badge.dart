@@ -15,7 +15,7 @@ class RoundIndicatorBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.only(top: 3.0),
-      padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 1.5),
+      padding: const EdgeInsets.symmetric(horizontal: 7.0, vertical: 2.0),
       decoration: BoxDecoration(
         color: const Color(0xFF040406),
         borderRadius: BorderRadius.circular(4.0),
@@ -32,12 +32,12 @@ class RoundIndicatorBadge extends StatelessWidget {
         ],
       ),
       child: Text(
-        'RD $currentRound/$totalRounds',
+        'ROUND $currentRound OF $totalRounds',
         style: const TextStyle(
           color: Color(0xFFFBBF24),
-          fontSize: 8.5,
+          fontSize: 8.0,
           fontWeight: FontWeight.w900,
-          letterSpacing: 1.0,
+          letterSpacing: 0.6,
           height: 1.0,
         ),
       ),
