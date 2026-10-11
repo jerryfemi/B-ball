@@ -126,10 +126,44 @@ class _GameOverOverlayState extends State<GameOverOverlay>
                             SeeReplayButton(
                               onPressed: () => widget.game.startReplayMode(),
                             ),
-                            const SizedBox(height: 12.0),
+                            const SizedBox(height: 10.0),
                           ],
                           PlayAgainButton(
                             onPressed: () => widget.game.restartRound(),
+                          ),
+                          const SizedBox(height: 10.0),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton(
+                              onPressed: () => widget.game.startPassAndPlayMatch(),
+                              style: OutlinedButton.styleFrom(
+                                backgroundColor: const Color(0x180284C7),
+                                foregroundColor: const Color(0xFF38BDF8),
+                                side: const BorderSide(
+                                  color: Color(0x6638BDF8),
+                                  width: 1.2,
+                                ),
+                                padding: const EdgeInsets.symmetric(vertical: 14.0),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(18.0),
+                                ),
+                              ),
+                              child: const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.people_alt_rounded, size: 20.0),
+                                  SizedBox(width: 8.0),
+                                  Text(
+                                    '1V1 MATCH (2 ROUNDS)',
+                                    style: TextStyle(
+                                      fontSize: 14.0,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 1.0,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
                         ],
                       ),
