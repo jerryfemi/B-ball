@@ -17,6 +17,10 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow create, update: if isUser(userId);
       allow delete: if false;
+
+      match /friends/{friendId} {
+        allow read, write: if isUser(userId);
+      }
     }
 
     // Match documents keyed by 6-character joinCode
