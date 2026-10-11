@@ -9,7 +9,9 @@ import 'components/backboard_visual.dart';
 import 'components/front_rim_visual.dart';
 import 'components/hoop_physics.dart';
 import 'components/ball.dart';
+import 'components/ghost_ball.dart';
 import 'components/ground.dart';
+import 'telemetry/shot_telemetry.dart';
 
 /// Encapsulates details of a made basketball shot.
 class ScoreEvent {
@@ -75,7 +77,14 @@ class BasketballGame extends Forge2DGame {
   int bankCount = 0;
   int bestStreakInRound = 0;
   double _secondAccumulator = 0.0;
+  double _roundElapsedSeconds = 0.0;
   void Function(ScoreEvent event)? onScoreEvent;
+
+  // Shot telemetry & ghost duel playback
+  final List<RecordedShot> _currentRoundShots = [];
+  RoundTelemetry? lastRoundTelemetry;
+  RoundTelemetry? activeGhostTelemetry;
+  int _nextGhostShotIndex = 0;
 
   // Reactive ValueNotifiers for zero-overhead Flutter UI binding
   final ValueNotifier<int> scoreNotifier = ValueNotifier<int>(0);
@@ -86,6 +95,8 @@ class BasketballGame extends Forge2DGame {
   final ValueNotifier<GameModeState> gameStateNotifier =
       ValueNotifier<GameModeState>(GameModeState.ready);
   final ValueNotifier<bool> isPausedNotifier = ValueNotifier<bool>(false);
+  final ValueNotifier<int> ghostScoreNotifier = ValueNotifier<int>(0);
+  final ValueNotifier<bool> isGhostModeNotifier = ValueNotifier<bool>(false);
   final ValueNotifier<GameRoundStats?> statsNotifier =
       ValueNotifier<GameRoundStats?>(null);
   final ValueNotifier<ScoreEvent?> scoreEventNotifier =
@@ -133,6 +144,28 @@ class BasketballGame extends Forge2DGame {
     totalShots++;
   }
 
+  void recordShotTelemetry({
+    required double startX,
+    required double startY,
+    required double startZ,
+    required double vx,
+    required double vy,
+    required double vz,
+    required double backspin,
+  }) {
+    final shot = RecordedShot(
+      timestampMs: (_roundElapsedSeconds * 1000).toInt(),
+      startX: startX,
+      startY: startY,
+      startZ: startZ,
+      vx: vx,
+      vy: vy,
+      vz: vz,
+      backspin: backspin,
+    );
+    _currentRoundShots.add(shot);
+  }
+
   void registerScore({required bool isSwish, required bool isBankShot}) {
     madeShots++;
     if (isSwish) swishCount++;
@@ -153,6 +186,17 @@ class BasketballGame extends Forge2DGame {
     final streakBonus = currentStreak >= 3 ? (currentStreak - 2) : 0;
     final points = basePoints + streakBonus;
     score += points;
+
+    if (_currentRoundShots.isNotEmpty) {
+      final lastIdx = _currentRoundShots.length - 1;
+      final lastShot = _currentRoundShots[lastIdx];
+      _currentRoundShots[lastIdx] = lastShot.copyWith(
+        isMake: true,
+        isSwish: isSwish,
+        isBankShot: isBankShot,
+        points: points,
+      );
+    }
 
     final event = ScoreEvent(
       points: points,
@@ -184,6 +228,9 @@ class BasketballGame extends Forge2DGame {
     if (gameStateNotifier.value == GameModeState.playing &&
         !isPaused &&
         timeRemainingNotifier.value > 0) {
+      _roundElapsedSeconds += dt;
+      _playGhostShotsIfNeeded();
+
       _secondAccumulator += dt;
       if (_secondAccumulator >= 1.0) {
         _secondAccumulator -= 1.0;
@@ -196,9 +243,42 @@ class BasketballGame extends Forge2DGame {
     }
   }
 
+  void _playGhostShotsIfNeeded() {
+    final ghost = activeGhostTelemetry;
+    if (ghost == null) return;
+
+    final currentElapsedMs = (_roundElapsedSeconds * 1000).toInt();
+    while (_nextGhostShotIndex < ghost.shots.length) {
+      final nextShot = ghost.shots[_nextGhostShotIndex];
+      if (currentElapsedMs >= nextShot.timestampMs) {
+        world.add(GhostBasketball(shot: nextShot));
+        _nextGhostShotIndex++;
+      } else {
+        break;
+      }
+    }
+  }
+
+  void onGhostScored({
+    required int points,
+    required bool isSwish,
+    required bool isBankShot,
+  }) {
+    ghostScoreNotifier.value += points;
+    if (isSwish) {
+      AudioEngine.playSwish();
+    }
+  }
+
   void _onTimeExpired() {
     gameStateNotifier.value = GameModeState.gameOver;
     AudioEngine.playBuzzer();
+    lastRoundTelemetry = RoundTelemetry(
+      roundScore: score,
+      madeShots: madeShots,
+      totalShots: totalShots,
+      shots: List.unmodifiable(_currentRoundShots),
+    );
     _compileStats();
   }
 
@@ -219,7 +299,20 @@ class BasketballGame extends Forge2DGame {
     );
   }
 
-  void restartRound() {
+  void restartRound({bool enableGhostReplay = true}) {
+    if (enableGhostReplay && lastRoundTelemetry != null) {
+      activeGhostTelemetry = lastRoundTelemetry;
+      isGhostModeNotifier.value = true;
+    } else {
+      activeGhostTelemetry = null;
+      isGhostModeNotifier.value = false;
+    }
+
+    ghostScoreNotifier.value = 0;
+    _nextGhostShotIndex = 0;
+    _roundElapsedSeconds = 0.0;
+    _currentRoundShots.clear();
+
     score = 0;
     currentStreak = 0;
     totalShots = 0;
@@ -243,6 +336,11 @@ class BasketballGame extends Forge2DGame {
     final existingBalls = world.children.whereType<Basketball>().toList();
     for (final b in existingBalls) {
       b.removeFromParent();
+    }
+
+    final existingGhosts = world.children.whereType<GhostBasketball>().toList();
+    for (final g in existingGhosts) {
+      g.removeFromParent();
     }
 
     _spawnReadyBall(animate: true);
@@ -379,6 +477,8 @@ class BasketballGame extends Forge2DGame {
     bestScoreNotifier.dispose();
     gameStateNotifier.dispose();
     isPausedNotifier.dispose();
+    ghostScoreNotifier.dispose();
+    isGhostModeNotifier.dispose();
     statsNotifier.dispose();
     scoreEventNotifier.dispose();
     super.onRemove();
