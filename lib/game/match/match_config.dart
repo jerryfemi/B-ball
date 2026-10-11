@@ -1,0 +1,47 @@
+/// Immutable configuration parameters for a 1v1 turn-based match.
+class MatchConfig {
+  /// Total rounds per match (options: 2, 3, or 4; defaults to 2).
+  final int totalRounds;
+
+  /// Duration of each round in seconds (e.g. 30, 45, or 60; defaults to 60).
+  final int roundDurationSeconds;
+
+  /// Display name for Player 1 (defaults to 'You').
+  final String player1Name;
+
+  /// Display name for Player 2 (defaults to 'Them').
+  final String player2Name;
+
+  /// Emoji avatar for Player 1 (defaults to '🏀').
+  final String player1Avatar;
+
+  /// Emoji avatar for Player 2 (defaults to '🎯').
+  final String player2Avatar;
+
+  const MatchConfig({
+    this.totalRounds = 2,
+    this.roundDurationSeconds = 60,
+    this.player1Name = 'You',
+    this.player2Name = 'Them',
+    this.player1Avatar = '🏀',
+    this.player2Avatar = '🎯',
+  });
+
+  MatchConfig copyWith({
+    int? totalRounds,
+    int? roundDurationSeconds,
+    String? player1Name,
+    String? player2Name,
+    String? player1Avatar,
+    String? player2Avatar,
+  }) {
+    return MatchConfig(
+      totalRounds: totalRounds ?? this.totalRounds,
+      roundDurationSeconds: roundDurationSeconds ?? this.roundDurationSeconds,
+      player1Name: player1Name ?? this.player1Name,
+      player2Name: player2Name ?? this.player2Name,
+      player1Avatar: player1Avatar ?? this.player1Avatar,
+      player2Avatar: player2Avatar ?? this.player2Avatar,
+    );
+  }
+}
