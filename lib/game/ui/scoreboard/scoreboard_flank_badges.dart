@@ -5,7 +5,14 @@ import '../../basketball_game.dart';
 
 /// Flanking circular player avatar with vibrant green badge and "You" label.
 class ScoreboardPlayerAvatar extends StatelessWidget {
-  const ScoreboardPlayerAvatar({super.key});
+  final bool isActive;
+  final String label;
+
+  const ScoreboardPlayerAvatar({
+    super.key,
+    this.isActive = true,
+    this.label = 'You',
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -19,14 +26,18 @@ class ScoreboardPlayerAvatar extends StatelessWidget {
             color: const Color(0xFF22C55E),
             shape: BoxShape.circle,
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.8),
-              width: 1.5,
+              color: isActive
+                  ? const Color(0xFF86EFAC)
+                  : Colors.white.withValues(alpha: 0.8),
+              width: isActive ? 2.2 : 1.5,
             ),
-            boxShadow: const [
+            boxShadow: [
               BoxShadow(
-                color: Color(0x33000000),
-                blurRadius: 6.0,
-                offset: Offset(0, 2),
+                color: isActive
+                    ? const Color(0x6622C55E)
+                    : const Color(0x33000000),
+                blurRadius: isActive ? 10.0 : 6.0,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
@@ -38,13 +49,75 @@ class ScoreboardPlayerAvatar extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 2.0),
-        const Text(
-          'You',
+        Text(
+          label,
           style: TextStyle(
-            color: Color(0xFF4ADE80),
+            color: isActive ? const Color(0xFF86EFAC) : const Color(0xFF4ADE80),
             fontSize: 10.0,
             fontWeight: FontWeight.w900,
-            shadows: [
+            shadows: const [
+              Shadow(color: Colors.black, blurRadius: 4.0),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Flanking circular opponent avatar with vibrant cyan badge and "Them" label.
+class ScoreboardOpponentAvatar extends StatelessWidget {
+  final bool isActive;
+  final String label;
+
+  const ScoreboardOpponentAvatar({
+    super.key,
+    this.isActive = false,
+    this.label = 'Them',
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 36.0,
+          height: 36.0,
+          decoration: BoxDecoration(
+            color: const Color(0xFF0284C7),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: isActive
+                  ? const Color(0xFF38BDF8)
+                  : Colors.white.withValues(alpha: 0.8),
+              width: isActive ? 2.2 : 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: isActive
+                    ? const Color(0x6638BDF8)
+                    : const Color(0x33000000),
+                blurRadius: isActive ? 10.0 : 6.0,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: const Center(
+            child: Text(
+              '🎯',
+              style: TextStyle(fontSize: 18.0),
+            ),
+          ),
+        ),
+        const SizedBox(height: 2.0),
+        Text(
+          label,
+          style: TextStyle(
+            color: isActive ? const Color(0xFF7DD3FC) : const Color(0xFF38BDF8),
+            fontSize: 10.0,
+            fontWeight: FontWeight.w900,
+            shadows: const [
               Shadow(color: Colors.black, blurRadius: 4.0),
             ],
           ),
