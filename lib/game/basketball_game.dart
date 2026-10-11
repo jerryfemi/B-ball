@@ -115,6 +115,8 @@ class BasketballGame extends Forge2DGame {
 
   static const double worldHeightInMeters = 20.0;
   static const int roundDurationSeconds = 60;
+  MatchConfig currentMatchConfig = const MatchConfig();
+  int currentRoundDurationSeconds = roundDurationSeconds;
 
   // Game state & scoring pipeline
   int score = 0;
@@ -497,6 +499,7 @@ class BasketballGame extends Forge2DGame {
 
   void restartRound({bool enableGhostReplay = false, bool resetToSolo = true}) {
     if (resetToSolo) {
+      currentRoundDurationSeconds = roundDurationSeconds;
       matchSessionNotifier.value = null;
       player1MatchScoreNotifier.value = 0;
       player2MatchScoreNotifier.value = 0;
@@ -526,7 +529,7 @@ class BasketballGame extends Forge2DGame {
 
     scoreNotifier.value = 0;
     streakNotifier.value = 0;
-    timeRemainingNotifier.value = roundDurationSeconds;
+    timeRemainingNotifier.value = currentRoundDurationSeconds;
     statsNotifier.value = null;
     gameStateNotifier.value = GameModeState.ready;
 
@@ -578,10 +581,18 @@ class BasketballGame extends Forge2DGame {
     }
   }
 
-  void startPassAndPlayMatch({int totalRounds = 2}) {
+  void startPassAndPlayMatch({MatchConfig? config, int? totalRounds}) {
+    if (config != null) {
+      currentMatchConfig = config;
+    } else if (totalRounds != null) {
+      currentMatchConfig = currentMatchConfig.copyWith(totalRounds: totalRounds);
+    }
+    currentRoundDurationSeconds = currentMatchConfig.roundDurationSeconds;
+
     final session = MatchSession(
       mode: MatchGameMode.passAndPlay1v1,
-      totalRounds: totalRounds,
+      config: currentMatchConfig,
+      totalRounds: currentMatchConfig.totalRounds,
       currentRoundIndex: 0,
       activePlayerIndex: 0,
       phase: MatchTurnPhase.playingTurn,
@@ -639,7 +650,7 @@ class BasketballGame extends Forge2DGame {
     _nextGhostShotIndex = 0;
     _roundElapsedSeconds = 0.0;
     _secondAccumulator = 0.0;
-    timeRemainingNotifier.value = roundDurationSeconds;
+    timeRemainingNotifier.value = currentRoundDurationSeconds;
 
     if (isPaused) {
       resumeGame();
@@ -675,6 +686,7 @@ class BasketballGame extends Forge2DGame {
   }
 
   void exitToSoloMode() {
+    currentRoundDurationSeconds = roundDurationSeconds;
     matchSessionNotifier.value = null;
     player1MatchScoreNotifier.value = 0;
     player2MatchScoreNotifier.value = 0;
@@ -698,7 +710,7 @@ class BasketballGame extends Forge2DGame {
 
     scoreNotifier.value = 0;
     streakNotifier.value = 0;
-    timeRemainingNotifier.value = roundDurationSeconds;
+    timeRemainingNotifier.value = currentRoundDurationSeconds;
     statsNotifier.value = null;
     gameStateNotifier.value = GameModeState.ready;
 
