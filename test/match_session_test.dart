@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:b_ball/game/match/match_session.dart';
 import 'package:b_ball/game/telemetry/shot_telemetry.dart';
+import 'package:b_ball/models/cloud_match.dart';
 
 void main() {
   group('MatchConfig tests', () {
@@ -164,6 +165,48 @@ void main() {
       expect(player.overallAccuracy, 75.0);
       expect(player.totalSwishes, 2);
       expect(player.bestStreakAcrossMatch, 2);
+    });
+
+    test('MatchSession.fromCloudMatch correctly configures onlineCloud1v1 session', () {
+      const p1 = CloudPlayer(uid: 'my_id', displayName: 'Me', avatarEmoji: '🔥', roundScores: [24]);
+      const p2 = CloudPlayer(uid: 'opp_id', displayName: 'Opponent', avatarEmoji: '⚡', roundScores: [20]);
+
+      const telemetry = RoundTelemetry(
+        roundScore: 20,
+        madeShots: 8,
+        totalShots: 10,
+        shots: [],
+      );
+
+      final cloudMatch = CloudMatch(
+        id: 'MATCH123',
+        joinCode: 'CODE99',
+        status: MatchStatus.active,
+        createdAt: 0,
+        updatedAt: 0,
+        playerIds: ['my_id', 'opp_id'],
+        player1: p1,
+        player2: p2,
+        totalRounds: 3,
+        roundDurationSeconds: 45,
+        currentRound: 2,
+        activeTurnPlayerUid: 'my_id',
+        latestTelemetry: telemetry,
+        latestTelemetryRound: 1,
+        latestTelemetryShooterUid: 'opp_id',
+      );
+
+      final session = MatchSession.fromCloudMatch(cloudMatch, 'my_id');
+
+      expect(session.mode, equals(MatchGameMode.onlineCloud1v1));
+      expect(session.cloudMatchId, equals('MATCH123'));
+      expect(session.totalRounds, equals(3));
+      expect(session.currentRoundNumber, equals(2));
+      expect(session.player1.name, equals('Me'));
+      expect(session.player2.name, equals('Opponent'));
+      // Opponent just shot, so phase should be watchingOpponentReplay
+      expect(session.phase, equals(MatchTurnPhase.watchingOpponentReplay));
+      expect(session.player2.roundTelemetries.length, equals(1));
     });
   });
 }

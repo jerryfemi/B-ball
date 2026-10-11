@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../models/cloud_match.dart';
 import '../telemetry/shot_telemetry.dart';
 import 'match_config.dart';
 
@@ -9,6 +10,7 @@ export 'match_config.dart';
 enum MatchGameMode {
   solo,
   passAndPlay1v1,
+  onlineCloud1v1,
 }
 
 /// Phases within a turn-based 1v1 match cycle.
@@ -97,6 +99,7 @@ class MatchSession {
   final MatchGameMode mode;
   final MatchConfig config;
   final int totalRounds;
+  final String? cloudMatchId;
   int currentRoundIndex; // 0-indexed (0 = Round 1, 1 = Round 2)
   int activePlayerIndex; // 0 = Player 1 ("YOU"), 1 = Player 2 ("THEM")
   final PlayerMatchState player1;
@@ -105,6 +108,7 @@ class MatchSession {
 
   MatchSession({
     this.mode = MatchGameMode.passAndPlay1v1,
+    this.cloudMatchId,
     MatchConfig? config,
     int? totalRounds,
     this.currentRoundIndex = 0,
@@ -132,6 +136,58 @@ class MatchSession {
               avatar: config?.player2Avatar ?? '🎯',
               accentColor: const Color(0xFF38BDF8),
             );
+
+  /// Constructs an active [MatchSession] from a synced [CloudMatch].
+  factory MatchSession.fromCloudMatch(CloudMatch cloudMatch, String myUid) {
+    final isP1 = cloudMatch.player1.uid == myUid;
+    final myPlayer = isP1
+        ? cloudMatch.player1
+        : (cloudMatch.player2 ?? const CloudPlayer(uid: '', displayName: 'You', avatarEmoji: '🏀', roundScores: []));
+    final oppPlayer = isP1
+        ? (cloudMatch.player2 ?? const CloudPlayer(uid: '', displayName: 'Opponent', avatarEmoji: '⏳', roundScores: []))
+        : cloudMatch.player1;
+
+    final hasOpponentTelemetry =
+        cloudMatch.latestTelemetry != null && cloudMatch.latestTelemetryShooterUid != myUid;
+
+    final p1State = PlayerMatchState(
+      id: 'you',
+      name: myPlayer.displayName,
+      avatar: myPlayer.avatarEmoji,
+      accentColor: const Color(0xFF00FFCC),
+      roundScores: [...myPlayer.roundScores],
+    );
+
+    final p2State = PlayerMatchState(
+      id: 'them',
+      name: oppPlayer.displayName,
+      avatar: oppPlayer.avatarEmoji,
+      accentColor: const Color(0xFF38BDF8),
+      roundScores: [...oppPlayer.roundScores],
+      roundTelemetries: hasOpponentTelemetry ? [cloudMatch.latestTelemetry!] : [],
+    );
+
+    return MatchSession(
+      mode: MatchGameMode.onlineCloud1v1,
+      cloudMatchId: cloudMatch.id,
+      totalRounds: cloudMatch.totalRounds,
+      currentRoundIndex: (cloudMatch.currentRound - 1).clamp(0, cloudMatch.totalRounds - 1),
+      activePlayerIndex: 0,
+      phase: hasOpponentTelemetry
+          ? MatchTurnPhase.watchingOpponentReplay
+          : MatchTurnPhase.playingTurn,
+      player1: p1State,
+      player2: p2State,
+      config: MatchConfig(
+        totalRounds: cloudMatch.totalRounds,
+        roundDurationSeconds: cloudMatch.roundDurationSeconds,
+        player1Name: myPlayer.displayName,
+        player1Avatar: myPlayer.avatarEmoji,
+        player2Name: oppPlayer.displayName,
+        player2Avatar: oppPlayer.avatarEmoji,
+      ),
+    );
+  }
 
   int get currentRoundNumber => currentRoundIndex + 1;
   bool get isFinalRound => currentRoundNumber >= totalRounds;
