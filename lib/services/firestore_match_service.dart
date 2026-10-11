@@ -26,6 +26,15 @@ class MatchAlreadyFullException implements Exception {
   String toString() => message;
 }
 
+/// Exception thrown when a match room is not currently active.
+class MatchNotActiveException implements Exception {
+  final String message;
+  const MatchNotActiveException(this.message);
+
+  @override
+  String toString() => message;
+}
+
 /// Exception thrown when a user attempts to join a match they host.
 class SelfJoinException implements Exception {
   final String message;
@@ -39,6 +48,24 @@ class SelfJoinException implements Exception {
 class NotYourTurnException implements Exception {
   final String message;
   const NotYourTurnException(this.message);
+
+  @override
+  String toString() => message;
+}
+
+/// Exception thrown when a turn is submitted for a round that does not match the room clock.
+class RoundMismatchException implements Exception {
+  final String message;
+  const RoundMismatchException(this.message);
+
+  @override
+  String toString() => message;
+}
+
+/// Exception thrown when the user is not a participant of the match.
+class NotParticipantException implements Exception {
+  final String message;
+  const NotParticipantException(this.message);
 
   @override
   String toString() => message;
@@ -84,11 +111,16 @@ class FirestoreMatchService {
     final hasCompletedFirstTurn =
         initialRoundTelemetry != null && initialRoundScore != null;
 
+    final initialSummaries = hasCompletedFirstTurn
+        ? [RoundSummaryStats.fromTelemetry(1, initialRoundTelemetry)]
+        : <RoundSummaryStats>[];
+
     final player1 = CloudPlayer(
       uid: player1Profile.uid,
       displayName: player1Profile.displayName,
       avatarEmoji: player1Profile.avatarEmoji,
       roundScores: hasCompletedFirstTurn ? [initialRoundScore] : [],
+      roundSummaries: initialSummaries,
     );
 
     final chat = <CloudChatMessage>[];
@@ -170,6 +202,7 @@ class FirestoreMatchService {
         displayName: player2Profile.displayName,
         avatarEmoji: player2Profile.avatarEmoji,
         roundScores: [],
+        roundSummaries: [],
       );
 
       final updatedPlayerIds = [...match.playerIds, player2Profile.uid];
@@ -198,88 +231,133 @@ class FirestoreMatchService {
     });
   }
 
-  /// Submits completed turn telemetry and round score for the active player.
+  /// Atomically and idempotently submits completed turn telemetry and round performance.
   /// 
-  /// Automatically toggles turn handoff, advances round indexes,
-  /// or concludes match if all rounds are completed.
+  /// Executes inside a transaction, validates shooter turn, enforces round sequence,
+  /// derives score directly from telemetry to prevent client tampering,
+  /// records per-round summary statistics for the podium, and handles round/turn progression.
   Future<void> submitTurn({
     required String matchId,
     required String shooterUid,
-    required int roundScore,
+    required int roundIndex,
     required RoundTelemetry telemetry,
     String? optionalChatMessage,
   }) async {
     final docRef = _matchesRef.doc(matchId);
-    final snapshot = await docRef.get();
-    if (!snapshot.exists) {
-      throw MatchNotFoundException('Cannot submit turn: match $matchId not found.');
-    }
 
-    final match = CloudMatch.fromFirestore(snapshot);
-    final now = DateTime.now().millisecondsSinceEpoch;
-
-    final isP1 = match.player1.uid == shooterUid;
-    final updatedP1Scores = [...match.player1.roundScores];
-    final updatedP2Scores = [...(match.player2?.roundScores ?? <int>[])];
-
-    if (isP1) {
-      updatedP1Scores.add(roundScore);
-    } else {
-      updatedP2Scores.add(roundScore);
-    }
-
-    // Determine turn alternation and round advancement
-    int nextRound = match.currentRound;
-    String nextTurnUid;
-    MatchStatus nextStatus = match.status;
-
-    final bothPlayedThisRound =
-        updatedP1Scores.length == nextRound && updatedP2Scores.length == nextRound;
-
-    if (bothPlayedThisRound) {
-      if (nextRound >= match.totalRounds) {
-        // All rounds complete!
-        nextStatus = MatchStatus.completed;
-        nextTurnUid = '';
-      } else {
-        // Advance to next round, Player 1 starts the new round
-        nextRound += 1;
-        nextTurnUid = match.player1.uid;
+    return await _firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(docRef);
+      if (!snapshot.exists) {
+        throw MatchNotFoundException('Cannot submit turn: match $matchId not found.');
       }
-    } else {
-      // Alternate turn to the opponent within the current round
-      nextTurnUid = isP1 ? (match.player2?.uid ?? '') : match.player1.uid;
-    }
 
-    final updateData = <String, dynamic>{
-      'currentRound': nextRound,
-      'activeTurnPlayerUid': nextTurnUid,
-      'status': nextStatus.key,
-      'updatedAt': now,
-      'latestTelemetry': telemetry.toJson(),
-      'latestTelemetryRound': match.currentRound,
-      'latestTelemetryShooterUid': shooterUid,
-      if (isP1)
-        'player1.roundScores': updatedP1Scores
-      else
-        'player2.roundScores': updatedP2Scores,
-    };
+      final match = CloudMatch.fromFirestore(snapshot);
 
-    if (optionalChatMessage != null && optionalChatMessage.trim().isNotEmpty) {
-      final senderProfile = isP1 ? match.player1 : match.player2;
-      final newMsg = CloudChatMessage(
-        id: '${now}_$shooterUid',
-        senderUid: shooterUid,
-        senderName: senderProfile?.displayName ?? 'Player',
-        senderAvatar: senderProfile?.avatarEmoji ?? '🏀',
-        text: optionalChatMessage.trim(),
-        timestamp: now,
-      );
-      updateData['chat'] = FieldValue.arrayUnion([newMsg.toMap()]);
-    }
+      // Verify active match status
+      if (match.status != MatchStatus.active &&
+          match.status != MatchStatus.waitingForOpponent) {
+        throw MatchNotActiveException('Match $matchId is not active (status: ${match.status.name}).');
+      }
 
-    await docRef.update(updateData);
-    debugPrint('[FirestoreMatchService] Submitted turn for $shooterUid in match $matchId');
+      // Verify active turn
+      if (match.activeTurnPlayerUid != shooterUid) {
+        throw const NotYourTurnException('It is not your turn to shoot in this match.');
+      }
+
+      // Verify round synchronization
+      if (match.currentRound != roundIndex) {
+        throw RoundMismatchException(
+          'Round mismatch: expected round ${match.currentRound}, submitted $roundIndex.',
+        );
+      }
+
+      final isP1 = match.player1.uid == shooterUid;
+      final currentShooter = isP1 ? match.player1 : match.player2;
+      if (currentShooter == null) {
+        throw const NotParticipantException('Shooter is not a registered participant in this match.');
+      }
+
+      // Idempotency: if score already exists for this round, ignore duplicate write
+      if (currentShooter.roundScores.length >= match.currentRound) {
+        debugPrint(
+          '[FirestoreMatchService] Duplicate turn submission ignored for $shooterUid in round $roundIndex',
+        );
+        return;
+      }
+
+      // Derive score directly from telemetry (anti-tamper)
+      final verifiedScore = telemetry.roundScore;
+      final roundStats = RoundSummaryStats.fromTelemetry(roundIndex, telemetry);
+
+      final updatedP1Scores = [...match.player1.roundScores];
+      final updatedP1Summaries = [...match.player1.roundSummaries];
+      final updatedP2Scores = [...(match.player2?.roundScores ?? <int>[])];
+      final updatedP2Summaries = [...(match.player2?.roundSummaries ?? <RoundSummaryStats>[])];
+
+      if (isP1) {
+        updatedP1Scores.add(verifiedScore);
+        updatedP1Summaries.add(roundStats);
+      } else {
+        updatedP2Scores.add(verifiedScore);
+        updatedP2Summaries.add(roundStats);
+      }
+
+      // Determine turn alternation and round advancement
+      int nextRound = match.currentRound;
+      String nextTurnUid;
+      MatchStatus nextStatus = match.status;
+
+      final bothPlayedThisRound =
+          updatedP1Scores.length == nextRound && updatedP2Scores.length == nextRound;
+
+      if (bothPlayedThisRound) {
+        if (nextRound >= match.totalRounds) {
+          // All configured rounds completed! Conclude match
+          nextStatus = MatchStatus.completed;
+          nextTurnUid = '';
+        } else {
+          // Advance to next round, Player 1 leads the new round
+          nextRound += 1;
+          nextTurnUid = match.player1.uid;
+        }
+      } else {
+        // Alternate to the opponent within the current round
+        nextTurnUid = isP1 ? (match.player2?.uid ?? '') : match.player1.uid;
+      }
+
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final updateData = <String, dynamic>{
+        'currentRound': nextRound,
+        'activeTurnPlayerUid': nextTurnUid,
+        'status': nextStatus.key,
+        'updatedAt': now,
+        'latestTelemetry': telemetry.toJson(),
+        'latestTelemetryRound': match.currentRound,
+        'latestTelemetryShooterUid': shooterUid,
+        if (isP1) ...{
+          'player1.roundScores': updatedP1Scores,
+          'player1.roundSummaries': updatedP1Summaries.map((s) => s.toMap()).toList(),
+        } else ...{
+          'player2.roundScores': updatedP2Scores,
+          'player2.roundSummaries': updatedP2Summaries.map((s) => s.toMap()).toList(),
+        },
+      };
+
+      if (optionalChatMessage != null && optionalChatMessage.trim().isNotEmpty) {
+        final newMsg = CloudChatMessage(
+          id: '${now}_$shooterUid',
+          senderUid: shooterUid,
+          senderName: currentShooter.displayName,
+          senderAvatar: currentShooter.avatarEmoji,
+          text: optionalChatMessage.trim(),
+          timestamp: now,
+        );
+        updateData['chat'] = FieldValue.arrayUnion([newMsg.toMap()]);
+      }
+
+      transaction.update(docRef, updateData);
+      debugPrint('[FirestoreMatchService] Submitted turn atomically for $shooterUid (Round $roundIndex)');
+    });
   }
 
   /// Appends a chat message to the match's banter stream.
