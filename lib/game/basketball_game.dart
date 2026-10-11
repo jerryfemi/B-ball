@@ -25,27 +25,85 @@ class ScoreEvent {
   });
 }
 
+/// State of the 60-second basketball challenge.
+enum GameModeState {
+  ready,
+  playing,
+  gameOver,
+}
+
+/// Detailed shooting metrics compiled at the conclusion of a 60-second round.
+class GameRoundStats {
+  final int score;
+  final int bestScore;
+  final int totalShots;
+  final int madeShots;
+  final int swishCount;
+  final int bankCount;
+  final int bestStreak;
+  final bool isNewRecord;
+
+  const GameRoundStats({
+    required this.score,
+    required this.bestScore,
+    required this.totalShots,
+    required this.madeShots,
+    required this.swishCount,
+    required this.bankCount,
+    required this.bestStreak,
+    required this.isNewRecord,
+  });
+
+  double get accuracy =>
+      totalShots > 0 ? (madeShots / totalShots * 100.0) : 0.0;
+}
+
 class BasketballGame extends Forge2DGame {
   BasketballGame() : super(gravity: Vector2(0, 30.0));
 
   static const double worldHeightInMeters = 20.0;
+  static const int roundDurationSeconds = 60;
 
   // Game state & scoring pipeline
   int score = 0;
   int currentStreak = 0;
   int bestStreak = 0;
+  int totalShots = 0;
+  int madeShots = 0;
+  int swishCount = 0;
+  int bankCount = 0;
+  int bestStreakInRound = 0;
+  double _secondAccumulator = 0.0;
   void Function(ScoreEvent event)? onScoreEvent;
 
   // Reactive ValueNotifiers for zero-overhead Flutter UI binding
   final ValueNotifier<int> scoreNotifier = ValueNotifier<int>(0);
   final ValueNotifier<int> streakNotifier = ValueNotifier<int>(0);
+  final ValueNotifier<int> timeRemainingNotifier =
+      ValueNotifier<int>(roundDurationSeconds);
+  final ValueNotifier<int> bestScoreNotifier = ValueNotifier<int>(0);
+  final ValueNotifier<GameModeState> gameStateNotifier =
+      ValueNotifier<GameModeState>(GameModeState.playing);
+  final ValueNotifier<GameRoundStats?> statsNotifier =
+      ValueNotifier<GameRoundStats?>(null);
   final ValueNotifier<ScoreEvent?> scoreEventNotifier =
       ValueNotifier<ScoreEvent?>(null);
 
+  void recordShotAttempt() {
+    totalShots++;
+  }
+
   void registerScore({required bool isSwish, required bool isBankShot}) {
+    madeShots++;
+    if (isSwish) swishCount++;
+    if (isBankShot) bankCount++;
+
     currentStreak++;
     if (currentStreak > bestStreak) {
       bestStreak = currentStreak;
+    }
+    if (currentStreak > bestStreakInRound) {
+      bestStreakInRound = currentStreak;
     }
 
     // Regulation GamePigeon scoring rules:
@@ -67,11 +125,81 @@ class BasketballGame extends Forge2DGame {
     streakNotifier.value = currentStreak;
     scoreEventNotifier.value = event;
     onScoreEvent?.call(event);
+
+    // If game ended, update stats in case of buzzer-beater basket
+    if (gameStateNotifier.value == GameModeState.gameOver) {
+      _compileStats();
+    }
   }
 
   void resetStreak() {
     currentStreak = 0;
     streakNotifier.value = 0;
+  }
+
+  @override
+  void update(double dt) {
+    super.update(dt);
+
+    if (gameStateNotifier.value == GameModeState.playing &&
+        timeRemainingNotifier.value > 0) {
+      _secondAccumulator += dt;
+      if (_secondAccumulator >= 1.0) {
+        _secondAccumulator -= 1.0;
+        final nextTime = timeRemainingNotifier.value - 1;
+        timeRemainingNotifier.value = nextTime;
+        if (nextTime <= 0) {
+          _onTimeExpired();
+        }
+      }
+    }
+  }
+
+  void _onTimeExpired() {
+    gameStateNotifier.value = GameModeState.gameOver;
+    _compileStats();
+  }
+
+  void _compileStats() {
+    final bool isNew = score > bestScoreNotifier.value;
+    if (isNew) {
+      bestScoreNotifier.value = score;
+    }
+    statsNotifier.value = GameRoundStats(
+      score: score,
+      bestScore: bestScoreNotifier.value,
+      totalShots: totalShots,
+      madeShots: madeShots,
+      swishCount: swishCount,
+      bankCount: bankCount,
+      bestStreak: bestStreakInRound,
+      isNewRecord: isNew,
+    );
+  }
+
+  void restartRound() {
+    score = 0;
+    currentStreak = 0;
+    totalShots = 0;
+    madeShots = 0;
+    swishCount = 0;
+    bankCount = 0;
+    bestStreakInRound = 0;
+    _secondAccumulator = 0.0;
+
+    scoreNotifier.value = 0;
+    streakNotifier.value = 0;
+    timeRemainingNotifier.value = roundDurationSeconds;
+    statsNotifier.value = null;
+    gameStateNotifier.value = GameModeState.playing;
+
+    // Clear active balls from world
+    final existingBalls = world.children.whereType<Basketball>().toList();
+    for (final b in existingBalls) {
+      b.removeFromParent();
+    }
+
+    _spawnReadyBall(animate: true);
   }
 
   @override
@@ -153,6 +281,8 @@ class BasketballGame extends Forge2DGame {
   }
 
   void _spawnReadyBall({bool animate = false}) {
+    if (gameStateNotifier.value == GameModeState.gameOver) return;
+
     final spawnX = animate ? _pickNextSpawnX() : 0.0;
     final ball = Basketball(
       // Rest directly on the hardwood court floor at the chosen baseline spot
@@ -160,13 +290,16 @@ class BasketballGame extends Forge2DGame {
       radius: 0.58,
       animateEntrance: animate,
       onLaunched: () {
+        if (gameStateNotifier.value == GameModeState.gameOver) return;
+
         // Snappy feed of next ball: 250ms delay managed via Flame TimerComponent
         add(
           TimerComponent(
             period: 0.25,
             removeOnFinish: true,
             onTick: () {
-              if (isLoaded) {
+              if (isLoaded &&
+                  gameStateNotifier.value == GameModeState.playing) {
                 _spawnReadyBall(animate: true);
               }
             },
@@ -190,6 +323,10 @@ class BasketballGame extends Forge2DGame {
   void onRemove() {
     scoreNotifier.dispose();
     streakNotifier.dispose();
+    timeRemainingNotifier.dispose();
+    bestScoreNotifier.dispose();
+    gameStateNotifier.dispose();
+    statsNotifier.dispose();
     scoreEventNotifier.dispose();
     super.onRemove();
   }
