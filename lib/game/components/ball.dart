@@ -68,18 +68,35 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
   final List<_TouchSample> _touchSamples = [];
   bool _streakEvaluated = false;
 
+  /// Base opacity of the basketball: 1.0 for standard live play, ~0.55 for ghost replay.
+  double get baseOpacity => 1.0;
+
+  /// Whether this ball is controlled by the live player.
+  bool get isLiveBall => true;
+
+  @protected
+  void onScoredBasket({required bool isSwish, required bool isBankShot}) {
+    _streakEvaluated = true;
+    if (isSwish) {
+      AudioEngine.playSwish();
+    }
+    game.registerScore(isSwish: isSwish, isBankShot: isBankShot);
+  }
+
   Basketball({
     required this.initialPosition,
     this.radius = 0.58,
     this.onLaunched,
     this.animateEntrance = false,
+    Vector3? initialPos3D,
   }) : super(priority: 5) {
     physics = BallPhysics3D(
-      initialPos: Vector3(
-        initialPosition.x / PerspectiveCamera3D.forge2dUnitsPerMeterAtZ0,
-        0.25,
-        0.0,
-      ),
+      initialPos: initialPos3D ??
+          Vector3(
+            initialPosition.x / PerspectiveCamera3D.forge2dUnitsPerMeterAtZ0,
+            0.25,
+            0.0,
+          ),
       radius: 0.125,
       onWallImpact: (impactPt) {
         if (!isMounted) return;
@@ -113,11 +130,7 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
       },
       onScored: ({required bool isSwish, required bool isBankShot}) {
         if (!isMounted) return;
-        _streakEvaluated = true;
-        if (isSwish) {
-          AudioEngine.playSwish();
-        }
-        game.registerScore(isSwish: isSwish, isBankShot: isBankShot);
+        onScoredBasket(isSwish: isSwish, isBankShot: isBankShot);
       },
     );
     if (animateEntrance) {
@@ -136,7 +149,7 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
 
   @override
   void onRemove() {
-    if (isLaunched && !_streakEvaluated && !physics.passedThroughRim) {
+    if (isLiveBall && isLaunched && !_streakEvaluated && !physics.passedThroughRim) {
       _streakEvaluated = true;
       game.resetStreak();
     }
@@ -154,9 +167,21 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
 
   @override
   Body createBody() {
+    final Vector2 bodyPos;
+    if (physics.pos.z != 0.0) {
+      final f2d = camera3D.projectToForge2D(
+        physics.pos.x,
+        physics.pos.y,
+        physics.pos.z,
+      );
+      bodyPos = Vector2(f2d.dx, f2d.dy);
+    } else {
+      bodyPos = initialPosition;
+    }
+
     final bodyDef = BodyDef(
       type: BodyType.kinematic,
-      position: initialPosition,
+      position: bodyPos,
     );
 
     final body = world.createBody(bodyDef);
@@ -165,7 +190,7 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
       density: 1.0,
       material: SurfaceMaterial(friction: 0.8, restitution: 0.82),
       filter: forge2d.Filter(
-        categoryBits: 0x0008, // Basketball category
+        categoryBits: isLiveBall ? 0x0008 : 0x0010, // Basketball vs Ghost category
         maskBits: 0, // True 3D physics handles all collisions!
       ),
     );
@@ -201,7 +226,8 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
       physics.update(dt);
 
       // Evaluate missed shot for streak reset once the ball settles on the floor or times out
-      if (!_streakEvaluated &&
+      if (isLiveBall &&
+          !_streakEvaluated &&
           physics.timeSinceLaunch > 0.40 &&
           (physics.pos.y <= physics.radius + 0.02 ||
               physics.timeSinceLaunch > 3.0)) {
@@ -261,13 +287,16 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
   @override
   void render(Canvas canvas) {
     // 3 seconds solid, then smooth 2-second fade out (5s total)
-    final double opacity = physics.timeSinceLaunch > 3.0
+    final double fadeOut = physics.timeSinceLaunch > 3.0
         ? (1.0 - (physics.timeSinceLaunch - 3.0) / 2.0).clamp(0.0, 1.0)
         : 1.0;
 
+    final double effectiveOpacity = (baseOpacity * fadeOut).clamp(0.0, 1.0);
+    if (effectiveOpacity <= 0.01) return;
+
     canvas.saveLayer(
       null,
-      Paint()..color = Color.fromRGBO(255, 255, 255, opacity),
+      Paint()..color = Color.fromRGBO(255, 255, 255, effectiveOpacity),
     );
 
     // 1. Continuous Hardwood Floor Drop Shadow
@@ -473,6 +502,7 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
 
   @override
   bool containsPoint(Vector2 point) {
+    if (!isLiveBall) return false;
     if (game.gameStateNotifier.value == GameModeState.gameOver ||
         game.isPaused) {
       return false;
