@@ -42,6 +42,15 @@ class PlayerMatchState {
 
   int get totalScore => roundScores.fold(0, (acc, s) => acc + s);
 
+  /// Returns aggregate score accumulated strictly before [roundIndex].
+  int scoreUpToRound(int roundIndex) {
+    int total = 0;
+    for (int i = 0; i < roundIndex && i < roundScores.length; i++) {
+      total += roundScores[i];
+    }
+    return total;
+  }
+
   RoundTelemetry? get latestTelemetry =>
       roundTelemetries.isNotEmpty ? roundTelemetries.last : null;
 }
