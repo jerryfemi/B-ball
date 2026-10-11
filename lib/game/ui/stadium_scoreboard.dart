@@ -7,6 +7,7 @@ import 'scoreboard/round_indicator_badge.dart';
 import 'scoreboard/scoreboard_bay.dart';
 import 'scoreboard/scoreboard_flank_badges.dart';
 import 'scoreboard/trapezoid_scoreboard_painter.dart';
+import 'inbox/inbox_notification_badge.dart';
 
 export 'scoreboard/trapezoid_scoreboard_painter.dart';
 
@@ -22,11 +23,13 @@ export 'scoreboard/trapezoid_scoreboard_painter.dart';
 class StadiumScoreboard extends StatefulWidget {
   final BasketballGame game;
   final VoidCallback? onHelpTapped;
+  final VoidCallback? onInboxTapped;
 
   const StadiumScoreboard({
     super.key,
     required this.game,
     this.onHelpTapped,
+    this.onInboxTapped,
   });
 
   @override
@@ -178,21 +181,26 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
                     label: is1v1 ? matchSession.player1.name : 'You',
                     avatar: is1v1 ? matchSession.player1.avatar : '🏀',
                   ),
-                  const SizedBox(width: 6.0),
+                  const SizedBox(width: 5.0),
                   ScoreboardPauseBadge(game: widget.game),
+                  const SizedBox(width: 5.0),
+                  ScoreboardHelpBadge(onTap: widget.onHelpTapped),
                   const SizedBox(width: 8.0),
                   _buildTrapezoidalConsole(matchSession, shootingPlayerIndex),
                   const SizedBox(width: 8.0),
                   const ScoreboardMuteBadge(),
-                  const SizedBox(width: 6.0),
-                  if (is1v1)
+                  if (widget.onInboxTapped != null) ...[
+                    const SizedBox(width: 5.0),
+                    InboxNotificationBadge(onTap: widget.onInboxTapped!),
+                  ],
+                  if (is1v1) ...[
+                    const SizedBox(width: 5.0),
                     ScoreboardOpponentAvatar(
                       isActive: p2Active,
                       label: matchSession.player2.name,
                       avatar: matchSession.player2.avatar,
-                    )
-                  else
-                    ScoreboardHelpBadge(onTap: widget.onHelpTapped),
+                    ),
+                  ],
                 ],
               ),
             ),

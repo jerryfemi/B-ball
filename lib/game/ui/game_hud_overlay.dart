@@ -7,7 +7,6 @@ import '../match/match_session.dart';
 import 'floating_score_toast.dart';
 import 'game_over_overlay.dart';
 import 'game_rules_dialog.dart';
-import 'inbox/inbox_notification_badge.dart';
 import 'inbox/match_inbox_sheet.dart';
 import 'match/match_setup_dialog.dart';
 import 'match/match_winner_podium_overlay.dart';
@@ -85,21 +84,13 @@ class GameHudOverlay extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // 1. Top Stadium Scoreboard Header
+        // 1. Top Stadium Scoreboard Header with integrated controls & match hub
         Align(
           alignment: Alignment.topCenter,
           child: StadiumScoreboard(
             game: game,
             onHelpTapped: () => _handleHelpTapped(context),
-          ),
-        ),
-
-        // 2. Top-Right Floating Match Inbox Badge
-        Positioned(
-          top: MediaQuery.of(context).padding.top + 6,
-          right: 12,
-          child: InboxNotificationBadge(
-            onTap: () => _handleInboxTapped(context),
+            onInboxTapped: () => _handleInboxTapped(context),
           ),
         ),
 
