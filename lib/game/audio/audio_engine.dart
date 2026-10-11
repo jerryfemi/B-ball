@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flame_audio/flame_audio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -5,26 +7,25 @@ import 'package:flutter/services.dart';
 /// Centralized audio and haptics coordinator for basketball collisions,
 /// net swishes, floor bounces, and round-ending buzzers.
 ///
-/// Performance architecture (replaces naive FlameAudio.play()):
-/// - **Phase 1 – Player Pooling:** Pre-allocated [AudioPool] instances reuse
-///   a fixed set of [AudioPlayer] objects instead of creating and discarding
-///   a new player on every playback call.
-/// - **Phase 2 – Stopwatch Rate-Limiting:** A monotonic [Stopwatch] replaces
-///   [DateTime.now()] syscalls in the hot path, eliminating kernel transitions
-///   during the 240 Hz physics substep loop.
-/// - **Phase 3 – Velocity Gating:** Minimum impact speed thresholds prevent
+/// Performance architecture:
+/// - **Pre-Warmed Player Pooling:** Fixed pools with [minPlayers] matching [maxPlayers]
+///   are fully allocated upfront during [init], completely eliminating mid-gameplay
+///   player creation and platform channel allocation churn.
+/// - **Stopwatch Rate-Limiting:** A monotonic [Stopwatch] eliminates timing drift
+///   and wall-clock shifts during the 240 Hz physics substep loop.
+/// - **Velocity Gating:** Minimum impact speed thresholds prevent
 ///   trivially soft micro-collisions from ever reaching the audio pipeline.
 class AudioEngine {
   static bool isMuted = false;
   static bool _initialized = false;
 
-  // ── Phase 2: Monotonic stopwatch (zero-allocation, no syscall) ──
+  // ── Monotonic stopwatch (zero-allocation rate-limiting) ──
   static final Stopwatch _clock = Stopwatch();
   static int _lastBounceUs = 0;
   static int _lastRimUs = 0;
   static int _lastBackboardUs = 0;
 
-  // ── Phase 1: Pre-allocated audio player pools ──
+  // ── Pre-allocated audio player pools ──
   // Each pool maintains a fixed ring of AudioPlayer instances that are
   // reused across playback calls, avoiding the create-per-play overhead
   // of FlameAudio.play() which allocates native platform resources each time.
@@ -34,7 +35,7 @@ class AudioEngine {
   static AudioPool? _bouncePool;
   static AudioPool? _buzzerPool;
 
-  // ── Phase 3: Minimum impact velocity thresholds (m/s) ──
+  // ── Minimum impact velocity thresholds (m/s) ──
   // Impacts below these speeds produce no audible response, preventing
   // micro-collisions from saturating the platform channel queue.
   static const double _minRimSpeed = 0.5;
@@ -43,20 +44,24 @@ class AudioEngine {
 
   /// Preloads audio pools into memory for zero-latency in-flight playback.
   /// All five pools are loaded concurrently via [Future.wait].
+  ///
+  /// Specifying [minPlayers] equal to [maxPlayers] guarantees all instances
+  /// are pre-created during loading, preventing cold mid-game allocations.
   static Future<void> init() async {
     if (_initialized) return;
     try {
+      _clock.reset();
       _clock.start();
 
       // Bounce gets 3 pooled players (highest fire rate: rapid floor bouncing).
       // Rim, backboard, swish get 2 each for potential rapid overlaps.
       // Buzzer only needs 1 (fires once at game end).
       final results = await Future.wait([
-        FlameAudio.createPool('rim_clank.wav', maxPlayers: 2),
-        FlameAudio.createPool('backboard.wav', maxPlayers: 2),
-        FlameAudio.createPool('swish.wav', maxPlayers: 2),
-        FlameAudio.createPool('bounce.wav', maxPlayers: 3),
-        FlameAudio.createPool('buzzer.wav', maxPlayers: 1),
+        FlameAudio.createPool('rim_clank.wav', minPlayers: 2, maxPlayers: 2),
+        FlameAudio.createPool('backboard.wav', minPlayers: 2, maxPlayers: 2),
+        FlameAudio.createPool('swish.wav', minPlayers: 2, maxPlayers: 2),
+        FlameAudio.createPool('bounce.wav', minPlayers: 3, maxPlayers: 3),
+        FlameAudio.createPool('buzzer.wav', minPlayers: 1, maxPlayers: 1),
       ]);
 
       _rimPool = results[0];
@@ -128,14 +133,17 @@ class AudioEngine {
   }
 
   /// Plays from a pre-allocated pooled player with error handling.
-  /// Unlike [FlameAudio.play], this reuses existing [AudioPlayer] instances
-  /// instead of creating and discarding new ones on each call.
+  /// Reuses existing [AudioPlayer] instances and catches both sync and async failures.
   static void _safePoolPlay(AudioPool? pool, double volume) {
     if (pool == null) return;
     try {
-      pool.start(volume: volume);
+      unawaited(
+        pool.start(volume: volume).then((_) => null, onError: (e) {
+          debugPrint('[AudioEngine] Pool playback error: $e');
+        }),
+      );
     } catch (e) {
-      debugPrint('[AudioEngine] Pool playback error: $e');
+      debugPrint('[AudioEngine] Pool synchronous error: $e');
     }
   }
 
@@ -145,14 +153,31 @@ class AudioEngine {
     } catch (_) {}
   }
 
-  /// Releases all pooled audio resources. Safe to call multiple times.
+  /// Releases all pooled audio resources and frees native player handles.
+  /// Safe to call multiple times.
   static void dispose() {
+    final pools = [_rimPool, _backboardPool, _swishPool, _bouncePool, _buzzerPool];
     _rimPool = null;
     _backboardPool = null;
     _swishPool = null;
     _bouncePool = null;
     _buzzerPool = null;
+
+    for (final pool in pools) {
+      if (pool != null) {
+        unawaited(
+          pool.dispose().catchError((e) {
+            debugPrint('[AudioEngine] Pool dispose warning: $e');
+          }),
+        );
+      }
+    }
+
     _clock.stop();
+    _clock.reset();
+    _lastBounceUs = 0;
+    _lastRimUs = 0;
+    _lastBackboardUs = 0;
     _initialized = false;
   }
 }
