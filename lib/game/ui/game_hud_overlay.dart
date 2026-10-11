@@ -5,6 +5,7 @@ import 'floating_score_toast.dart';
 import 'game_over_overlay.dart';
 import 'game_rules_dialog.dart';
 import 'pause_overlay.dart';
+import 'replay_hud_overlay.dart';
 import 'stadium_scoreboard.dart';
 
 /// Top-level Game HUD Overlay mounted via Flame's [GameWidget.overlayBuilderMap].
@@ -77,6 +78,17 @@ class GameHudOverlay extends StatelessWidget {
           builder: (context, state, _) {
             if (state == GameModeState.gameOver) {
               return GameOverOverlay(game: game);
+            }
+            return const SizedBox.shrink();
+          },
+        ),
+
+        // 5. Replay HUD Overlay (Displayed when watching replay mode)
+        ValueListenableBuilder<GameModeState>(
+          valueListenable: game.gameStateNotifier,
+          builder: (context, state, _) {
+            if (state == GameModeState.replay) {
+              return ReplayHudOverlay(game: game);
             }
             return const SizedBox.shrink();
           },
