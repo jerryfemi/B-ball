@@ -129,7 +129,7 @@ class _GameOverOverlayState extends State<GameOverOverlay>
                             const SizedBox(height: 10.0),
                           ],
                           PlayAgainButton(
-                            onPressed: () => widget.game.restartRound(),
+                            onPressed: () => widget.game.exitToSoloMode(),
                           ),
                           const SizedBox(height: 10.0),
                           SizedBox(
@@ -151,12 +151,12 @@ class _GameOverOverlayState extends State<GameOverOverlay>
                               child: const Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Icon(Icons.people_alt_rounded, size: 20.0),
+                                  Icon(Icons.sports_basketball_rounded, size: 20.0),
                                   SizedBox(width: 8.0),
                                   Text(
-                                    '1V1 MATCH (2 ROUNDS)',
+                                    'PLAY 1V1 MATCH (2 ROUNDS)',
                                     style: TextStyle(
-                                      fontSize: 14.0,
+                                      fontSize: 13.5,
                                       fontWeight: FontWeight.w800,
                                       letterSpacing: 1.0,
                                     ),
