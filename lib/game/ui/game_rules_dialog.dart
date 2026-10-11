@@ -2,8 +2,8 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 /// Displays the collegiate "HOW TO PLAY" rules dialog.
-void showGameRulesDialog(BuildContext context) {
-  showDialog(
+Future<void> showGameRulesDialog(BuildContext context) {
+  return showDialog(
     context: context,
     barrierColor: const Color(0x99000000),
     builder: (context) => const GameRulesDialog(),
