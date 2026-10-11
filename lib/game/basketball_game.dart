@@ -84,13 +84,52 @@ class BasketballGame extends Forge2DGame {
       ValueNotifier<int>(roundDurationSeconds);
   final ValueNotifier<int> bestScoreNotifier = ValueNotifier<int>(0);
   final ValueNotifier<GameModeState> gameStateNotifier =
-      ValueNotifier<GameModeState>(GameModeState.playing);
+      ValueNotifier<GameModeState>(GameModeState.ready);
+  final ValueNotifier<bool> isPausedNotifier = ValueNotifier<bool>(false);
   final ValueNotifier<GameRoundStats?> statsNotifier =
       ValueNotifier<GameRoundStats?>(null);
   final ValueNotifier<ScoreEvent?> scoreEventNotifier =
       ValueNotifier<ScoreEvent?>(null);
 
+  bool get isPaused => isPausedNotifier.value;
+  bool _isManuallyPaused = false;
+  bool get isManuallyPaused => _isManuallyPaused;
+
+  void pauseGame({bool manual = true}) {
+    if (gameStateNotifier.value == GameModeState.gameOver) return;
+    if (manual) _isManuallyPaused = true;
+    isPausedNotifier.value = true;
+    pauseEngine();
+  }
+
+  void resumeGame() {
+    _isManuallyPaused = false;
+    isPausedNotifier.value = false;
+    resumeEngine();
+  }
+
+  @override
+  void lifecycleStateChange(AppLifecycleState state) {
+    super.lifecycleStateChange(state);
+    switch (state) {
+      case AppLifecycleState.resumed:
+        // Intentionally keep paused overlay active so player can resume on ready
+        break;
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.detached:
+        if (gameStateNotifier.value == GameModeState.playing) {
+          pauseGame(manual: false);
+        }
+        break;
+    }
+  }
+
   void recordShotAttempt() {
+    if (gameStateNotifier.value == GameModeState.ready) {
+      gameStateNotifier.value = GameModeState.playing;
+    }
     totalShots++;
   }
 
@@ -143,6 +182,7 @@ class BasketballGame extends Forge2DGame {
     super.update(dt);
 
     if (gameStateNotifier.value == GameModeState.playing &&
+        !isPaused &&
         timeRemainingNotifier.value > 0) {
       _secondAccumulator += dt;
       if (_secondAccumulator >= 1.0) {
@@ -193,7 +233,11 @@ class BasketballGame extends Forge2DGame {
     streakNotifier.value = 0;
     timeRemainingNotifier.value = roundDurationSeconds;
     statsNotifier.value = null;
-    gameStateNotifier.value = GameModeState.playing;
+    gameStateNotifier.value = GameModeState.ready;
+
+    if (isPaused) {
+      resumeGame();
+    }
 
     // Clear active balls from world
     final existingBalls = world.children.whereType<Basketball>().toList();
@@ -305,7 +349,8 @@ class BasketballGame extends Forge2DGame {
             removeOnFinish: true,
             onTick: () {
               if (isLoaded &&
-                  gameStateNotifier.value == GameModeState.playing) {
+                  (gameStateNotifier.value == GameModeState.playing ||
+                      gameStateNotifier.value == GameModeState.ready)) {
                 _spawnReadyBall(animate: true);
               }
             },
@@ -333,6 +378,7 @@ class BasketballGame extends Forge2DGame {
     timeRemainingNotifier.dispose();
     bestScoreNotifier.dispose();
     gameStateNotifier.dispose();
+    isPausedNotifier.dispose();
     statsNotifier.dispose();
     scoreEventNotifier.dispose();
     super.onRemove();
