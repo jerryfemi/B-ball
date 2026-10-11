@@ -8,6 +8,42 @@ import '../game/telemetry/shot_telemetry.dart';
 import '../models/cloud_match.dart';
 import 'auth_service.dart';
 
+/// Exception thrown when no match document exists for the requested join code.
+class MatchNotFoundException implements Exception {
+  final String message;
+  const MatchNotFoundException(this.message);
+
+  @override
+  String toString() => message;
+}
+
+/// Exception thrown when a match room is already filled or concluded.
+class MatchAlreadyFullException implements Exception {
+  final String message;
+  const MatchAlreadyFullException(this.message);
+
+  @override
+  String toString() => message;
+}
+
+/// Exception thrown when a user attempts to join a match they host.
+class SelfJoinException implements Exception {
+  final String message;
+  const SelfJoinException(this.message);
+
+  @override
+  String toString() => message;
+}
+
+/// Exception thrown when an action is submitted out of turn.
+class NotYourTurnException implements Exception {
+  final String message;
+  const NotYourTurnException(this.message);
+
+  @override
+  String toString() => message;
+}
+
 /// Central Firestore service managing remote match rooms, turn sync,
 /// telemetry handoff, and in-game chat threads.
 class FirestoreMatchService {
@@ -18,14 +54,15 @@ class FirestoreMatchService {
   CollectionReference<Map<String, dynamic>> get _matchesRef =>
       _firestore.collection('matches');
 
-  /// Generates an arcade-style 6-character alphanumeric join code (e.g. "B8K29A").
-  String _generateJoinCode() {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // No ambiguous 0/O, 1/I
-    final rand = Random();
+  /// Generates a cryptographically secure 6-character alphanumeric join code (e.g. "B8K29A").
+  /// Excludes visually ambiguous characters (0/O, 1/I).
+  static String generateJoinCode() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    final rand = Random.secure();
     return List.generate(6, (_) => chars[rand.nextInt(chars.length)]).join();
   }
 
-  /// Creates a new match room in Firestore.
+  /// Creates a new match room in Firestore where the document ID IS the 6-character join code.
   /// 
   /// If [initialRoundTelemetry] and [initialRoundScore] are provided,
   /// Player 1 has already shot Round 1 locally, so the match enters
@@ -37,8 +74,11 @@ class FirestoreMatchService {
     int? initialRoundScore,
     String? initialChatMessage,
   }) async {
-    final docRef = _matchesRef.doc();
-    final joinCode = _generateJoinCode();
+    // Ensure the host is authenticated with Firebase before creating a cloud match
+    await AuthService.instance.ensureAuthenticated();
+
+    final joinCode = generateJoinCode();
+    final docRef = _matchesRef.doc(joinCode);
     final now = DateTime.now().millisecondsSinceEpoch;
 
     final hasCompletedFirstTurn =
@@ -66,7 +106,7 @@ class FirestoreMatchService {
     }
 
     final match = CloudMatch(
-      id: docRef.id,
+      id: joinCode,
       joinCode: joinCode,
       status: MatchStatus.waitingForOpponent,
       createdAt: now,
@@ -87,67 +127,75 @@ class FirestoreMatchService {
     );
 
     await docRef.set(match.toMap());
-    debugPrint('[FirestoreMatchService] Created match ${docRef.id} (code: $joinCode)');
+    debugPrint('[FirestoreMatchService] Created match with docId/code $joinCode');
     return match;
   }
 
-  /// Finds and joins a match via 6-digit join code or direct URL code.
-  Future<CloudMatch?> joinMatchByCode({
+  /// Atomically joins a match via 6-digit code or direct URL code using a transaction.
+  /// 
+  /// Performs a direct document lookup on `matches/{joinCode}` rather than a collection query,
+  /// preserving strict privacy rules and preventing enumeration.
+  Future<CloudMatch> joinMatchByCode({
     required String joinCode,
     required UserProfile player2Profile,
   }) async {
+    // Ensure the joining player is authenticated with Firebase
+    await AuthService.instance.ensureAuthenticated();
+
     final cleanCode = joinCode.trim().toUpperCase();
-    final query = await _matchesRef
-        .where('joinCode', isEqualTo: cleanCode)
-        .where('status', isEqualTo: MatchStatus.waitingForOpponent.key)
-        .limit(1)
-        .get();
+    final docRef = _matchesRef.doc(cleanCode);
 
-    if (query.docs.isEmpty) {
-      debugPrint('[FirestoreMatchService] No waiting match found with code: $cleanCode');
-      return null;
-    }
+    return await _firestore.runTransaction<CloudMatch>((transaction) async {
+      final snapshot = await transaction.get(docRef);
 
-    final doc = query.docs.first;
-    final match = CloudMatch.fromFirestore(doc);
+      if (!snapshot.exists) {
+        throw MatchNotFoundException('No match found with code $cleanCode.');
+      }
 
-    // Prevent joining one's own match as player 2
-    if (match.player1.uid == player2Profile.uid) {
-      debugPrint('[FirestoreMatchService] Cannot join own match as player 2');
-      return match;
-    }
+      final match = CloudMatch.fromFirestore(snapshot);
 
-    final now = DateTime.now().millisecondsSinceEpoch;
-    final player2 = CloudPlayer(
-      uid: player2Profile.uid,
-      displayName: player2Profile.displayName,
-      avatarEmoji: player2Profile.avatarEmoji,
-      roundScores: [],
-    );
+      // Prevent joining one's own match
+      if (match.player1.uid == player2Profile.uid) {
+        throw const SelfJoinException('You cannot join a match hosted by yourself.');
+      }
 
-    final updatedPlayerIds = [...match.playerIds, player2Profile.uid];
+      // Ensure room is waiting and not already full
+      if (match.status != MatchStatus.waitingForOpponent || match.player2 != null) {
+        throw const MatchAlreadyFullException('This match is already in progress or completed.');
+      }
 
-    // Whichever player didn't shoot Round 1 yet takes the active turn
-    final nextActiveUid = match.player1.roundScores.isNotEmpty
-        ? player2Profile.uid
-        : match.player1.uid;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final player2 = CloudPlayer(
+        uid: player2Profile.uid,
+        displayName: player2Profile.displayName,
+        avatarEmoji: player2Profile.avatarEmoji,
+        roundScores: [],
+      );
 
-    await doc.reference.update({
-      'player2': player2.toMap(),
-      'playerIds': updatedPlayerIds,
-      'status': MatchStatus.active.key,
-      'activeTurnPlayerUid': nextActiveUid,
-      'updatedAt': now,
+      final updatedPlayerIds = [...match.playerIds, player2Profile.uid];
+
+      // Whichever player didn't shoot Round 1 yet takes the active turn
+      final nextActiveUid = match.player1.roundScores.isNotEmpty
+          ? player2Profile.uid
+          : match.player1.uid;
+
+      transaction.update(docRef, {
+        'player2': player2.toMap(),
+        'playerIds': updatedPlayerIds,
+        'status': MatchStatus.active.key,
+        'activeTurnPlayerUid': nextActiveUid,
+        'updatedAt': now,
+      });
+
+      debugPrint('[FirestoreMatchService] Joined match $cleanCode atomically');
+      return match.copyWith(
+        player2: player2,
+        playerIds: updatedPlayerIds,
+        status: MatchStatus.active,
+        activeTurnPlayerUid: nextActiveUid,
+        updatedAt: now,
+      );
     });
-
-    debugPrint('[FirestoreMatchService] Joined match ${doc.id}');
-    return match.copyWith(
-      player2: player2,
-      playerIds: updatedPlayerIds,
-      status: MatchStatus.active,
-      activeTurnPlayerUid: nextActiveUid,
-      updatedAt: now,
-    );
   }
 
   /// Submits completed turn telemetry and round score for the active player.
@@ -163,7 +211,9 @@ class FirestoreMatchService {
   }) async {
     final docRef = _matchesRef.doc(matchId);
     final snapshot = await docRef.get();
-    if (!snapshot.exists) return;
+    if (!snapshot.exists) {
+      throw MatchNotFoundException('Cannot submit turn: match $matchId not found.');
+    }
 
     final match = CloudMatch.fromFirestore(snapshot);
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -261,7 +311,6 @@ class FirestoreMatchService {
       final matches = snapshot.docs
           .map((doc) => CloudMatch.fromFirestore(doc))
           .toList();
-      // Sort in-memory by updatedAt descending
       matches.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
       return matches;
     });

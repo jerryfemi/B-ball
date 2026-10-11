@@ -1,4 +1,5 @@
 import 'package:b_ball/models/cloud_match.dart';
+import 'package:b_ball/services/firestore_match_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -89,6 +90,20 @@ void main() {
       );
 
       expect(completedMatch.winnerUid, equals('user_1'));
+    });
+
+    test('generateJoinCode generates cryptographically secure 6-character codes without ambiguous chars', () {
+      final code1 = FirestoreMatchService.generateJoinCode();
+      final code2 = FirestoreMatchService.generateJoinCode();
+
+      expect(code1.length, equals(6));
+      expect(code2.length, equals(6));
+      expect(code1, isNot(equals(code2)));
+
+      // No ambiguous chars: 0, O, 1, I
+      final ambiguousPattern = RegExp(r'[0O1I]');
+      expect(ambiguousPattern.hasMatch(code1), isFalse);
+      expect(ambiguousPattern.hasMatch(code2), isFalse);
     });
   });
 }
