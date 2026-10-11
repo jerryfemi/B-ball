@@ -1,19 +1,25 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../basketball_game.dart';
+import 'digital_led_display.dart';
 
-/// Minimalist Floating Stadium Glass Pills (GamePigeon / Modern iOS Style).
+/// GamePigeon Authentic 3-Bay Electronic LED Stadium Scoreboard.
 ///
-/// Replaces the bulky full-width header with dual content-hugging frosted capsules:
-/// 1. Sleek Score Pill: compact frosted acrylic badge with bouncy score numerals.
-/// 2. Dynamic Streak Pill: luminous flame badge that slides in alongside when streak >= 3.
+/// Features:
+/// 1. Matte black trapezoidal chassis with crisp white perimeter contour.
+/// 2. Left Bay: "YOU" header with glowing red 7-segment digital score digits.
+/// 3. Center Bay: Inset rounded white-bordered pill with amber 7-segment countdown clock.
+/// 4. Right Bay: "BEST" header with glowing red 7-segment personal record digits.
+/// 5. Left/Right Flanking: "You" avatar badge on left, "?" rules button on right.
+/// 6. Luminous hot streak fire pill that slides out underneath when streak >= 3.
 class StadiumScoreboard extends StatefulWidget {
   final BasketballGame game;
+  final VoidCallback? onHelpTapped;
 
   const StadiumScoreboard({
     super.key,
     required this.game,
+    this.onHelpTapped,
   });
 
   @override
@@ -21,34 +27,61 @@ class StadiumScoreboard extends StatefulWidget {
 }
 
 class _StadiumScoreboardState extends State<StadiumScoreboard>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final AnimationController _popController;
-  late final Animation<double> _scaleAnimation;
+  late final Animation<double> _scoreScaleAnimation;
+
+  late final AnimationController _urgentClockController;
+  late final Animation<double> _urgentGlowAnimation;
+
   int _lastScore = 0;
 
   @override
   void initState() {
     super.initState();
+
+    // 1. Spring pop on score change
     _popController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 220),
     );
-
-    // Punchy spring pop on score increase
-    _scaleAnimation = TweenSequence<double>([
+    _scoreScaleAnimation = TweenSequence<double>([
       TweenSequenceItem(
-        tween: Tween<double>(begin: 1.0, end: 1.30)
+        tween: Tween<double>(begin: 1.0, end: 1.25)
             .chain(CurveTween(curve: Curves.easeOutBack)),
         weight: 40,
       ),
       TweenSequenceItem(
-        tween: Tween<double>(begin: 1.30, end: 1.0)
+        tween: Tween<double>(begin: 1.25, end: 1.0)
             .chain(CurveTween(curve: Curves.easeInOut)),
         weight: 60,
       ),
     ]).animate(_popController);
 
+    // 2. Urgent clock pulse when time <= 10s
+    _urgentClockController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    )..addStatusListener((status) {
+        if (status == AnimationStatus.completed) {
+          _urgentClockController.reverse();
+        } else if (status == AnimationStatus.dismissed) {
+          if (widget.game.timeRemainingNotifier.value <= 10 &&
+              widget.game.timeRemainingNotifier.value > 0) {
+            _urgentClockController.forward();
+          }
+        }
+      });
+
+    _urgentGlowAnimation = Tween<double>(begin: 1.0, end: 1.15).animate(
+      CurvedAnimation(
+        parent: _urgentClockController,
+        curve: Curves.easeInOut,
+      ),
+    );
+
     widget.game.scoreNotifier.addListener(_onScoreChanged);
+    widget.game.timeRemainingNotifier.addListener(_onTimeChanged);
     _lastScore = widget.game.scoreNotifier.value;
   }
 
@@ -57,14 +90,18 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
     super.didUpdateWidget(oldWidget);
     if (oldWidget.game != widget.game) {
       oldWidget.game.scoreNotifier.removeListener(_onScoreChanged);
+      oldWidget.game.timeRemainingNotifier.removeListener(_onTimeChanged);
       widget.game.scoreNotifier.addListener(_onScoreChanged);
+      widget.game.timeRemainingNotifier.addListener(_onTimeChanged);
     }
   }
 
   @override
   void dispose() {
     widget.game.scoreNotifier.removeListener(_onScoreChanged);
+    widget.game.timeRemainingNotifier.removeListener(_onTimeChanged);
     _popController.dispose();
+    _urgentClockController.dispose();
     super.dispose();
   }
 
@@ -74,7 +111,20 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
       _popController.forward(from: 0.0);
     }
     _lastScore = current;
-    if (mounted) setState(() {});
+  }
+
+  void _onTimeChanged() {
+    final remaining = widget.game.timeRemainingNotifier.value;
+    if (remaining <= 10 && remaining > 0) {
+      if (!_urgentClockController.isAnimating) {
+        _urgentClockController.forward();
+      }
+    } else {
+      if (_urgentClockController.isAnimating) {
+        _urgentClockController.stop();
+        _urgentClockController.reset();
+      }
+    }
   }
 
   @override
@@ -82,153 +132,85 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
     return SafeArea(
       bottom: false,
       child: Padding(
-        padding: const EdgeInsets.only(top: 12.0),
-        child: Row(
+        padding: const EdgeInsets.only(top: 8.0, left: 12.0, right: 12.0),
+        child: Column(
           mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // ── 1. Compact Frosted Glass Score Pill ──
-            ClipRRect(
-              borderRadius: BorderRadius.circular(24.0),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 16.0, sigmaY: 16.0),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16.0,
-                    vertical: 7.0,
-                  ),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Color(0xB80F172A), // Deep translucent obsidian slate
-                        Color(0x991E293B),
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(24.0),
-                    border: Border.all(
-                      color: const Color(0x38FFFFFF),
-                      width: 1.0,
-                    ),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x40000000),
-                        blurRadius: 16.0,
-                        offset: Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text(
-                        'SCORE',
-                        style: TextStyle(
-                          color: Color(0xFF94A3B8),
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.8,
-                        ),
-                      ),
-                      const SizedBox(width: 10.0),
-                      ScaleTransition(
-                        scale: _scaleAnimation,
-                        alignment: Alignment.center,
-                        child: ValueListenableBuilder<int>(
-                          valueListenable: widget.game.scoreNotifier,
-                          builder: (context, score, _) {
-                            return Text(
-                              '$score',
-                              style: const TextStyle(
-                                color: Color(0xFFF8FAFC),
-                                fontSize: 24.0,
-                                fontWeight: FontWeight.w900,
-                                height: 1.0,
-                                letterSpacing: -0.5,
-                                fontFeatures: [FontFeature.tabularFigures()],
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+            // ── Primary GamePigeon Console Row ──
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // 1. Left Flanking Avatar Badge
+                _buildPlayerAvatar(),
+
+                const SizedBox(width: 8.0),
+
+                // 2. Center GamePigeon Trapezoidal Electronic Console
+                _buildTrapezoidalConsole(),
+
+                const SizedBox(width: 8.0),
+
+                // 3. Right Flanking Rules Button
+                _buildHelpBadge(),
+              ],
             ),
 
-            // ── 2. Dynamic Luminous Streak Fire Pill ──
+            // ── Dynamic Hot Streak Fire Pill ──
             ValueListenableBuilder<int>(
               valueListenable: widget.game.streakNotifier,
               builder: (context, streak, _) {
                 final bool isHot = streak >= 3;
-
                 return AnimatedSize(
                   duration: const Duration(milliseconds: 250),
                   curve: Curves.easeOutBack,
                   child: isHot
                       ? Padding(
-                          padding: const EdgeInsets.only(left: 8.0),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(24.0),
-                            child: BackdropFilter(
-                              filter: ImageFilter.blur(
-                                sigmaX: 12.0,
-                                sigmaY: 12.0,
+                          padding: const EdgeInsets.only(top: 6.0),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14.0,
+                              vertical: 4.5,
+                            ),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [
+                                  Color(0xFFEA580C),
+                                  Color(0xFFDC2626),
+                                ],
                               ),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 14.0,
-                                  vertical: 7.0,
-                                ),
-                                decoration: BoxDecoration(
-                                  gradient: const LinearGradient(
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                    colors: [
-                                      Color(0xFFEA580C), // Radiant flame amber
-                                      Color(0xFFDC2626), // Searing crimson
-                                    ],
-                                  ),
-                                  borderRadius: BorderRadius.circular(24.0),
-                                  border: Border.all(
-                                    color: const Color(0xFFFFD700)
-                                        .withValues(alpha: 0.70),
-                                    width: 1.2,
-                                  ),
-                                  boxShadow: const [
-                                    BoxShadow(
-                                      color: Color(0x66EA580C),
-                                      blurRadius: 14.0,
-                                      spreadRadius: 2.0,
-                                    ),
-                                  ],
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Text(
-                                      '🔥',
-                                      style: TextStyle(fontSize: 15.0),
-                                    ),
-                                    const SizedBox(width: 5.0),
-                                    Text(
-                                      'x$streak',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 16.0,
-                                        fontWeight: FontWeight.w900,
-                                        height: 1.0,
-                                        letterSpacing: 0.5,
-                                        fontFeatures: [
-                                          FontFeature.tabularFigures()
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                              borderRadius: BorderRadius.circular(16.0),
+                              border: Border.all(
+                                color: const Color(0xFFFFD700)
+                                    .withValues(alpha: 0.8),
+                                width: 1.2,
                               ),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x66EA580C),
+                                  blurRadius: 10.0,
+                                  offset: Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Text(
+                                  '🔥',
+                                  style: TextStyle(fontSize: 13.0),
+                                ),
+                                const SizedBox(width: 4.0),
+                                Text(
+                                  'x$streak ON FIRE',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12.0,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 0.8,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         )
@@ -241,4 +223,310 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
       ),
     );
   }
+
+  /// Builds the iconic GamePigeon trapezoidal matte black scoreboard enclosure.
+  Widget _buildTrapezoidalConsole() {
+    return CustomPaint(
+      painter: const TrapezoidScoreboardPainter(),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 16.0,
+          vertical: 6.0,
+        ),
+        constraints: const BoxConstraints(
+          minWidth: 260.0,
+          maxWidth: 320.0,
+          minHeight: 56.0,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // ── Left Bay: "YOU" Score ──
+            _buildScoreBay(
+              label: 'YOU',
+              isPlayer: true,
+            ),
+
+            const SizedBox(width: 10.0),
+
+            // ── Center Bay: Amber Countdown Timer ──
+            _buildClockBay(),
+
+            const SizedBox(width: 10.0),
+
+            // ── Right Bay: "BEST" Record ──
+            _buildScoreBay(
+              label: 'BEST',
+              isPlayer: false,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Score bay with condensed label and red 7-segment digital display.
+  Widget _buildScoreBay({
+    required String label,
+    required bool isPlayer,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 10.5,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 1.2,
+            height: 1.0,
+          ),
+        ),
+        const SizedBox(height: 3.5),
+        Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 6.0,
+            vertical: 2.5,
+          ),
+          decoration: BoxDecoration(
+            color: const Color(0xFF060608),
+            borderRadius: BorderRadius.circular(4.0),
+            border: Border.all(
+              color: const Color(0x38FFFFFF),
+              width: 1.0,
+            ),
+          ),
+          child: isPlayer
+              ? ScaleTransition(
+                  scale: _scoreScaleAnimation,
+                  child: ValueListenableBuilder<int>(
+                    valueListenable: widget.game.scoreNotifier,
+                    builder: (context, score, _) {
+                      return DigitalLedNumberDisplay(
+                        value: score,
+                        digitWidth: 13.0,
+                        digitHeight: 23.0,
+                        spacing: 2.5,
+                        onColor: const Color(0xFFFF2020),
+                        offColor: const Color(0x283A0505),
+                      );
+                    },
+                  ),
+                )
+              : ValueListenableBuilder<int>(
+                  valueListenable: widget.game.bestScoreNotifier,
+                  builder: (context, bestScore, _) {
+                    return DigitalLedNumberDisplay(
+                      value: bestScore,
+                      digitWidth: 13.0,
+                      digitHeight: 23.0,
+                      spacing: 2.5,
+                      onColor: const Color(0xFFFF2020),
+                      offColor: const Color(0x283A0505),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  /// Center clock bay: rounded pill with white outline and amber LED digits.
+  Widget _buildClockBay() {
+    return AnimatedBuilder(
+      animation: _urgentGlowAnimation,
+      builder: (context, child) {
+        return Transform.scale(
+          scale: widget.game.timeRemainingNotifier.value <= 10
+              ? _urgentGlowAnimation.value
+              : 1.0,
+          child: child,
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 9.0,
+          vertical: 4.0,
+        ),
+        decoration: BoxDecoration(
+          color: const Color(0xFF040406),
+          borderRadius: BorderRadius.circular(8.0),
+          border: Border.all(
+            color: Colors.white,
+            width: 2.0,
+          ),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x33000000),
+              blurRadius: 4.0,
+              offset: Offset(0, 1),
+            ),
+          ],
+        ),
+        child: ValueListenableBuilder<int>(
+          valueListenable: widget.game.timeRemainingNotifier,
+          builder: (context, secondsRemaining, _) {
+            final isUrgent = secondsRemaining <= 10;
+            return DigitalLedClockDisplay(
+              totalSeconds: secondsRemaining,
+              digitWidth: 12.0,
+              digitHeight: 22.0,
+              spacing: 2.0,
+              onColor: isUrgent
+                  ? const Color(0xFFFF3333) // Flashing red urgency under 10s
+                  : const Color(0xFFFFE000), // Iconic GamePigeon amber
+              offColor: isUrgent
+                  ? const Color(0x283A0505)
+                  : const Color(0x22352E04),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  /// Flanking circular avatar with green background and "You" label.
+  Widget _buildPlayerAvatar() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 36.0,
+          height: 36.0,
+          decoration: BoxDecoration(
+            color: const Color(0xFF22C55E),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.8),
+              width: 1.5,
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x33000000),
+                blurRadius: 6.0,
+                offset: Offset(0, 2),
+              ),
+            ],
+          ),
+          child: const Center(
+            child: Text(
+              '🏀',
+              style: TextStyle(fontSize: 18.0),
+            ),
+          ),
+        ),
+        const SizedBox(height: 2.0),
+        const Text(
+          'You',
+          style: TextStyle(
+            color: Color(0xFF4ADE80),
+            fontSize: 10.0,
+            fontWeight: FontWeight.w900,
+            shadows: [
+              Shadow(color: Colors.black, blurRadius: 4.0),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Flanking help pill on the right side.
+  Widget _buildHelpBadge() {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: widget.onHelpTapped,
+        borderRadius: BorderRadius.circular(16.0),
+        child: Container(
+          width: 34.0,
+          height: 34.0,
+          decoration: BoxDecoration(
+            color: const Color(0xDDFFFFFF),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: const Color(0x66FFFFFF),
+              width: 1.0,
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x33000000),
+                blurRadius: 6.0,
+                offset: Offset(0, 2),
+              ),
+            ],
+          ),
+          child: const Center(
+            child: Text(
+              '?',
+              style: TextStyle(
+                color: Color(0xFF1E293B),
+                fontSize: 18.0,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Custom painter for the iconic GamePigeon trapezoidal matte black chassis.
+/// The top edge is wider, and the sides angle subtly inwards towards the bottom.
+class TrapezoidScoreboardPainter extends CustomPainter {
+  final Color fillColor;
+  final Color borderColor;
+  final double borderWidth;
+  final double slopeInset;
+
+  const TrapezoidScoreboardPainter({
+    this.fillColor = const Color(0xFF0C0C0E),
+    this.borderColor = Colors.white,
+    this.borderWidth = 2.4,
+    this.slopeInset = 11.0,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+    final inx = slopeInset;
+    const r = 5.0; // Subtle corner bevel
+
+    final path = Path()
+      ..moveTo(r, 0)
+      ..lineTo(w - r, 0)
+      ..quadraticBezierTo(w, 0, w - 1.2, r)
+      ..lineTo(w - inx + 1.2, h - r)
+      ..quadraticBezierTo(w - inx, h, w - inx - r, h)
+      ..lineTo(inx + r, h)
+      ..quadraticBezierTo(inx, h, inx - 1.2, h - r)
+      ..lineTo(1.2, r)
+      ..quadraticBezierTo(0, 0, r, 0)
+      ..close();
+
+    // 1. Matte black drop shadow
+    canvas.drawShadow(path, Colors.black.withValues(alpha: 0.6), 8.0, true);
+
+    // 2. Matte black fill
+    final fillPaint = Paint()
+      ..color = fillColor
+      ..style = PaintingStyle.fill;
+    canvas.drawPath(path, fillPaint);
+
+    // 3. Crisp white contour stroke
+    final borderPaint = Paint()
+      ..color = borderColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = borderWidth
+      ..strokeJoin = StrokeJoin.round;
+    canvas.drawPath(path, borderPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant TrapezoidScoreboardPainter oldDelegate) => false;
 }
