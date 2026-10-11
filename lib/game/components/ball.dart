@@ -473,7 +473,10 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
 
   @override
   bool containsPoint(Vector2 point) {
-    if (game.gameStateNotifier.value == GameModeState.gameOver) return false;
+    if (game.gameStateNotifier.value == GameModeState.gameOver ||
+        game.isPaused) {
+      return false;
+    }
     if (isLaunched || isEntering) return false;
     // Lower ~45% of the screen (Y >= 11.0m in Forge2D world)
     // or within generous radius of the ready ball
