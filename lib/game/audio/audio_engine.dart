@@ -16,7 +16,16 @@ import 'package:flutter/services.dart';
 /// - **Velocity Gating:** Minimum impact speed thresholds prevent
 ///   trivially soft micro-collisions from ever reaching the audio pipeline.
 class AudioEngine {
-  static bool isMuted = false;
+  static final ValueNotifier<bool> isMutedNotifier =
+      ValueNotifier<bool>(false);
+  static bool get isMuted => isMutedNotifier.value;
+  static set isMuted(bool value) => isMutedNotifier.value = value;
+
+  /// Toggles mute state and notifies all reactive UI listeners.
+  static void toggleMute() {
+    isMutedNotifier.value = !isMutedNotifier.value;
+  }
+
   static bool _initialized = false;
 
   // ── Monotonic stopwatch (zero-allocation rate-limiting) ──
