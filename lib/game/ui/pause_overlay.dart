@@ -215,32 +215,44 @@ class _PauseOverlayState extends State<PauseOverlay>
                       ),
                       const SizedBox(height: 10.0),
 
-                      // 4. Secondary Action: Restart Round
-                      SizedBox(
-                        width: double.infinity,
-                        height: 42.0,
-                        child: OutlinedButton(
-                          onPressed: () => widget.game.restartRound(),
-                          style: OutlinedButton.styleFrom(
-                            side: const BorderSide(
-                              color: Color(0x4494A3B8),
-                              width: 1.0,
+                      // 4. Secondary Action: Restart Round / Exit Match
+                      ValueListenableBuilder(
+                        valueListenable: widget.game.matchSessionNotifier,
+                        builder: (context, session, _) {
+                          final isMatch = session != null;
+                          return SizedBox(
+                            width: double.infinity,
+                            height: 42.0,
+                            child: OutlinedButton(
+                              onPressed: () {
+                                if (isMatch) {
+                                  widget.game.exitToSoloMode();
+                                } else {
+                                  widget.game.restartRound();
+                                }
+                              },
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(
+                                  color: Color(0x4494A3B8),
+                                  width: 1.0,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14.0),
+                                ),
+                                backgroundColor: const Color(0x1E334155),
+                              ),
+                              child: Text(
+                                isMatch ? 'EXIT MATCH TO SOLO' : 'RESTART ROUND',
+                                style: const TextStyle(
+                                  color: Color(0xFFCBD5E1),
+                                  fontSize: 13.0,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 1.0,
+                                ),
+                              ),
                             ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14.0),
-                            ),
-                            backgroundColor: const Color(0x1E334155),
-                          ),
-                          child: const Text(
-                            'RESTART ROUND',
-                            style: TextStyle(
-                              color: Color(0xFFCBD5E1),
-                              fontSize: 13.0,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 1.0,
-                            ),
-                          ),
-                        ),
+                          );
+                        },
                       ),
                       const SizedBox(height: 12.0),
 
