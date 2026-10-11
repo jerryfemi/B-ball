@@ -92,14 +92,21 @@ class RoundIntermissionOverlay extends StatelessWidget {
                   const SizedBox(height: 18.0),
 
                   // 2. Shooter Performance Callout
-                  Text(
-                    '${shooter.name.toUpperCase()} SCORED',
-                    style: const TextStyle(
-                      color: Color(0xFF94A3B8),
-                      fontSize: 12.0,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1.2,
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(shooter.avatar, style: const TextStyle(fontSize: 15.0)),
+                      const SizedBox(width: 6.0),
+                      Text(
+                        '${shooter.name.toUpperCase()} SCORED',
+                        style: const TextStyle(
+                          color: Color(0xFF94A3B8),
+                          fontSize: 12.0,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 4.0),
                   Row(
@@ -155,6 +162,7 @@ class RoundIntermissionOverlay extends StatelessWidget {
                       children: [
                         _buildPlayerTally(
                           name: session.player1.name,
+                          avatar: session.player1.avatar,
                           score: session.player1.totalScore,
                           color: session.player1.accentColor,
                           isHighlight: shooter == session.player1,
@@ -166,6 +174,7 @@ class RoundIntermissionOverlay extends StatelessWidget {
                         ),
                         _buildPlayerTally(
                           name: session.player2.name,
+                          avatar: session.player2.avatar,
                           score: session.player2.totalScore,
                           color: session.player2.accentColor,
                           isHighlight: shooter == session.player2,
@@ -233,8 +242,8 @@ class RoundIntermissionOverlay extends StatelessWidget {
                   const SizedBox(height: 8.0),
                   Text(
                     session.activePlayerIndex == 0
-                        ? "Pass device to ${session.player2.name}. They will watch your replay & shoot!"
-                        : "Pass device to ${session.player1.name}. You will watch their replay & shoot!",
+                        ? "Pass device to ${session.player2.name} (${session.player2.avatar}). They will watch your replay & shoot!"
+                        : "Pass device to ${session.player1.name} (${session.player1.avatar}). They will watch your replay & shoot!",
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       color: Color(0xFF64748B),
@@ -274,6 +283,7 @@ class RoundIntermissionOverlay extends StatelessWidget {
 
   Widget _buildPlayerTally({
     required String name,
+    required String avatar,
     required int score,
     required Color color,
     required bool isHighlight,
@@ -281,14 +291,21 @@ class RoundIntermissionOverlay extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          name.toUpperCase(),
-          style: TextStyle(
-            color: color,
-            fontSize: 11.0,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.0,
-          ),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(avatar, style: const TextStyle(fontSize: 13.0)),
+            const SizedBox(width: 4.0),
+            Text(
+              name.toUpperCase(),
+              style: TextStyle(
+                color: color,
+                fontSize: 11.0,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.0,
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 2.0),
         Text(
