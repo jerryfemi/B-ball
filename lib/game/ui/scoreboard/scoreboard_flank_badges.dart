@@ -7,11 +7,13 @@ import '../../basketball_game.dart';
 class ScoreboardPlayerAvatar extends StatelessWidget {
   final bool isActive;
   final String label;
+  final String avatar;
 
   const ScoreboardPlayerAvatar({
     super.key,
     this.isActive = true,
     this.label = 'You',
+    this.avatar = '🏀',
   });
 
   @override
@@ -41,10 +43,10 @@ class ScoreboardPlayerAvatar extends StatelessWidget {
               ),
             ],
           ),
-          child: const Center(
+          child: Center(
             child: Text(
-              '🏀',
-              style: TextStyle(fontSize: 18.0),
+              avatar,
+              style: const TextStyle(fontSize: 18.0),
             ),
           ),
         ),
@@ -69,11 +71,13 @@ class ScoreboardPlayerAvatar extends StatelessWidget {
 class ScoreboardOpponentAvatar extends StatelessWidget {
   final bool isActive;
   final String label;
+  final String avatar;
 
   const ScoreboardOpponentAvatar({
     super.key,
     this.isActive = false,
     this.label = 'Them',
+    this.avatar = '🎯',
   });
 
   @override
@@ -103,10 +107,10 @@ class ScoreboardOpponentAvatar extends StatelessWidget {
               ),
             ],
           ),
-          child: const Center(
+          child: Center(
             child: Text(
-              '🎯',
-              style: TextStyle(fontSize: 18.0),
+              avatar,
+              style: const TextStyle(fontSize: 18.0),
             ),
           ),
         ),
