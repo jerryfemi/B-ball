@@ -2,13 +2,14 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../basketball_game.dart';
+import '../match/match_session.dart';
 
 /// Floating HUD controls displayed while spectator replay mode is active.
 ///
 /// Features:
 /// 1. Frosted obsidian glass banner with metallic boundary
-/// 2. Clear "REPLAYING ROUND" indicator
-/// 3. Immediate Exit and Play Again triggers so the user never feels trapped
+/// 2. Clear "REPLAY" or "OPPONENT'S REPLAY" indicator
+/// 3. Immediate Exit and Play / Start Turn triggers so the user never feels trapped
 class ReplayHudOverlay extends StatelessWidget {
   final BasketballGame game;
 
@@ -19,6 +20,10 @@ class ReplayHudOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final session = game.matchSessionNotifier.value;
+    final isOpponentReplay = session != null &&
+        session.phase == MatchTurnPhase.watchingOpponentReplay;
+
     return SafeArea(
       child: Align(
         alignment: Alignment.bottomCenter,
@@ -71,18 +76,20 @@ class ReplayHudOverlay extends StatelessWidget {
                           width: 1.0,
                         ),
                       ),
-                      child: const Row(
+                      child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(
+                          const Icon(
                             Icons.history_rounded,
                             size: 16.0,
                             color: Color(0xFF38BDF8),
                           ),
-                          SizedBox(width: 6.0),
+                          const SizedBox(width: 6.0),
                           Text(
-                            'REPLAY',
-                            style: TextStyle(
+                            isOpponentReplay
+                                ? "OPPONENT'S REPLAY"
+                                : 'REPLAY',
+                            style: const TextStyle(
                               color: Color(0xFFE0F2FE),
                               fontSize: 12.0,
                               fontWeight: FontWeight.w800,
@@ -95,7 +102,13 @@ class ReplayHudOverlay extends StatelessWidget {
                     const SizedBox(width: 14.0),
                     // Exit replay button
                     OutlinedButton(
-                      onPressed: () => game.stopReplayMode(),
+                      onPressed: () {
+                        if (isOpponentReplay) {
+                          game.exitToSoloMode();
+                        } else {
+                          game.stopReplayMode();
+                        }
+                      },
                       style: OutlinedButton.styleFrom(
                         foregroundColor: const Color(0xFF94A3B8),
                         side: const BorderSide(
@@ -110,14 +123,14 @@ class ReplayHudOverlay extends StatelessWidget {
                           borderRadius: BorderRadius.circular(14.0),
                         ),
                       ),
-                      child: const Row(
+                      child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.close_rounded, size: 16.0),
-                          SizedBox(width: 4.0),
+                          const Icon(Icons.close_rounded, size: 16.0),
+                          const SizedBox(width: 4.0),
                           Text(
-                            'EXIT',
-                            style: TextStyle(
+                            isOpponentReplay ? 'EXIT MATCH' : 'EXIT',
+                            style: const TextStyle(
                               fontSize: 12.0,
                               fontWeight: FontWeight.w700,
                               letterSpacing: 0.5,
@@ -127,9 +140,15 @@ class ReplayHudOverlay extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 8.0),
-                    // Play Again button
+                    // Play / Start Turn button
                     ElevatedButton(
-                      onPressed: () => game.restartRound(),
+                      onPressed: () {
+                        if (isOpponentReplay) {
+                          game.skipOpponentReplayAndStartTurn();
+                        } else {
+                          game.restartRound();
+                        }
+                      },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF22C55E),
                         foregroundColor: Colors.white,
@@ -141,14 +160,14 @@ class ReplayHudOverlay extends StatelessWidget {
                           borderRadius: BorderRadius.circular(14.0),
                         ),
                       ),
-                      child: const Row(
+                      child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.play_arrow_rounded, size: 16.0),
-                          SizedBox(width: 4.0),
+                          const Icon(Icons.play_arrow_rounded, size: 16.0),
+                          const SizedBox(width: 4.0),
                           Text(
-                            'PLAY',
-                            style: TextStyle(
+                            isOpponentReplay ? 'START MY TURN' : 'PLAY',
+                            style: const TextStyle(
                               fontSize: 12.0,
                               fontWeight: FontWeight.w800,
                               letterSpacing: 0.5,
