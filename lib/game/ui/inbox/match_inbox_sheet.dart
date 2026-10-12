@@ -9,7 +9,6 @@ import 'match_inbox_card.dart';
 import 'match_thread_dialog.dart';
 import '../common/app_avatar.dart';
 import '../common/app_modal_sheet.dart';
-import '../social/edit_gamer_tag_dialog.dart';
 import '../social/friends_hub_sheet.dart';
 
 /// The central 1v1 Match Hub bottom sheet modal.
@@ -236,44 +235,34 @@ class _MatchInboxSheetState extends State<MatchInboxSheet> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'MATCH INBOX',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0.8,
-                            ),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                myProfile?.displayName ?? 'Baller',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.4,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              const Icon(
+                                Icons.edit_rounded,
+                                size: 13,
+                                color: Color(0xFF38BDF8),
+                              ),
+                            ],
                           ),
-                          InkWell(
-                            borderRadius: BorderRadius.circular(6),
-                            onTap: () {
-                              HapticFeedback.lightImpact();
-                              EditGamerTagDialog.show(context);
-                            },
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                vertical: 2,
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    myProfile?.displayName ?? 'Baller',
-                                    style: const TextStyle(
-                                      color: Color(0xFF94A3B8),
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  const Icon(
-                                    Icons.edit_rounded,
-                                    size: 12,
-                                    color: Color(0xFF38BDF8),
-                                  ),
-                                ],
-                              ),
+                          const SizedBox(height: 2),
+                          const Text(
+                            'MY PROFILE',
+                            style: TextStyle(
+                              color: Color(0xFF38BDF8),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 1.0,
                             ),
                           ),
                         ],
