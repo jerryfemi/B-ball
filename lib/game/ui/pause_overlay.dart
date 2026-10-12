@@ -47,42 +47,49 @@ class PauseOverlay extends HookWidget {
       return null;
     }, const []);
 
+    final screenHeight = MediaQuery.sizeOf(context).height;
+
     return FadeTransition(
       opacity: fadeAnimation,
       child: ScaleTransition(
         scale: scaleAnimation,
         child: Center(
           child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 24.0),
-            constraints: const BoxConstraints(maxWidth: 360.0),
+            margin: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+            constraints: BoxConstraints(
+              maxWidth: 360.0,
+              maxHeight: screenHeight * 0.90,
+            ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(28.0),
               child: Container(
-                padding: const EdgeInsets.symmetric(
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color(0xF00F172A),
+                      Color(0xFA090D16),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(28.0),
+                  border: Border.all(
+                    color: const Color(0x5538BDF8),
+                    width: 1.4,
+                  ),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x66000000),
+                      blurRadius: 32.0,
+                      offset: Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.symmetric(
                     horizontal: 24.0,
                     vertical: 26.0,
-                  ),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Color(0xF00F172A),
-                        Color(0xFA090D16),
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(28.0),
-                    border: Border.all(
-                      color: const Color(0x5538BDF8),
-                      width: 1.4,
-                    ),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x66000000),
-                        blurRadius: 32.0,
-                        offset: Offset(0, 10),
-                      ),
-                    ],
                   ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -496,7 +503,8 @@ class PauseOverlay extends HookWidget {
             ),
           ),
         ),
-      );
+      ),
+    );
     }
 
   Widget _buildMetricChip({
