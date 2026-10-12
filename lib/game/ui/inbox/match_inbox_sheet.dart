@@ -49,6 +49,26 @@ class MatchInboxSheet extends StatefulWidget {
 class _MatchInboxSheetState extends State<MatchInboxSheet> {
   int _selectedTab = 0; // 0: Live Matches, 1: Trophy History
 
+  Widget _buildAvatarView(String avatar, {double size = 20}) {
+    if (avatar.startsWith('assets/') ||
+        avatar.endsWith('.png') ||
+        avatar.endsWith('.jpg') ||
+        avatar.endsWith('.jpeg') ||
+        avatar.endsWith('.webp')) {
+      return ClipOval(
+        child: Image.asset(
+          avatar,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) =>
+              Text('🏀', style: TextStyle(fontSize: size * 0.85)),
+        ),
+      );
+    }
+    return Text(avatar, style: TextStyle(fontSize: size));
+  }
+
   void _showEditProfileDialog(BuildContext context, UserProfile current) {
     final nameCtrl = TextEditingController(text: current.displayName);
     String selectedEmoji = current.avatarEmoji;
@@ -129,7 +149,7 @@ class _MatchInboxSheetState extends State<MatchInboxSheet> {
                             width: isSel ? 1.6 : 1.0,
                           ),
                         ),
-                        child: Text(e, style: const TextStyle(fontSize: 20)),
+                        child: _buildAvatarView(e, size: 22),
                       ),
                     );
                   }).toList(),
@@ -219,9 +239,9 @@ class _MatchInboxSheetState extends State<MatchInboxSheet> {
                                   color: const Color(0xFF334155),
                                 ),
                               ),
-                              child: Text(
+                              child: _buildAvatarView(
                                 myProfile?.avatarEmoji ?? '🏀',
-                                style: const TextStyle(fontSize: 20),
+                                size: 22,
                               ),
                             ),
                             const SizedBox(width: 12),
