@@ -1,4 +1,5 @@
 import 'dart:ui';
+
 import 'package:flutter/material.dart';
 
 import '../../basketball_game.dart';
@@ -25,7 +26,9 @@ class RoundIntermissionOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final shooter = session.activePlayer;
-    final roundScore = shooter.roundScores.isNotEmpty ? shooter.roundScores.last : 0;
+    final roundScore = shooter.roundScores.isNotEmpty
+        ? shooter.roundScores.last
+        : 0;
     final isOnline = session.mode == MatchGameMode.onlineCloud1v1;
     final lastTelemetry = game.lastRoundTelemetry;
 
@@ -38,7 +41,10 @@ class RoundIntermissionOverlay extends StatelessWidget {
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 20.0, sigmaY: 20.0),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 22.0, vertical: 22.0),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 22.0,
+                vertical: 22.0,
+              ),
               decoration: BoxDecoration(
                 color: const Color(0xFF131826).withValues(alpha: 0.95),
                 borderRadius: BorderRadius.circular(24.0),
@@ -62,11 +68,17 @@ class RoundIntermissionOverlay extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 4.0),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10.0,
+                          vertical: 4.0,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0x22F59E0B),
                           borderRadius: BorderRadius.circular(10.0),
-                          border: Border.all(color: const Color(0x66F59E0B), width: 1.0),
+                          border: Border.all(
+                            color: const Color(0x66F59E0B),
+                            width: 1.0,
+                          ),
                         ),
                         child: Text(
                           'ROUND ${session.currentRoundNumber} OF ${session.totalRounds} OVER',
@@ -80,7 +92,11 @@ class RoundIntermissionOverlay extends StatelessWidget {
                       ),
                       IconButton(
                         visualDensity: VisualDensity.compact,
-                        icon: const Icon(Icons.close_rounded, color: Colors.white54, size: 22),
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          color: Colors.white54,
+                          size: 22,
+                        ),
                         onPressed: () => game.exitToSoloMode(),
                       ),
                     ],
@@ -127,7 +143,10 @@ class RoundIntermissionOverlay extends StatelessWidget {
 
                   // Standings box
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16.0,
+                      vertical: 10.0,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFF0F172A),
                       borderRadius: BorderRadius.circular(14.0),
@@ -143,7 +162,11 @@ class RoundIntermissionOverlay extends StatelessWidget {
                           color: session.player1.accentColor,
                           isHighlight: shooter == session.player1,
                         ),
-                        Container(height: 30.0, width: 1.0, color: const Color(0xFF26324A)),
+                        Container(
+                          height: 30.0,
+                          width: 1.0,
+                          color: const Color(0xFF26324A),
+                        ),
                         _buildPlayerTally(
                           name: session.player2.name,
                           avatar: session.player2.avatar,
@@ -159,7 +182,10 @@ class RoundIntermissionOverlay extends StatelessWidget {
                   // Online 1v1 Room Code & Discrete Share action
                   if (isOnline) ...[
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12.0,
+                        vertical: 8.0,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFF1E2638),
                         borderRadius: BorderRadius.circular(12.0),
@@ -167,7 +193,11 @@ class RoundIntermissionOverlay extends StatelessWidget {
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.dialpad, size: 16.0, color: Color(0xFF00FFCC)),
+                          const Icon(
+                            Icons.dialpad,
+                            size: 16.0,
+                            color: Color(0xFF00FFCC),
+                          ),
                           const SizedBox(width: 8.0),
                           Expanded(
                             child: Text(
@@ -192,7 +222,10 @@ class RoundIntermissionOverlay extends StatelessWidget {
                             },
                             borderRadius: BorderRadius.circular(8.0),
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 5.0),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10.0,
+                                vertical: 5.0,
+                              ),
                               decoration: BoxDecoration(
                                 color: const Color(0xFF2563EB),
                                 borderRadius: BorderRadius.circular(8.0),
@@ -200,7 +233,11 @@ class RoundIntermissionOverlay extends StatelessWidget {
                               child: const Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Icon(Icons.share, size: 13.0, color: Colors.white),
+                                  Icon(
+                                    Icons.share,
+                                    size: 13.0,
+                                    color: Colors.white,
+                                  ),
                                   SizedBox(width: 4.0),
                                   Text(
                                     'Share',
@@ -235,11 +272,19 @@ class RoundIntermissionOverlay extends StatelessWidget {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF00FFCC),
                         foregroundColor: const Color(0xFF0F172A),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12.0),
+                        ),
                       ),
                       child: Text(
-                        isOnline ? 'BACK TO COURT ➔' : 'PASS DEVICE TO ${session.player2.name.toUpperCase()} ➔',
-                        style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13.0, letterSpacing: 1.0),
+                        isOnline
+                            ? 'BACK TO COURT ➔'
+                            : 'PASS DEVICE TO ${session.player2.name.toUpperCase()} ➔',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 13.0,
+                          letterSpacing: 1.0,
+                        ),
                       ),
                     ),
                   ),
@@ -250,6 +295,26 @@ class RoundIntermissionOverlay extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Widget _buildAvatarWidget(String avatar, {double size = 16.0}) {
+    if (avatar.startsWith('assets/') ||
+        avatar.endsWith('.png') ||
+        avatar.endsWith('.jpg') ||
+        avatar.endsWith('.jpeg') ||
+        avatar.endsWith('.webp')) {
+      return ClipOval(
+        child: Image.asset(
+          avatar,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) =>
+              Text('🏀', style: TextStyle(fontSize: size * 0.85)),
+        ),
+      );
+    }
+    return Text(avatar, style: TextStyle(fontSize: size));
   }
 
   Widget _buildPlayerTally({
@@ -265,7 +330,7 @@ class RoundIntermissionOverlay extends StatelessWidget {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(avatar, style: const TextStyle(fontSize: 14.0)),
+            _buildAvatarWidget(avatar, size: 16.0),
             const SizedBox(width: 4.0),
             Text(
               name,
