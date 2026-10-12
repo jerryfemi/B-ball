@@ -21,6 +21,9 @@ enum MatchTurnPhase {
   /// Intermission between turns/rounds (shows stats & turn handoff).
   turnComplete,
 
+  /// Waiting for opponent to submit their round in an asynchronous match.
+  waitingForOpponentTurn,
+
   /// Final match conclusion displaying the Winner Podium.
   matchComplete,
 }
@@ -104,6 +107,8 @@ class MatchSession {
   final MatchConfig config;
   final int totalRounds;
   final String? cloudMatchId;
+  final String? joinCode;
+  final bool isWaitingForOpponent;
   int currentRoundIndex; // 0-indexed (0 = Round 1, 1 = Round 2)
   int activePlayerIndex; // 0 = Player 1 ("YOU"), 1 = Player 2 ("THEM")
   final PlayerMatchState player1;
@@ -113,6 +118,8 @@ class MatchSession {
   MatchSession({
     this.mode = MatchGameMode.passAndPlay1v1,
     this.cloudMatchId,
+    this.joinCode,
+    this.isWaitingForOpponent = false,
     MatchConfig? config,
     int? totalRounds,
     this.currentRoundIndex = 0,
@@ -190,9 +197,13 @@ class MatchSession {
           : [],
     );
 
+    final isWaiting = isP1 && cloudMatch.player2 == null;
+
     return MatchSession(
       mode: MatchGameMode.onlineCloud1v1,
       cloudMatchId: cloudMatch.id,
+      joinCode: cloudMatch.joinCode,
+      isWaitingForOpponent: isWaiting,
       totalRounds: cloudMatch.totalRounds,
       currentRoundIndex: (cloudMatch.currentRound - 1).clamp(
         0,
