@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../models/player_descriptor.dart';
 import 'app_colors.dart';
 
 /// Centralized, high-performance avatar widget for the entire application.
@@ -31,7 +32,7 @@ class AppAvatar extends StatelessWidget {
   final VoidCallback? onTap;
 
   /// Fallback avatar asset path when the provided string is missing or fails.
-  static const String defaultAvatar = 'assets/avatars/dunk_heads (1).webp';
+  static const String defaultAvatar = PlayerDescriptor.defaultAvatar;
 
   const AppAvatar({
     super.key,
@@ -43,6 +44,28 @@ class AppAvatar extends StatelessWidget {
     this.glowColor,
     this.onTap,
   });
+
+  /// Creates an [AppAvatar] directly from any [PlayerDescriptor] domain entity.
+  factory AppAvatar.fromDescriptor(
+    PlayerDescriptor player, {
+    Key? key,
+    double size = 36.0,
+    Color? borderColor,
+    double borderWidth = 1.5,
+    bool showGlow = false,
+    Color? glowColor,
+    VoidCallback? onTap,
+  }) =>
+      AppAvatar(
+        key: key,
+        avatar: player.avatar,
+        size: size,
+        borderColor: borderColor,
+        borderWidth: borderWidth,
+        showGlow: showGlow,
+        glowColor: glowColor,
+        onTap: onTap,
+      );
 
   /// Helper to test if a given avatar string points to a local image asset.
   static bool isImageAsset(String path) {
