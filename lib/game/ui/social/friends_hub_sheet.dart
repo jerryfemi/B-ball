@@ -46,6 +46,26 @@ class FriendsHubSheet extends StatefulWidget {
 }
 
 class _FriendsHubSheetState extends State<FriendsHubSheet> {
+  Widget _buildAvatarView(String avatar, {double size = 20}) {
+    if (avatar.startsWith('assets/') ||
+        avatar.endsWith('.png') ||
+        avatar.endsWith('.jpg') ||
+        avatar.endsWith('.jpeg') ||
+        avatar.endsWith('.webp')) {
+      return ClipOval(
+        child: Image.asset(
+          avatar,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) =>
+              Text('🏀', style: TextStyle(fontSize: size * 0.85)),
+        ),
+      );
+    }
+    return Text(avatar, style: TextStyle(fontSize: size));
+  }
+
   void _openAddFriend(Set<String> existingUids) {
     HapticFeedback.lightImpact();
     AddFriendDialog.show(context, existingFriendUids: existingUids);
@@ -411,10 +431,7 @@ class _FriendsHubSheetState extends State<FriendsHubSheet> {
               color: const Color(0xFF1E2638),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Text(
-              invite.senderAvatar,
-              style: const TextStyle(fontSize: 20),
-            ),
+            child: _buildAvatarView(invite.senderAvatar, size: 20),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -529,7 +546,7 @@ class _FriendsHubSheetState extends State<FriendsHubSheet> {
             color: const Color(0xFF1E2638),
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Text(friend.avatarEmoji, style: const TextStyle(fontSize: 22)),
+          child: _buildAvatarView(friend.avatarEmoji, size: 22),
         ),
         title: Text(
           friend.displayName,
@@ -668,10 +685,7 @@ class _FriendsHubSheetState extends State<FriendsHubSheet> {
                 ),
                 child: Row(
                   children: [
-                    Text(
-                      user.avatarEmoji,
-                      style: const TextStyle(fontSize: 20),
-                    ),
+                    _buildAvatarView(user.avatarEmoji, size: 20),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Column(
