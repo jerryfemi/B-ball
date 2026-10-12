@@ -9,7 +9,6 @@ import 'scoreboard/round_indicator_badge.dart';
 import 'scoreboard/scoreboard_bay.dart';
 import 'scoreboard/scoreboard_flank_badges.dart';
 import 'scoreboard/trapezoid_scoreboard_painter.dart';
-import 'inbox/inbox_notification_badge.dart';
 
 export 'scoreboard/trapezoid_scoreboard_painter.dart';
 
@@ -206,6 +205,7 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
                     isActive: p1Active,
                     label: p1Label,
                     avatar: p1Avatar,
+                    activeMatchId: matchSession?.cloudMatchId,
                     onTap: widget.onInboxTapped,
                   ),
                   const SizedBox(width: 5.0),
@@ -216,13 +216,6 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
                   _buildTrapezoidalConsole(matchSession, shootingPlayerIndex),
                   const SizedBox(width: 8.0),
                   const ScoreboardMuteBadge(),
-                  if (widget.onInboxTapped != null) ...[
-                    const SizedBox(width: 5.0),
-                    InboxNotificationBadge(
-                      onTap: widget.onInboxTapped!,
-                      activeMatchId: matchSession?.cloudMatchId,
-                    ),
-                  ],
                   if (is1v1) ...[
                     const SizedBox(width: 5.0),
                     ScoreboardOpponentAvatar(
