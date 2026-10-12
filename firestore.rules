@@ -77,6 +77,11 @@ service cloud.firestore {
           request.resource.data.chat.size() == resource.data.chat.size() + 1;
       }
 
+      function isTouchingTimestamp() {
+        return isParticipant() &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['updatedAt']);
+      }
+
       // Read allowed if player is authenticated (non-existent codes return cleanly)
       allow read: if isAuthenticated();
 
@@ -90,11 +95,19 @@ service cloud.firestore {
         request.resource.data.activeTurnPlayerUid == request.auth.uid &&
         request.resource.data.chat.size() == 0;
 
-      // Update allowed for atomic join, active turn submission, or banter
-      allow update: if isJoining() || isSubmittingTurn() || isSendingBanter();
+      // Update allowed for atomic join, active turn submission, banter, or activity heartbeat
+      allow update: if isJoining() || isSubmittingTurn() || isSendingBanter() || isTouchingTimestamp();
 
       // Allow participants to evaporate completed match documents from Firestore
       allow delete: if isParticipant() && resource.data.status == 'completed';
+
+      // Lightweight real-time chat messages subcollection
+      match /messages/{messageId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated() &&
+          request.resource.data.senderUid == request.auth.uid;
+        allow update, delete: if false;
+      }
     }
   }
 }
