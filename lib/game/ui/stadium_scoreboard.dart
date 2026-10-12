@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../models/player_descriptor.dart';
 import '../../services/auth_service.dart';
 import '../basketball_game.dart';
 import '../match/match_session.dart';
@@ -176,7 +177,7 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
     final p2Active = shootingPlayerIndex == 1;
 
     final String myAvatar =
-        userProfile?.avatarEmoji ?? 'assets/avatars/dunk_heads (1).webp';
+        userProfile?.avatarEmoji ?? PlayerDescriptor.defaultAvatar;
     final String myLabel = userProfile?.displayName ?? 'You';
 
     final String p1Avatar = is1v1
