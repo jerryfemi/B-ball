@@ -9,6 +9,7 @@ import '../../../services/auth_service.dart';
 import '../../../services/firestore_match_service.dart';
 import '../../../services/friends_service.dart';
 import '../common/app_avatar.dart';
+import '../common/app_modal_sheet.dart';
 import '../match/match_setup_dialog.dart';
 
 /// GamePigeon-style conversation screen featuring a sticky top 1v1 match banner,
@@ -37,10 +38,8 @@ class FriendConversationSheet extends StatefulWidget {
     required ValueChanged<CloudMatch> onPlayTurn,
     ValueChanged<CloudMatch>? onViewPodium,
   }) {
-    return showModalBottomSheet<void>(
+    return AppModalSheet.show<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       builder: (ctx) => FriendConversationSheet(
         friend: friend,
         myUid: myUid,
@@ -163,37 +162,13 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final matchId = _currentMatch?.id ?? widget.friend.activeMatchId;
 
-    return Padding(
-      padding: EdgeInsets.only(bottom: bottomInset),
-      child: Container(
-        height: MediaQuery.of(context).size.height * 0.88,
-        decoration: const BoxDecoration(
-          color: Color(0xFF0F172A),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-          border: Border(top: BorderSide(color: Color(0xFF2E3954), width: 1.5)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            children: [
-              // Pull indicator handle
-              Center(
-                child: Container(
-                  margin: const EdgeInsets.only(top: 10, bottom: 8),
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.white24,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-
-              // Top Conversation Header
-              _buildHeader(),
+    return AppModalSheet(
+      heightFactor: 0.88,
+      header: _buildHeader(),
+      child: Column(
+        children: [
 
               // Stream active match state if present
               if (matchId != null)
@@ -244,9 +219,7 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
               _buildInputField(),
             ],
           ),
-        ),
-      ),
-    );
+        );
   }
 
   Widget _buildHeader() {
