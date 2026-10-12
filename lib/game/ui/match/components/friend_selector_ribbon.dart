@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../../../models/friend_profile.dart';
+import '../../../../providers/app_providers.dart';
 import '../../../../services/auth_service.dart';
-import '../../../../services/friends_service.dart';
 import '../../common/app_avatar.dart';
 
 /// Horizontal scrollable ribbon displaying friends for 1v1 match challenges.
-class FriendSelectorRibbon extends StatelessWidget {
+class FriendSelectorRibbon extends ConsumerWidget {
   final UserProfile? profile;
   final FriendProfile? selectedFriend;
   final ValueChanged<FriendProfile?> onFriendSelected;
@@ -22,13 +23,8 @@ class FriendSelectorRibbon extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final uid = profile?.uid ?? '';
-    return StreamBuilder<List<FriendProfile>>(
-      stream: FriendsService.instance.streamFriends(uid),
-      initialData: FriendsService.instance.friendsNotifier.value,
-      builder: (context, snapshot) {
-        final friends = snapshot.data ?? [];
+  Widget build(BuildContext context, WidgetRef ref) {
+    final friends = ref.watch(friendsListProvider).value ?? const <FriendProfile>[];
         if (friends.isEmpty) {
           return Container(
             padding: const EdgeInsets.all(12.0),
@@ -152,7 +148,5 @@ class FriendSelectorRibbon extends StatelessWidget {
             },
           ),
         );
-      },
-    );
   }
 }
