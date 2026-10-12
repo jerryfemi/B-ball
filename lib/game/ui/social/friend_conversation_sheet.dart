@@ -8,6 +8,7 @@ import '../../../models/friend_profile.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/firestore_match_service.dart';
 import '../../../services/friends_service.dart';
+import '../common/app_avatar.dart';
 import '../match/match_setup_dialog.dart';
 
 /// GamePigeon-style conversation screen featuring a sticky top 1v1 match banner,
@@ -59,26 +60,6 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
   final TextEditingController _msgController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   CloudMatch? _currentMatch;
-
-  Widget _buildAvatarView(String avatar, {double size = 20}) {
-    if (avatar.startsWith('assets/') ||
-        avatar.endsWith('.png') ||
-        avatar.endsWith('.jpg') ||
-        avatar.endsWith('.jpeg') ||
-        avatar.endsWith('.webp')) {
-      return ClipOval(
-        child: Image.asset(
-          avatar,
-          width: size,
-          height: size,
-          fit: BoxFit.cover,
-          errorBuilder: (_, _, _) =>
-              Text('🏀', style: TextStyle(fontSize: size * 0.85)),
-        ),
-      );
-    }
-    return Text(avatar, style: TextStyle(fontSize: size));
-  }
 
   static const List<String> _quickBanter = [
     '🎯 Swish!',
@@ -273,14 +254,11 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: const Color(0xFF38BDF8), width: 1.5),
-            ),
-            child: _buildAvatarView(widget.friend.avatarEmoji, size: 36),
+          AppAvatar(
+            avatar: widget.friend.avatarEmoji,
+            size: 36,
+            borderColor: const Color(0xFF38BDF8),
+            borderWidth: 1.5,
           ),
           const SizedBox(width: 10),
           Expanded(
