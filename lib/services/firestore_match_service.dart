@@ -7,6 +7,7 @@ import '../game/match/match_config.dart';
 import '../game/telemetry/shot_telemetry.dart';
 import '../models/cloud_match.dart';
 import 'auth_service.dart';
+import 'friends_service.dart';
 
 /// Exception thrown when no match document exists for the requested join code.
 class MatchNotFoundException implements Exception {
@@ -137,20 +138,38 @@ class FirestoreMatchService {
       );
     }
 
+    final friend = config.opponentFriend;
+    final CloudPlayer? player2 = friend != null
+        ? CloudPlayer(
+            uid: friend.uid,
+            displayName: friend.displayName,
+            avatarEmoji: friend.avatarEmoji,
+            roundScores: const [],
+            roundSummaries: const [],
+          )
+        : null;
+
+    final playerIds = [
+      player1Profile.uid,
+      if (friend != null) friend.uid,
+    ];
+
     final match = CloudMatch(
       id: joinCode,
       joinCode: joinCode,
-      status: MatchStatus.waitingForOpponent,
+      status: friend != null ? MatchStatus.active : MatchStatus.waitingForOpponent,
       createdAt: now,
       updatedAt: now,
-      playerIds: [player1Profile.uid],
+      playerIds: playerIds,
       player1: player1,
-      player2: null,
+      player2: player2,
       totalRounds: config.totalRounds,
       roundDurationSeconds: config.roundDurationSeconds,
       currentRound: 1,
-      // If Player 1 already shot, active turn awaits Player 2 upon joining
-      activeTurnPlayerUid: hasCompletedFirstTurn ? '' : player1Profile.uid,
+      // If Player 1 already shot, active turn awaits Player 2 upon joining/challenge
+      activeTurnPlayerUid: hasCompletedFirstTurn
+          ? (friend != null ? friend.uid : '')
+          : player1Profile.uid,
       latestTelemetry: initialRoundTelemetry,
       latestTelemetryRound: hasCompletedFirstTurn ? 1 : null,
       latestTelemetryShooterUid:
@@ -160,6 +179,19 @@ class FirestoreMatchService {
 
     await docRef.set(match.toMap());
     debugPrint('[FirestoreMatchService] Created match with docId/code $joinCode');
+
+    if (friend != null) {
+      try {
+        await FriendsService.instance.updateFriendMatch(
+          myUid: player1Profile.uid,
+          friendUid: friend.uid,
+          matchId: match.id,
+        );
+      } catch (e) {
+        debugPrint('[FirestoreMatchService] Failed to link friend match: $e');
+      }
+    }
+
     return match;
   }
 
