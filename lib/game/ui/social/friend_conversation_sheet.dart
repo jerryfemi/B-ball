@@ -1,7 +1,6 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 
 import '../../../models/cloud_match.dart';
 import '../../../models/friend_profile.dart';
@@ -17,7 +16,7 @@ import '../match/match_setup_dialog.dart';
 
 /// GamePigeon-style conversation screen featuring a sticky top 1v1 match banner,
 /// persistent chat banter feed, and keyboard-safe layout.
-class FriendConversationSheet extends StatefulWidget {
+class FriendConversationSheet extends HookWidget {
   final FriendProfile friend;
   final String myUid;
   final CloudMatch? activeMatch;
@@ -32,6 +31,15 @@ class FriendConversationSheet extends StatefulWidget {
     required this.onPlayTurn,
     this.onViewPodium,
   });
+
+  static const List<String> _quickBanter = [
+    '🎯 Swish!',
+    '🧱 Brick!',
+    '🔥 On fire!',
+    '🥶 Ice cold!',
+    '👑 Rematch?',
+    '🏀 Your turn!',
+  ];
 
   static Future<void> show(
     BuildContext context, {
@@ -54,190 +62,166 @@ class FriendConversationSheet extends StatefulWidget {
   }
 
   @override
-  State<FriendConversationSheet> createState() =>
-      _FriendConversationSheetState();
-}
+  Widget build(BuildContext context) {
+    final msgController = useTextEditingController();
+    final scrollController = useScrollController();
+    final currentMatch = useState<CloudMatch?>(activeMatch);
 
-class _FriendConversationSheetState extends State<FriendConversationSheet> {
-  final TextEditingController _msgController = TextEditingController();
-  final ScrollController _scrollController = ScrollController();
-  CloudMatch? _currentMatch;
+    void scrollToBottom() {
+      Future.delayed(const Duration(milliseconds: 150), () {
+        if (scrollController.hasClients) {
+          scrollController.animateTo(
+            scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+    }
 
-  static const List<String> _quickBanter = [
-    '🎯 Swish!',
-    '🧱 Brick!',
-    '🔥 On fire!',
-    '🥶 Ice cold!',
-    '👑 Rematch?',
-    '🏀 Your turn!',
-  ];
+    Future<void> sendText(String text) async {
+      final clean = text.trim();
+      if (clean.isEmpty) return;
 
-  @override
-  void initState() {
-    super.initState();
-    _currentMatch = widget.activeMatch;
-  }
+      final user = AuthService.instance.currentUser;
+      final myName = user?.displayName ?? 'You';
+      final myAvatar = user?.avatarEmoji ?? PlayerDescriptor.defaultAvatar;
+      final now = DateTime.now().millisecondsSinceEpoch;
 
-  @override
-  void dispose() {
-    _msgController.dispose();
-    _scrollController.dispose();
-    super.dispose();
-  }
+      final msg = CloudChatMessage(
+        id: '${now}_$myUid',
+        senderUid: myUid,
+        senderName: myName,
+        senderAvatar: myAvatar,
+        text: clean,
+        timestamp: now,
+      );
 
-  Future<void> _sendText(String text) async {
-    final clean = text.trim();
-    if (clean.isEmpty) return;
+      msgController.clear();
+      HapticFeedback.lightImpact();
 
-    final user = AuthService.instance.currentUser;
-    final myName = user?.displayName ?? 'You';
-    final myAvatar = user?.avatarEmoji ?? PlayerDescriptor.defaultAvatar;
-    final now = DateTime.now().millisecondsSinceEpoch;
-
-    final msg = CloudChatMessage(
-      id: '${now}_${widget.myUid}',
-      senderUid: widget.myUid,
-      senderName: myName,
-      senderAvatar: myAvatar,
-      text: clean,
-      timestamp: now,
-    );
-
-    _msgController.clear();
-    HapticFeedback.lightImpact();
-
-    await FriendsService.instance.sendDirectMessage(
-      fromUid: widget.myUid,
-      toUid: widget.friend.uid,
-      message: msg,
-    );
-
-    if (_currentMatch != null) {
-      await FirestoreMatchService.instance.sendChatMessage(
-        matchId: _currentMatch!.id,
+      await FriendsService.instance.sendDirectMessage(
+        fromUid: myUid,
+        toUid: friend.uid,
         message: msg,
       );
-    }
 
-    _scrollToBottom();
-  }
-
-  void _scrollToBottom() {
-    Future.delayed(const Duration(milliseconds: 150), () {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
+      final active = currentMatch.value;
+      if (active != null) {
+        await FirestoreMatchService.instance.sendChatMessage(
+          matchId: active.id,
+          message: msg,
         );
       }
-    });
-  }
 
-  Future<void> _handleCreateChallenge() async {
-    final config = await MatchSetupDialog.show(context);
-    if (config == null || !mounted) return;
-
-    final profile =
-        AuthService.instance.currentUser ??
-        UserProfile(
-          uid: widget.myUid,
-          displayName: 'Player',
-          avatarEmoji: PlayerDescriptor.defaultAvatar,
-        );
-
-    final newMatch = await FirestoreMatchService.instance.createMatch(
-      config: config,
-      player1Profile: profile,
-    );
-
-    await FriendsService.instance.updateFriendMatch(
-      myUid: widget.myUid,
-      friendUid: widget.friend.uid,
-      matchId: newMatch.id,
-    );
-
-    if (mounted) {
-      Navigator.of(context).pop();
-      widget.onPlayTurn(newMatch);
+      scrollToBottom();
     }
-  }
 
-  @override
-  Widget build(BuildContext context) {
-    final matchId = _currentMatch?.id ?? widget.friend.activeMatchId;
+    Future<void> handleCreateChallenge() async {
+      final config = await MatchSetupDialog.show(context);
+      if (config == null || !context.mounted) return;
+
+      final profile =
+          AuthService.instance.currentUser ??
+          UserProfile(
+            uid: myUid,
+            displayName: 'Player',
+            avatarEmoji: PlayerDescriptor.defaultAvatar,
+          );
+
+      final newMatch = await FirestoreMatchService.instance.createMatch(
+        config: config,
+        player1Profile: profile,
+      );
+
+      await FriendsService.instance.updateFriendMatch(
+        myUid: myUid,
+        friendUid: friend.uid,
+        matchId: newMatch.id,
+      );
+
+      if (context.mounted) {
+        Navigator.of(context).pop();
+        onPlayTurn(newMatch);
+      }
+    }
+
+    final matchId = currentMatch.value?.id ?? friend.activeMatchId;
 
     return AppModalSheet(
       heightFactor: 0.88,
-      header: _buildHeader(),
+      header: _buildHeader(context),
       child: Column(
         children: [
+          // Stream active match state if present
+          if (matchId != null)
+            StreamBuilder<CloudMatch?>(
+              stream: FirestoreMatchService.instance.streamMatch(matchId),
+              initialData: currentMatch.value,
+              builder: (context, snapshot) {
+                if (snapshot.hasData && snapshot.data != null) {
+                  currentMatch.value = snapshot.data;
+                }
+                return _buildStickyGameBanner(
+                  context,
+                  currentMatch.value,
+                  handleCreateChallenge,
+                );
+              },
+            )
+          else
+            _buildStickyGameBanner(context, null, handleCreateChallenge),
 
-              // Stream active match state if present
-              if (matchId != null)
-                StreamBuilder<CloudMatch?>(
-                  stream: FirestoreMatchService.instance.streamMatch(matchId),
-                  initialData: _currentMatch,
-                  builder: (context, snapshot) {
-                    if (snapshot.hasData && snapshot.data != null) {
-                      _currentMatch = snapshot.data;
-                    }
-                    return _buildStickyGameBanner(_currentMatch);
-                  },
-                )
-              else
-                _buildStickyGameBanner(null),
+          const Divider(color: Color(0xFF1E2638), height: 1),
 
-              const Divider(color: Color(0xFF1E2638), height: 1),
-
-              // Chat banter message stream
-              Expanded(
-                child: StreamBuilder<List<CloudChatMessage>>(
-                  stream: FriendsService.instance.streamDirectChat(
-                    myUid: widget.myUid,
-                    friendUid: widget.friend.uid,
-                  ),
-                  builder: (context, snapshot) {
-                    final directChat = snapshot.data ?? const [];
-                    final matchChat = _currentMatch?.chat ?? const [];
-                    final allChat = <String, CloudChatMessage>{};
-                    for (final m in matchChat) {
-                      allChat[m.id] = m;
-                    }
-                    for (final m in directChat) {
-                      allChat[m.id] = m;
-                    }
-                    final sortedChat = allChat.values.toList()
-                      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
-
-                    return ChatBubbleList(
-                      messages: sortedChat,
-                      myUid: widget.myUid,
-                      controller: _scrollController,
-                    );
-                  },
-                ),
+          // Chat banter message stream
+          Expanded(
+            child: StreamBuilder<List<CloudChatMessage>>(
+              stream: FriendsService.instance.streamDirectChat(
+                myUid: myUid,
+                friendUid: friend.uid,
               ),
+              builder: (context, snapshot) {
+                final directChat = snapshot.data ?? const [];
+                final matchChat = currentMatch.value?.chat ?? const [];
+                final allChat = <String, CloudChatMessage>{};
+                for (final m in matchChat) {
+                  allChat[m.id] = m;
+                }
+                for (final m in directChat) {
+                  allChat[m.id] = m;
+                }
+                final sortedChat = allChat.values.toList()
+                  ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
-              // Banter Chips & Input Bar
-              ChatInputBar(
-                controller: _msgController,
-                quickBanter: _quickBanter,
-                onSend: _sendText,
-                accentColor: const Color(0xFF38BDF8),
-              ),
-            ],
+                return ChatBubbleList(
+                  messages: sortedChat,
+                  myUid: myUid,
+                  controller: scrollController,
+                );
+              },
+            ),
           ),
-        );
+
+          // Banter Chips & Input Bar
+          ChatInputBar(
+            controller: msgController,
+            quickBanter: _quickBanter,
+            onSend: sendText,
+            accentColor: const Color(0xFF38BDF8),
+          ),
+        ],
+      ),
+    );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [
           AppAvatar(
-            avatar: widget.friend.avatarEmoji,
+            avatar: friend.avatarEmoji,
             size: 36,
             borderColor: const Color(0xFF38BDF8),
             borderWidth: 1.5,
@@ -248,7 +232,7 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  widget.friend.displayName,
+                  friend.displayName,
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w800,
@@ -256,7 +240,7 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
                   ),
                 ),
                 Text(
-                  'H2H: ${widget.friend.h2hWins}W - ${widget.friend.h2hLosses}L',
+                  'H2H: ${friend.h2hWins}W - ${friend.h2hLosses}L',
                   style: const TextStyle(
                     color: Color(0xFF94A3B8),
                     fontSize: 11,
@@ -279,7 +263,11 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
     );
   }
 
-  Widget _buildStickyGameBanner(CloudMatch? match) {
+  Widget _buildStickyGameBanner(
+    BuildContext context,
+    CloudMatch? match,
+    VoidCallback onCreateChallenge,
+  ) {
     if (match == null) {
       return Container(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -318,7 +306,7 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
               ),
             ),
             ElevatedButton(
-              onPressed: _handleCreateChallenge,
+              onPressed: onCreateChallenge,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF38BDF8),
                 foregroundColor: const Color(0xFF0F172A),
@@ -340,10 +328,10 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
       );
     }
 
-    final isMyTurn = match.isMyTurn(widget.myUid);
+    final isMyTurn = match.isMyTurn(myUid);
     final isCompleted = match.status == MatchStatus.completed;
-    final myPlayer = match.myPlayer(widget.myUid);
-    final opponent = match.opponentPlayer(widget.myUid);
+    final myPlayer = match.myPlayer(myUid);
+    final opponent = match.opponentPlayer(myUid);
     final myScore = myPlayer?.totalScore ?? 0;
     final oppScore = opponent?.totalScore ?? 0;
 
@@ -400,7 +388,7 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
                       style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
                     ),
                     Text(
-                      '${widget.friend.displayName}: $oppScore',
+                      '${friend.displayName}: $oppScore',
                       style: const TextStyle(
                         color: Color(0xFFCBD5E1),
                         fontWeight: FontWeight.w700,
@@ -414,7 +402,7 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
                 ElevatedButton(
                   onPressed: () {
                     Navigator.of(context).pop();
-                    widget.onViewPodium?.call(match);
+                    onViewPodium?.call(match);
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFF59E0B),
@@ -436,7 +424,7 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
                 ElevatedButton(
                   onPressed: () {
                     Navigator.of(context).pop();
-                    widget.onPlayTurn(match);
+                    onPlayTurn(match);
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF38BDF8),
@@ -483,6 +471,4 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
       ),
     );
   }
-
 }
-
