@@ -173,27 +173,34 @@ class _FloatingToastWidget extends HookWidget {
             children: [
               Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 14.0,
-                  vertical: 6.0,
+                  horizontal: 16.0,
+                  vertical: 7.0,
                 ),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                     colors: [
-                      const Color(0xF20F172A),
-                      primaryColor.withValues(alpha: 0.20),
+                      Color(0xFA0F172A),
+                      Color(0xFC1E293B),
                     ],
                   ),
-                  borderRadius: BorderRadius.circular(20.0),
+                  borderRadius: BorderRadius.circular(22.0),
                   border: Border.all(
-                    color: primaryColor.withValues(alpha: 0.85),
-                    width: 1.5,
+                    color: primaryColor,
+                    width: 1.6,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: glowColor,
-                      blurRadius: 16.0,
+                      color: glowColor.withValues(alpha: 0.60),
+                      blurRadius: 18.0,
                       spreadRadius: 2.0,
-                      offset: const Offset(0, 2),
+                      offset: const Offset(0, 3),
+                    ),
+                    const BoxShadow(
+                      color: Color(0x99000000),
+                      blurRadius: 12.0,
+                      offset: Offset(0, 4),
                     ),
                   ],
                 ),
@@ -202,21 +209,26 @@ class _FloatingToastWidget extends HookWidget {
                   children: [
                     Icon(
                       icon,
-                      size: 16.0,
+                      size: 17.0,
                       color: primaryColor,
                     ),
-                    const SizedBox(width: 6.0),
+                    const SizedBox(width: 7.0),
                     Text(
                       label,
                       style: TextStyle(
                         color: primaryColor,
-                        fontSize: 13.5,
+                        fontSize: 14.0,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 1.2,
                         shadows: [
                           Shadow(
                             color: glowColor,
-                            blurRadius: 8.0,
+                            blurRadius: 10.0,
+                          ),
+                          const Shadow(
+                            color: Color(0xFF000000),
+                            blurRadius: 4.0,
+                            offset: Offset(0, 1),
                           ),
                         ],
                       ),
