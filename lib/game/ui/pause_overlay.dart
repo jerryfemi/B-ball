@@ -1,19 +1,13 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 
 import '../audio/audio_engine.dart';
 import '../basketball_game.dart';
 import 'match/match_setup_dialog.dart';
 
 /// Frosted obsidian glass Pause Overlay displayed when mid-round action is paused.
-///
-/// Features:
-/// 1. Smooth entrance fade & scale animations
-/// 2. Stadium Pause header with glowing cyan accents
-/// 3. In-flight snapshot metric chips (Score, Clock, Streak)
-/// 4. Primary "Resume" button & secondary "Restart Round" button
-/// 5. Quick audio mute toggle pill
-class PauseOverlay extends StatefulWidget {
+class PauseOverlay extends HookWidget {
   final BasketballGame game;
 
   const PauseOverlay({
@@ -22,52 +16,40 @@ class PauseOverlay extends StatefulWidget {
   });
 
   @override
-  State<PauseOverlay> createState() => _PauseOverlayState();
-}
-
-class _PauseOverlayState extends State<PauseOverlay>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _animController;
-  late final Animation<double> _scaleAnimation;
-  late final Animation<double> _fadeAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _animController = AnimationController(
-      vsync: this,
+  Widget build(BuildContext context) {
+    final animController = useAnimationController(
       duration: const Duration(milliseconds: 260),
     );
 
-    _scaleAnimation = Tween<double>(begin: 0.90, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _animController,
-        curve: Curves.easeOutBack,
+    final scaleAnimation = useMemoized(
+      () => Tween<double>(begin: 0.90, end: 1.0).animate(
+        CurvedAnimation(
+          parent: animController,
+          curve: Curves.easeOutBack,
+        ),
       ),
+      [animController],
     );
 
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _animController,
-        curve: Curves.easeOut,
+    final fadeAnimation = useMemoized(
+      () => Tween<double>(begin: 0.0, end: 1.0).animate(
+        CurvedAnimation(
+          parent: animController,
+          curve: Curves.easeOut,
+        ),
       ),
+      [animController],
     );
 
-    _animController.forward();
-  }
+    useEffect(() {
+      animController.forward();
+      return null;
+    }, const []);
 
-  @override
-  void dispose() {
-    _animController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
     return FadeTransition(
-      opacity: _fadeAnimation,
+      opacity: fadeAnimation,
       child: ScaleTransition(
-        scale: _scaleAnimation,
+        scale: scaleAnimation,
         child: Center(
           child: Container(
             margin: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -148,7 +130,7 @@ class _PauseOverlayState extends State<PauseOverlay>
                           Expanded(
                             child: _buildMetricChip(
                               label: 'SCORE',
-                              value: '${widget.game.scoreNotifier.value}',
+                              value: '${game.scoreNotifier.value}',
                               color: const Color(0xFFFF4444),
                             ),
                           ),
@@ -156,8 +138,7 @@ class _PauseOverlayState extends State<PauseOverlay>
                           Expanded(
                             child: _buildMetricChip(
                               label: 'CLOCK',
-                              value:
-                                  '${widget.game.timeRemainingNotifier.value}s',
+                              value: '${game.timeRemainingNotifier.value}s',
                               color: const Color(0xFFFFE000),
                             ),
                           ),
@@ -165,7 +146,7 @@ class _PauseOverlayState extends State<PauseOverlay>
                           Expanded(
                             child: _buildMetricChip(
                               label: 'STREAK',
-                              value: '${widget.game.streakNotifier.value}',
+                              value: '${game.streakNotifier.value}',
                               color: const Color(0xFFF97316),
                             ),
                           ),
@@ -197,7 +178,7 @@ class _PauseOverlayState extends State<PauseOverlay>
                           child: Material(
                             color: Colors.transparent,
                             child: InkWell(
-                              onTap: () => widget.game.resumeGame(),
+                              onTap: () => game.resumeGame(),
                               borderRadius: BorderRadius.circular(16.0),
                               child: const Center(
                                 child: Text(
@@ -218,7 +199,7 @@ class _PauseOverlayState extends State<PauseOverlay>
 
                       // 4. Secondary Action: Restart Round / Exit Match / 1v1 Setup
                       ValueListenableBuilder(
-                        valueListenable: widget.game.matchSessionNotifier,
+                        valueListenable: game.matchSessionNotifier,
                         builder: (context, session, _) {
                           final isMatch = session != null;
                           return Column(
@@ -231,10 +212,10 @@ class _PauseOverlayState extends State<PauseOverlay>
                                   onPressed: () async {
                                     final config = await MatchSetupDialog.show(
                                       context,
-                                      initialConfig: widget.game.currentMatchConfig,
+                                      initialConfig: game.currentMatchConfig,
                                     );
                                     if (config != null) {
-                                      widget.game.startPassAndPlayMatch(config: config);
+                                      game.startPassAndPlayMatch(config: config);
                                     }
                                   },
                                   style: OutlinedButton.styleFrom(
@@ -276,9 +257,9 @@ class _PauseOverlayState extends State<PauseOverlay>
                                 child: OutlinedButton(
                                   onPressed: () {
                                     if (isMatch) {
-                                      widget.game.exitToSoloMode();
+                                      game.exitToSoloMode();
                                     } else {
-                                      widget.game.restartRound();
+                                      game.restartRound();
                                     }
                                   },
                                   style: OutlinedButton.styleFrom(
@@ -341,8 +322,8 @@ class _PauseOverlayState extends State<PauseOverlay>
                                           : 'Sound: Enabled',
                                       style: TextStyle(
                                         color: isMuted
-                                          ? const Color(0xFFFF6B6B)
-                                          : const Color(0xFF94A3B8),
+                                            ? const Color(0xFFFF6B6B)
+                                            : const Color(0xFF94A3B8),
                                         fontSize: 12.0,
                                         fontWeight: FontWeight.w600,
                                       ),
