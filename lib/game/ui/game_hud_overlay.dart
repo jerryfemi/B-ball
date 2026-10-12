@@ -12,7 +12,7 @@ import 'match/match_winner_podium_overlay.dart';
 import 'match/round_intermission_overlay.dart';
 import 'pause_overlay.dart';
 import 'replay_hud_overlay.dart';
-import 'social/friends_hub_sheet.dart';
+import 'inbox/match_inbox_sheet.dart';
 import 'stadium_scoreboard.dart';
 
 /// Top-level Game HUD Overlay mounted via Flame's [GameWidget.overlayBuilderMap].
@@ -40,7 +40,7 @@ class GameHudOverlay extends StatelessWidget {
     if (wasPlaying) {
       game.pauseGame(manual: true);
     }
-    await FriendsHubSheet.show(
+    await MatchInboxSheet.show(
       context,
       onPlayMatch: (match) {
         final myUid = AuthService.instance.currentUser?.uid ?? '';
