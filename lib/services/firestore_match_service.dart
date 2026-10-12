@@ -75,8 +75,25 @@ class NotParticipantException implements Exception {
 /// Central Firestore service managing remote match rooms, turn sync,
 /// telemetry handoff, and in-game chat threads.
 class FirestoreMatchService {
-  FirestoreMatchService._internal();
-  static final FirestoreMatchService instance = FirestoreMatchService._internal();
+  final AuthService? authService;
+  final FriendsService? friendsService;
+
+  FirestoreMatchService({
+    this.authService,
+    this.friendsService,
+  });
+
+  FirestoreMatchService._internal()
+      : authService = null,
+        friendsService = null;
+
+  static final FirestoreMatchService instance =
+      FirestoreMatchService._internal();
+
+  AuthService get _effectiveAuthService =>
+      authService ?? AuthService.instance;
+  FriendsService get _effectiveFriendsService =>
+      friendsService ?? FriendsService.instance;
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   CollectionReference<Map<String, dynamic>> get _matchesRef =>
@@ -103,7 +120,7 @@ class FirestoreMatchService {
     String? initialChatMessage,
   }) async {
     // Ensure the host is authenticated with Firebase before creating a cloud match
-    await AuthService.instance.ensureAuthenticated();
+    await _effectiveAuthService.ensureAuthenticated();
 
     final joinCode = generateJoinCode();
     final docRef = _matchesRef.doc(joinCode);
@@ -182,7 +199,7 @@ class FirestoreMatchService {
 
     if (friend != null) {
       try {
-        await FriendsService.instance.updateFriendMatch(
+        await _effectiveFriendsService.updateFriendMatch(
           myUid: player1Profile.uid,
           friendUid: friend.uid,
           matchId: match.id,
@@ -204,7 +221,7 @@ class FirestoreMatchService {
     required UserProfile player2Profile,
   }) async {
     // Ensure the joining player is authenticated with Firebase
-    await AuthService.instance.ensureAuthenticated();
+    await _effectiveAuthService.ensureAuthenticated();
 
     final cleanCode = joinCode.trim().toUpperCase();
     final docRef = _matchesRef.doc(cleanCode);

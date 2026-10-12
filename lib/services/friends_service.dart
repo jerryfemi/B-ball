@@ -12,10 +12,18 @@ import 'auth_service.dart';
 
 /// Service managing social friends list, user discovery, and 1v1 conversation bindings.
 class FriendsService {
-  FriendsService._internal() {
+  final AuthService? authService;
+
+  FriendsService({this.authService}) {
+    _initLocalCache();
+  }
+  FriendsService._internal() : authService = null {
     _initLocalCache();
   }
   static final FriendsService instance = FriendsService._internal();
+
+  AuthService get _effectiveAuthService =>
+      authService ?? AuthService.instance;
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   static const String _prefFriendsCacheKey = 'bball_cached_friends_json';
@@ -276,8 +284,12 @@ class FriendsService {
 
   /// Accepts an incoming friend invite, adds them to my friends list,
   /// notifies the sender so they also reciprocate, and deletes the invite.
-  Future<void> acceptFriendInvite(String myUid, FriendInvite invite) async {
-    final myProfile = AuthService.instance.currentUser;
+  Future<void> acceptFriendInvite(
+    String myUid,
+    FriendInvite invite, {
+    UserProfile? myProfile,
+  }) async {
+    final effectiveProfile = myProfile ?? _effectiveAuthService.currentUser;
     final friend = FriendProfile(
       uid: invite.senderUid,
       displayName: invite.senderName,
@@ -293,12 +305,12 @@ class FriendsService {
           .delete();
     } catch (_) {}
 
-    if (myProfile != null) {
+    if (effectiveProfile != null) {
       try {
         final reciprocate = FriendInvite(
           senderUid: myUid,
-          senderName: myProfile.displayName,
-          senderAvatar: myProfile.avatarEmoji,
+          senderName: effectiveProfile.displayName,
+          senderAvatar: effectiveProfile.avatarEmoji,
           status: 'accepted',
           timestamp: DateTime.now().millisecondsSinceEpoch,
         );
