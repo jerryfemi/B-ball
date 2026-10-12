@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../../models/cloud_match.dart';
 import '../../../models/player_descriptor.dart';
+import '../../../providers/app_providers.dart';
 import '../../../services/firestore_match_service.dart';
 import '../common/app_avatar.dart';
 import '../common/app_modal_sheet.dart';
@@ -11,7 +13,7 @@ import '../common/chat/chat_bubble_list.dart';
 import '../common/chat/chat_input_bar.dart';
 
 /// Modal sheet showing the live game conversation thread, round score breakdown, and banter chat.
-class MatchThreadDialog extends HookWidget {
+class MatchThreadDialog extends HookConsumerWidget {
   final CloudMatch initialMatch;
   final String myUid;
   final VoidCallback onPlayTurn;
@@ -53,7 +55,7 @@ class MatchThreadDialog extends HookWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final msgController = useTextEditingController();
     final scrollController = useScrollController();
 
@@ -93,13 +95,7 @@ class MatchThreadDialog extends HookWidget {
       });
     }
 
-    return StreamBuilder<CloudMatch?>(
-      stream: FirestoreMatchService.instance.streamMatch(
-        initialMatch.id,
-      ),
-      initialData: initialMatch,
-      builder: (context, snapshot) {
-        final match = snapshot.data ?? initialMatch;
+    final match = ref.watch(singleMatchProvider(initialMatch.id)).value ?? initialMatch;
         final myPlayer =
             match.myPlayer(myUid) ??
             CloudPlayer(
@@ -292,8 +288,6 @@ class MatchThreadDialog extends HookWidget {
             ),
           ),
         );
-      },
-    );
   }
 
   Widget _buildMiniScoreboard(
