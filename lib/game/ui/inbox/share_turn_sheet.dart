@@ -3,6 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../common/app_colors.dart';
+import '../common/app_modal_sheet.dart';
+
 /// Bottom modal sheet displayed immediately after completing a round in an online match.
 /// Provides one-tap link copying, native share sheet, and optional WhatsApp nudge.
 class ShareTurnSheet extends StatefulWidget {
@@ -19,7 +22,6 @@ class ShareTurnSheet extends StatefulWidget {
     this.opponentName,
   });
 
-  /// Displays the modal sheet with standard glassmorphic theme.
   static Future<void> show(
     BuildContext context, {
     required String joinCode,
@@ -27,10 +29,8 @@ class ShareTurnSheet extends StatefulWidget {
     required int roundScore,
     String? opponentName,
   }) {
-    return showModalBottomSheet(
+    return AppModalSheet.show<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       builder: (ctx) => ShareTurnSheet(
         joinCode: joinCode,
         roundIndex: roundIndex,
@@ -83,45 +83,29 @@ class _ShareTurnSheetState extends State<ShareTurnSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
-      decoration: const BoxDecoration(
-        color: Color(0xFF131826),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-        border: Border(top: BorderSide(color: Color(0xFF2E3954), width: 1.5)),
-      ),
-      child: SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Handle bar
-            Container(
-              width: 44,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.white24,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // Trophy icon & title
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Text('🔥', style: TextStyle(fontSize: 26)),
-                const SizedBox(width: 8),
-                Text(
-                  'ROUND ${widget.roundIndex} COMPLETE',
-                  style: const TextStyle(
-                    color: Color(0xFF00FFCC),
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 2.0,
-                    fontSize: 16,
-                  ),
+    return AppModalSheet(
+      heightFactor: null,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Trophy icon & title
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text('🔥', style: TextStyle(fontSize: 26)),
+              const SizedBox(width: 8),
+              Text(
+                'ROUND ${widget.roundIndex} COMPLETE',
+                style: const TextStyle(
+                  color: AppColors.accentNeonCyan,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 2.0,
+                  fontSize: 16,
                 ),
-              ],
-            ),
+              ),
+            ],
+          ),
             const SizedBox(height: 8),
 
             Text(
@@ -243,12 +227,11 @@ class _ShareTurnSheetState extends State<ShareTurnSheet> {
               onPressed: () => Navigator.of(context).pop(),
               child: const Text(
                 'BACK TO COURT',
-                style: TextStyle(color: Color(0xFF94A3B8), fontWeight: FontWeight.w700),
+                style: TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w700),
               ),
             ),
           ],
         ),
-      ),
-    );
+      );
   }
 }
