@@ -10,6 +10,7 @@ import 'add_friend_dialog.dart';
 import 'edit_gamer_tag_dialog.dart';
 import 'friend_conversation_sheet.dart';
 import '../common/app_avatar.dart';
+import '../common/app_modal_sheet.dart';
 
 /// Dedicated Friends Management sheet for launching 1v1 challenges and banter chat.
 class FriendsHubSheet extends StatefulWidget {
@@ -30,10 +31,8 @@ class FriendsHubSheet extends StatefulWidget {
     required VoidCallback onCreateMatch,
     ValueChanged<CloudMatch>? onViewPodium,
   }) {
-    return showModalBottomSheet<void>(
+    return AppModalSheet.show<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       builder: (ctx) => FriendsHubSheet(
         onPlayMatch: onPlayMatch,
         onCreateMatch: onCreateMatch,
@@ -78,43 +77,22 @@ class _FriendsHubSheetState extends State<FriendsHubSheet> {
       builder: (context, user, _) {
         final myUid = user?.uid ?? '';
 
-        return Container(
-          height: MediaQuery.of(context).size.height * 0.85,
-          decoration: const BoxDecoration(
-            color: Color(0xFF0F172A),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-            border: Border(
-              top: BorderSide(color: Color(0xFF2E3954), width: 1.5),
-            ),
-          ),
-          child: SafeArea(
-            top: false,
-            child: StreamBuilder<List<FriendInvite>>(
-              stream: FriendsService.instance.streamIncomingInvites(myUid),
-              initialData: const <FriendInvite>[],
-              builder: (context, invitesSnap) {
-                final invites = invitesSnap.data ?? [];
+        return AppModalSheet(
+          heightFactor: 0.85,
+          child: StreamBuilder<List<FriendInvite>>(
+            stream: FriendsService.instance.streamIncomingInvites(myUid),
+            initialData: const <FriendInvite>[],
+            builder: (context, invitesSnap) {
+              final invites = invitesSnap.data ?? [];
 
-                return StreamBuilder<List<FriendProfile>>(
-                  stream: FriendsService.instance.streamFriends(myUid),
-                  builder: (context, friendsSnap) {
-                    final friends = friendsSnap.data ?? [];
-                    final friendUids = friends.map((f) => f.uid).toSet();
+              return StreamBuilder<List<FriendProfile>>(
+                stream: FriendsService.instance.streamFriends(myUid),
+                builder: (context, friendsSnap) {
+                  final friends = friendsSnap.data ?? [];
+                  final friendUids = friends.map((f) => f.uid).toSet();
 
-                    return Column(
-                      children: [
-                        // Pull bar
-                        Center(
-                          child: Container(
-                            margin: const EdgeInsets.only(top: 10, bottom: 8),
-                            width: 36,
-                            height: 4,
-                            decoration: BoxDecoration(
-                              color: Colors.white24,
-                              borderRadius: BorderRadius.circular(2),
-                            ),
-                          ),
-                        ),
+                  return Column(
+                    children: [
 
                         // Dedicated Friends Header
                         Padding(
@@ -376,7 +354,6 @@ class _FriendsHubSheetState extends State<FriendsHubSheet> {
                 );
               },
             ),
-          ),
         );
       },
     );
