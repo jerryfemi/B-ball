@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../../../models/cloud_match.dart';
 import '../../../models/friend_profile.dart';
+import '../../../models/player_descriptor.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/firestore_match_service.dart';
 import '../../../services/friends_service.dart';
@@ -90,7 +91,7 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
 
     final user = AuthService.instance.currentUser;
     final myName = user?.displayName ?? 'You';
-    final myAvatar = user?.avatarEmoji ?? 'assets/avatars/dunk_heads (1).webp';
+    final myAvatar = user?.avatarEmoji ?? PlayerDescriptor.defaultAvatar;
     final now = DateTime.now().millisecondsSinceEpoch;
 
     final msg = CloudChatMessage(
@@ -142,7 +143,7 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
         UserProfile(
           uid: widget.myUid,
           displayName: 'Player',
-          avatarEmoji: 'assets/avatars/dunk_heads (1).webp',
+          avatarEmoji: PlayerDescriptor.defaultAvatar,
         );
 
     final newMatch = await FirestoreMatchService.instance.createMatch(
