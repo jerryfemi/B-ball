@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../../../models/friend_profile.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/friends_service.dart';
+import '../common/app_avatar.dart';
 
 /// Modal dialog to search and add friends by display name or player tag,
 /// and share one's own tag with others.
@@ -46,25 +47,6 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
   late final Set<String> _friendUids;
   final Set<String> _invitedUids = {};
 
-  Widget _buildAvatarView(String avatar, {double size = 20}) {
-    if (avatar.startsWith('assets/') ||
-        avatar.endsWith('.png') ||
-        avatar.endsWith('.jpg') ||
-        avatar.endsWith('.jpeg') ||
-        avatar.endsWith('.webp')) {
-      return ClipOval(
-        child: Image.asset(
-          avatar,
-          width: size,
-          height: size,
-          fit: BoxFit.cover,
-          errorBuilder: (_, _, _) =>
-              Text('🏀', style: TextStyle(fontSize: size * 0.85)),
-        ),
-      );
-    }
-    return Text(avatar, style: TextStyle(fontSize: size));
-  }
 
   @override
   void initState() {
@@ -221,7 +203,7 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
                 ),
                 child: Row(
                   children: [
-                    _buildAvatarView(myAvatar, size: 24),
+                    AppAvatar(avatar: myAvatar, size: 24),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Column(
@@ -381,7 +363,7 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
                             ),
                             child: Row(
                               children: [
-                                _buildAvatarView(friend.avatarEmoji, size: 22),
+                                AppAvatar(avatar: friend.avatarEmoji, size: 22),
                                 const SizedBox(width: 10),
                                 Expanded(
                                   child: Text(
