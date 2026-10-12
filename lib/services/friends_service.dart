@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/cloud_match.dart';
 import '../models/friend_profile.dart';
+import '../models/player_descriptor.dart';
 import 'auth_service.dart';
 
 /// Service managing social friends list, user discovery, and 1v1 conversation bindings.
@@ -188,7 +189,7 @@ class FriendsService {
             displayName: data['displayName'] as String? ?? 'Player',
             avatarEmoji:
                 data['avatarEmoji'] as String? ??
-                'assets/avatars/dunk_heads (1).webp',
+                PlayerDescriptor.defaultAvatar,
             addedAt: DateTime.now().millisecondsSinceEpoch,
           ),
         ];
@@ -210,7 +211,7 @@ class FriendsService {
           displayName: data['displayName'] as String? ?? 'Player',
           avatarEmoji:
               data['avatarEmoji'] as String? ??
-              'assets/avatars/dunk_heads (1).webp',
+              PlayerDescriptor.defaultAvatar,
           addedAt: DateTime.now().millisecondsSinceEpoch,
         );
       }).toList();
