@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../models/player_descriptor.dart';
 import '../../../services/auth_service.dart';
 import '../../match/match_config.dart';
 import '../common/app_button.dart';
@@ -45,7 +46,7 @@ class _MatchSetupDialogState extends State<MatchSetupDialog> {
     final profile = AuthService.instance.currentUser;
     final myName = profile?.displayName ?? 'Player';
     final myAvatar =
-        profile?.avatarEmoji ?? 'assets/avatars/dunk_heads (1).webp';
+        profile?.avatarEmoji ?? PlayerDescriptor.defaultAvatar;
 
     final config = MatchConfig(
       totalRounds: _selectedRounds,
@@ -64,7 +65,7 @@ class _MatchSetupDialogState extends State<MatchSetupDialog> {
     final profile = AuthService.instance.currentUser;
     final myName = profile?.displayName ?? 'Player';
     final myAvatar =
-        profile?.avatarEmoji ?? 'assets/avatars/dunk_heads (1).webp';
+        profile?.avatarEmoji ?? PlayerDescriptor.defaultAvatar;
 
     return AppModalDialog(
       maxWidth: 380.0,
