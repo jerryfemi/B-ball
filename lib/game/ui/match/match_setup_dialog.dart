@@ -6,11 +6,12 @@ import '../../../models/friend_profile.dart';
 import '../../../models/player_descriptor.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/firestore_match_service.dart';
-import '../../../services/friends_service.dart';
 import '../../match/match_config.dart';
 import '../common/app_avatar.dart';
 import '../common/app_button.dart';
 import '../common/app_modal_dialog.dart';
+import 'components/friend_selector_ribbon.dart';
+import 'components/match_code_card.dart';
 
 /// Streamlined Arcade 1v1 Challenge Creator modal in muted luxury obsidian palette.
 class MatchSetupDialog extends StatefulWidget {
@@ -236,7 +237,26 @@ class _MatchSetupDialogState extends State<MatchSetupDialog> {
           const SizedBox(height: 10.0),
 
           // Opponent Details / Options
-          if (_opponentMode == 0) _buildOpenCodeSection(profile) else _buildFriendsRibbon(profile),
+          if (_opponentMode == 0)
+            MatchCodeCard(
+              precreatedMatch: _precreatedMatch,
+              isGeneratingCode: _isGeneratingCode,
+              codeCopied: _codeCopied,
+              profile: profile,
+              onGenerateCode: () {
+                if (profile != null) _generateUpfrontCode(profile);
+              },
+              onCopyCode: _copyCode,
+            )
+          else
+            FriendSelectorRibbon(
+              profile: profile,
+              selectedFriend: _selectedFriend,
+              onFriendSelected: (friend) {
+                setState(() => _selectedFriend = friend);
+              },
+              onUseOpenCode: () => setState(() => _opponentMode = 0),
+            ),
           const SizedBox(height: 18.0),
 
           // Option 1: Total Rounds
@@ -409,293 +429,6 @@ class _MatchSetupDialogState extends State<MatchSetupDialog> {
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildOpenCodeSection(UserProfile? profile) {
-    if (_precreatedMatch != null) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 12.0),
-        decoration: BoxDecoration(
-          color: const Color(0xFF0F172A),
-          borderRadius: BorderRadius.circular(14.0),
-          border: Border.all(color: const Color(0xFF38BDF8), width: 1.5),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
-              blurRadius: 10.0,
-              spreadRadius: 1.0,
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'ROOM CODE READY',
-                  style: TextStyle(
-                    color: Color(0xFF38BDF8),
-                    fontSize: 10.0,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.0,
-                  ),
-                ),
-                InkWell(
-                  onTap: _copyCode,
-                  borderRadius: BorderRadius.circular(6.0),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        _codeCopied
-                            ? Icons.check_circle_rounded
-                            : Icons.copy_rounded,
-                        color: _codeCopied
-                            ? const Color(0xFF22C55E)
-                            : const Color(0xFF94A3B8),
-                        size: 14.0,
-                      ),
-                      const SizedBox(width: 4.0),
-                      Text(
-                        _codeCopied ? 'COPIED' : 'COPY',
-                        style: TextStyle(
-                          color: _codeCopied
-                              ? const Color(0xFF22C55E)
-                              : const Color(0xFF94A3B8),
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6.0),
-            Text(
-              _precreatedMatch!.joinCode,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 22.0,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 6.0,
-              ),
-            ),
-            const SizedBox(height: 4.0),
-            const Text(
-              'Code copied! Share with your rival before or after shooting.',
-              style: TextStyle(
-                color: Color(0xFF94A3B8),
-                fontSize: 10.5,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(12.0),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E2638),
-        borderRadius: BorderRadius.circular(14.0),
-        border: Border.all(color: const Color(0xFF334155)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Row(
-            children: [
-              Icon(Icons.tag_rounded, color: Color(0xFF38BDF8), size: 16),
-              SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  'Shareable 6-digit match code for randoms or rivals.',
-                  style: TextStyle(
-                    color: Color(0xFFCBD5E1),
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10.0),
-          SizedBox(
-            height: 36.0,
-            child: OutlinedButton.icon(
-              onPressed: _isGeneratingCode || profile == null
-                  ? null
-                  : () => _generateUpfrontCode(profile),
-              icon: _isGeneratingCode
-                  ? const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Color(0xFF38BDF8),
-                      ),
-                    )
-                  : const Icon(Icons.copy_rounded, size: 14),
-              label: Text(
-                _isGeneratingCode ? 'GENERATING CODE...' : 'GET CODE & INVITE',
-                style: const TextStyle(
-                  fontSize: 11.0,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0.5,
-                ),
-              ),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFF38BDF8),
-                side: const BorderSide(color: Color(0xFF38BDF8), width: 1.2),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10.0),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFriendsRibbon(UserProfile? profile) {
-    final uid = profile?.uid ?? '';
-    return StreamBuilder<List<FriendProfile>>(
-      stream: FriendsService.instance.streamFriends(uid),
-      initialData: FriendsService.instance.friendsNotifier.value,
-      builder: (context, snapshot) {
-        final friends = snapshot.data ?? [];
-        if (friends.isEmpty) {
-          return Container(
-            padding: const EdgeInsets.all(12.0),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1E2638),
-              borderRadius: BorderRadius.circular(14.0),
-              border: Border.all(color: const Color(0xFF334155)),
-            ),
-            child: Column(
-              children: [
-                const Text(
-                  'No friends added yet. Add friends via the Friends Hub, or generate an open code!',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Color(0xFF94A3B8),
-                    fontSize: 11.0,
-                  ),
-                ),
-                const SizedBox(height: 6.0),
-                TextButton(
-                  onPressed: () => setState(() => _opponentMode = 0),
-                  child: const Text(
-                    'USE OPEN MATCH CODE',
-                    style: TextStyle(
-                      color: Color(0xFF38BDF8),
-                      fontSize: 11.0,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          );
-        }
-
-        return SizedBox(
-          height: 84.0,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: friends.length,
-            separatorBuilder: (context, index) => const SizedBox(width: 8.0),
-            itemBuilder: (context, index) {
-              final friend = friends[index];
-              final isSelected = _selectedFriend?.uid == friend.uid;
-              return InkWell(
-                onTap: () {
-                  HapticFeedback.selectionClick();
-                  setState(() {
-                    _selectedFriend = isSelected ? null : friend;
-                  });
-                },
-                borderRadius: BorderRadius.circular(12.0),
-                child: Container(
-                  width: 72.0,
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 6.0,
-                    horizontal: 4.0,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? const Color(0xFF1E3A5F)
-                        : const Color(0xFF1E2638),
-                    borderRadius: BorderRadius.circular(12.0),
-                    border: Border.all(
-                      color: isSelected
-                          ? const Color(0xFF38BDF8)
-                          : const Color(0xFF334155),
-                      width: isSelected ? 2.0 : 1.0,
-                    ),
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          AppAvatar(
-                            avatar: friend.avatarEmoji,
-                            size: 32.0,
-                            borderColor: isSelected
-                                ? const Color(0xFF38BDF8)
-                                : Colors.transparent,
-                          ),
-                          if (isSelected)
-                            Positioned(
-                              right: -4,
-                              bottom: -4,
-                              child: Container(
-                                padding: const EdgeInsets.all(2.0),
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFF38BDF8),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.check,
-                                  size: 10,
-                                  color: Colors.black,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 4.0),
-                      Text(
-                        friend.displayName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: isSelected
-                              ? Colors.white
-                              : const Color(0xFF94A3B8),
-                          fontSize: 10.0,
-                          fontWeight: isSelected
-                              ? FontWeight.w800
-                              : FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        );
-      },
     );
   }
 
