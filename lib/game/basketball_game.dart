@@ -16,6 +16,7 @@ import 'components/ball.dart';
 import 'components/ghost_ball.dart';
 import 'components/ground.dart';
 import 'match/match_session.dart';
+import 'physics/shot_difficulty.dart';
 import 'telemetry/shot_telemetry.dart';
 
 /// Encapsulates details of a made basketball shot.
@@ -162,6 +163,15 @@ class BasketballGame extends Forge2DGame {
       MatchSessionNotifier(null);
   final ValueNotifier<int> player1MatchScoreNotifier = ValueNotifier<int>(0);
   final ValueNotifier<int> player2MatchScoreNotifier = ValueNotifier<int>(0);
+
+  /// Difficulty preset for solo play (configurable in the pause menu).
+  final ValueNotifier<ShotDifficulty> soloDifficultyNotifier =
+      ValueNotifier<ShotDifficulty>(ShotDifficulty.medium);
+
+  /// Active difficulty preset derived from the current match room, or soloDifficultyNotifier in solo play.
+  ShotDifficulty get currentDifficulty =>
+      matchSessionNotifier.value?.config.difficulty ??
+      soloDifficultyNotifier.value;
 
   bool get isPaused => isPausedNotifier.value;
   bool _isManuallyPaused = false;
