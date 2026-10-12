@@ -17,7 +17,7 @@ class ScoreboardPlayerAvatar extends HookConsumerWidget {
 
   const ScoreboardPlayerAvatar({
     super.key,
-    this.isActive = true,
+    this.isActive = false,
     this.label = 'You',
     this.avatar = AppAvatar.defaultAvatar,
     this.activeMatchId,
