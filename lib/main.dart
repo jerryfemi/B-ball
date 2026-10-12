@@ -5,12 +5,14 @@ import 'package:flame_forge2d/flame_forge2d.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'firebase_options.dart';
+import 'game/audio/audio_engine.dart';
 import 'game/basketball_game.dart';
 import 'game/ui/game_hud_overlay.dart';
 import 'services/auth_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  unawaited(AudioEngine.init());
   await initializeForge2D();
   try {
     if (Firebase.apps.isEmpty) {
@@ -30,17 +32,21 @@ class BasketballApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Basketball Challenge',
-      theme: ThemeData.dark(),
-      home: Scaffold(
-        body: GameWidget<BasketballGame>(
-          game: BasketballGame(),
-          overlayBuilderMap: {
-            'HUD': (context, game) => GameHudOverlay(game: game),
-          },
-          initialActiveOverlays: const ['HUD'],
+    return Listener(
+      onPointerDown: (_) => AudioEngine.unlockAudio(),
+      behavior: HitTestBehavior.translucent,
+      child: MaterialApp(
+        debugShowCheckedModeBanner: false,
+        title: 'Basketball Challenge',
+        theme: ThemeData.dark(),
+        home: Scaffold(
+          body: GameWidget<BasketballGame>(
+            game: BasketballGame(),
+            overlayBuilderMap: {
+              'HUD': (context, game) => GameHudOverlay(game: game),
+            },
+            initialActiveOverlays: const ['HUD'],
+          ),
         ),
       ),
     );
