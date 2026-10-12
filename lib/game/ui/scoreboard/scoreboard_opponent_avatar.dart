@@ -2,14 +2,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-import '../../../models/cloud_match.dart';
-import '../../../services/auth_service.dart';
-import '../../../services/firestore_match_service.dart';
+import '../../../providers/app_providers.dart';
 import '../common/app_avatar.dart';
 
 /// Flanking circular opponent avatar with illuminated badge and "Them" label.
-class ScoreboardOpponentAvatar extends HookWidget {
+class ScoreboardOpponentAvatar extends HookConsumerWidget {
   final bool isActive;
   final String label;
   final String avatar;
@@ -30,7 +29,7 @@ class ScoreboardOpponentAvatar extends HookWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final bubbleController = useAnimationController(
       duration: const Duration(milliseconds: 250),
     );
@@ -197,26 +196,25 @@ class ScoreboardOpponentAvatar extends HookWidget {
       );
     }
 
-    if (activeMatchId == null || activeMatchId!.isEmpty) {
-      return buildContent();
-    }
+    final matchId = activeMatchId;
+    final match = (matchId != null && matchId.isNotEmpty)
+        ? ref.watch(singleMatchProvider(matchId)).value
+        : null;
+    final user = ref.watch(currentUserProfileProvider).value;
 
-    return StreamBuilder<CloudMatch?>(
-      stream: FirestoreMatchService.instance.streamMatch(activeMatchId!),
-      builder: (context, snapshot) {
-        final match = snapshot.data;
-        if (match != null && match.chat.isNotEmpty) {
-          final lastMsg = match.chat.last;
-          final myUid = AuthService.instance.currentUser?.uid ?? '';
-          if (lastMsg.senderUid != myUid && lastMsg.timestamp > lastSeenTimestampRef.value) {
-            lastSeenTimestampRef.value = lastMsg.timestamp;
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              triggerBanterBubble(lastMsg.text);
-            });
-          }
+    useEffect(() {
+      if (match != null && match.chat.isNotEmpty) {
+        final lastMsg = match.chat.last;
+        final myUid = user?.uid ?? '';
+        if (lastMsg.senderUid != myUid &&
+            lastMsg.timestamp > lastSeenTimestampRef.value) {
+          lastSeenTimestampRef.value = lastMsg.timestamp;
+          triggerBanterBubble(lastMsg.text);
         }
-        return buildContent();
-      },
-    );
+      }
+      return null;
+    }, [match]);
+
+    return buildContent();
   }
 }

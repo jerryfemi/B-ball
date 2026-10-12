@@ -127,3 +127,10 @@ final userAlertsCountProvider = Provider.autoDispose.family<int, String?>((ref, 
 
   return turnsWaiting + invites.length + chatAlerts;
 });
+
+/// Streams a specific match by ID.
+final singleMatchProvider = StreamProvider.autoDispose.family<CloudMatch?, String>((ref, matchId) {
+  if (matchId.isEmpty) return Stream.value(null);
+  final matchService = ref.watch(matchServiceProvider);
+  return matchService.streamMatch(matchId);
+});
