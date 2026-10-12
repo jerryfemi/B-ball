@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:math';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../firebase_options.dart';
 import 'friends_service.dart';
 
@@ -86,16 +89,40 @@ class AuthService {
   Future<UserProfile>? _initFuture;
 
   /// Initializes Firebase and performs silent guest authentication.
-  /// 
+  ///
   /// Caches the initialization Future so concurrent calls await the exact
   /// same operation, preventing duplicate anonymous user creation.
   Future<UserProfile> initialize() {
     return _initFuture ??= _doInitialize();
   }
 
+  /// Generates a unique basketball gamer tag (e.g. "Baller#4829", "Hooper#7182").
+  static String generateUniqueGamerTag() {
+    const monikers = [
+      'Baller',
+      'Hooper',
+      'Rookie',
+      'Bucket',
+      'Playmaker',
+      'Dunker',
+      'Swish',
+    ];
+    final rand = Random();
+    final moniker = monikers[rand.nextInt(monikers.length)];
+    final code = rand.nextInt(9000) + 1000;
+    return '$moniker#$code';
+  }
+
   Future<UserProfile> _doInitialize() async {
     final prefs = await SharedPreferences.getInstance();
-    String savedName = prefs.getString(_prefKeyName) ?? 'Baller';
+    final rawName = prefs.getString(_prefKeyName);
+    String savedName;
+    if (rawName == null || rawName.isEmpty || rawName == 'Baller') {
+      savedName = generateUniqueGamerTag();
+      await prefs.setString(_prefKeyName, savedName);
+    } else {
+      savedName = rawName;
+    }
     String savedAvatar = prefs.getString(_prefKeyAvatar) ?? '🏀';
     String? localGuestUid = prefs.getString(_prefKeyUid);
 
@@ -133,13 +160,18 @@ class AuthService {
           isAnon = user.isAnonymous;
           isVerified = true;
 
-          if (user.displayName != null && user.displayName!.isNotEmpty) {
+          if (user.displayName != null &&
+              user.displayName!.isNotEmpty &&
+              user.displayName != 'Baller') {
             savedName = user.displayName!;
+            await prefs.setString(_prefKeyName, savedName);
           } else {
             unawaited(user.updateDisplayName(savedName));
           }
           await prefs.setString(_prefKeyUid, activeUid);
-          debugPrint('[AuthService] Silent guest signed in: $activeUid');
+          debugPrint(
+            '[AuthService] Silent guest signed in: $activeUid ($savedName)',
+          );
         } else {
           activeUid = _getOrCreateFallbackUid(prefs, localGuestUid);
         }
@@ -172,7 +204,8 @@ class AuthService {
         if (user != null && currentUserNotifier.value?.uid != user.uid) {
           currentUserNotifier.value = currentUserNotifier.value?.copyWith(
             uid: user.uid,
-            displayName: user.displayName ?? currentUserNotifier.value?.displayName,
+            displayName:
+                user.displayName ?? currentUserNotifier.value?.displayName,
             isAnonymous: user.isAnonymous,
             isFirebaseVerified: true,
           );
@@ -212,10 +245,7 @@ class AuthService {
   }
 
   /// Updates player display name and avatar emoji locally and in Firebase.
-  Future<void> updateProfile({
-    String? displayName,
-    String? avatarEmoji,
-  }) async {
+  Future<void> updateProfile({String? displayName, String? avatarEmoji}) async {
     final current = currentUserNotifier.value;
     if (current == null) return;
 
@@ -257,7 +287,8 @@ class AuthService {
     if (existing != null && existing.isNotEmpty) {
       return existing;
     }
-    final newUid = 'guest_${DateTime.now().millisecondsSinceEpoch}_${(1000 + (DateTime.now().microsecond % 9000))}';
+    final newUid =
+        'guest_${DateTime.now().millisecondsSinceEpoch}_${(1000 + (DateTime.now().microsecond % 9000))}';
     prefs.setString(_prefKeyUid, newUid);
     return newUid;
   }
