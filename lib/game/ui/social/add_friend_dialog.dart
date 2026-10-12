@@ -46,6 +46,26 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
   late final Set<String> _friendUids;
   final Set<String> _invitedUids = {};
 
+  Widget _buildAvatarView(String avatar, {double size = 20}) {
+    if (avatar.startsWith('assets/') ||
+        avatar.endsWith('.png') ||
+        avatar.endsWith('.jpg') ||
+        avatar.endsWith('.jpeg') ||
+        avatar.endsWith('.webp')) {
+      return ClipOval(
+        child: Image.asset(
+          avatar,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) =>
+              Text('🏀', style: TextStyle(fontSize: size * 0.85)),
+        ),
+      );
+    }
+    return Text(avatar, style: TextStyle(fontSize: size));
+  }
+
   @override
   void initState() {
     super.initState();
@@ -200,7 +220,7 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
                 ),
                 child: Row(
                   children: [
-                    Text(myAvatar, style: const TextStyle(fontSize: 22)),
+                    _buildAvatarView(myAvatar, size: 24),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Column(
@@ -360,10 +380,7 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
                             ),
                             child: Row(
                               children: [
-                                Text(
-                                  friend.avatarEmoji,
-                                  style: const TextStyle(fontSize: 20),
-                                ),
+                                _buildAvatarView(friend.avatarEmoji, size: 22),
                                 const SizedBox(width: 10),
                                 Expanded(
                                   child: Text(
