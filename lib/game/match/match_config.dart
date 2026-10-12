@@ -1,3 +1,5 @@
+import '../../models/player_descriptor.dart';
+
 /// Immutable configuration parameters for a 1v1 turn-based match.
 class MatchConfig {
   /// Total rounds per match (options: 2, 3, or 4; defaults to 2).
@@ -23,7 +25,7 @@ class MatchConfig {
     this.roundDurationSeconds = 60,
     this.player1Name = 'You',
     this.player2Name = 'Them',
-    this.player1Avatar = 'assets/avatars/dunk_heads (1).webp',
+    this.player1Avatar = PlayerDescriptor.defaultAvatar,
     this.player2Avatar = 'assets/avatars/dunk_heads (2).webp',
   });
 
