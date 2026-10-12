@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../../models/cloud_match.dart';
 import '../../../services/firestore_match_service.dart';
 import '../common/app_avatar.dart';
+import '../common/app_modal_sheet.dart';
 
 /// Modal sheet showing the live game conversation thread, round score breakdown, and banter chat.
 class MatchThreadDialog extends StatefulWidget {
@@ -27,10 +28,8 @@ class MatchThreadDialog extends StatefulWidget {
     required VoidCallback onPlayTurn,
     VoidCallback? onViewPodium,
   }) {
-    return showModalBottomSheet(
+    return AppModalSheet.show<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       builder: (ctx) => MatchThreadDialog(
         initialMatch: match,
         myUid: myUid,
@@ -121,133 +120,117 @@ class _MatchThreadDialogState extends State<MatchThreadDialog> {
         final isMyTurn = match.isMyTurn(widget.myUid);
         final isCompleted = match.status == MatchStatus.completed;
 
-        return Container(
-          height: MediaQuery.of(context).size.height * 0.85,
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          decoration: const BoxDecoration(
-            color: Color(0xFF131826),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-            border: Border(
-              top: BorderSide(color: Color(0xFF2E3954), width: 1.5),
-            ),
-          ),
-          child: SafeArea(
-            child: Column(
+        return AppModalSheet(
+          heightFactor: 0.85,
+          header: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+            child: Row(
               children: [
-                // Drag handle
-                Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.white24,
-                    borderRadius: BorderRadius.circular(2),
+                IconButton(
+                  icon: const Icon(
+                    Icons.arrow_back_ios_new_rounded,
+                    color: Colors.white70,
+                    size: 20,
                   ),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: () => Navigator.of(context).pop(),
                 ),
-                const SizedBox(height: 12),
-
-                // Header with back chevron, opponent info, and match code copy
-                Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(
-                        Icons.arrow_back_ios_new_rounded,
-                        color: Colors.white70,
-                        size: 20,
+                const SizedBox(width: 12),
+                AppAvatar(
+                  avatar: opponent?.avatarEmoji ??
+                      'assets/avatars/dunk_heads (2).webp',
+                  size: 36,
+                  borderColor: const Color(0xFF38BDF8),
+                  borderWidth: 1.5,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        opponent?.displayName ?? 'Waiting for opponent',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 16,
+                        ),
                       ),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                    const SizedBox(width: 12),
-                    AppAvatar(
-                      avatar: opponent?.avatarEmoji ??
-                          'assets/avatars/dunk_heads (2).webp',
-                      size: 36,
-                      borderColor: const Color(0xFF38BDF8),
-                      borderWidth: 1.5,
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      const SizedBox(height: 2),
+                      Row(
                         children: [
-                          Text(
-                            opponent?.displayName ?? 'Waiting for opponent',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w900,
-                              fontSize: 16,
+                          InkWell(
+                            borderRadius: BorderRadius.circular(6),
+                            onTap: () {
+                              Clipboard.setData(
+                                ClipboardData(text: match.joinCode),
+                              );
+                              HapticFeedback.lightImpact();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Match code ${match.joinCode} copied! 📋',
+                                  ),
+                                  duration: const Duration(seconds: 2),
+                                  behavior: SnackBarBehavior.floating,
+                                  backgroundColor: const Color(0xFF1E2638),
+                                ),
+                              );
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 2,
+                                horizontal: 2,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    'Code: ${match.joinCode}',
+                                    style: const TextStyle(
+                                      color: Color(0xFF38BDF8),
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  const Icon(
+                                    Icons.copy_rounded,
+                                    color: Color(0xFF38BDF8),
+                                    size: 13,
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                          const SizedBox(height: 2),
-                          Row(
-                            children: [
-                              InkWell(
-                                borderRadius: BorderRadius.circular(6),
-                                onTap: () {
-                                  Clipboard.setData(
-                                    ClipboardData(text: match.joinCode),
-                                  );
-                                  HapticFeedback.lightImpact();
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        'Match code ${match.joinCode} copied! 📋',
-                                      ),
-                                      duration: const Duration(seconds: 2),
-                                      behavior: SnackBarBehavior.floating,
-                                      backgroundColor: const Color(0xFF1E2638),
-                                    ),
-                                  );
-                                },
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 2,
-                                    horizontal: 2,
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        'Code: ${match.joinCode}',
-                                        style: const TextStyle(
-                                          color: Color(0xFF38BDF8),
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w700,
-                                          letterSpacing: 0.5,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 4),
-                                      const Icon(
-                                        Icons.copy_rounded,
-                                        color: Color(0xFF38BDF8),
-                                        size: 13,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                              const Text(
-                                ' • ',
-                                style: TextStyle(
-                                  color: Color(0xFF64748B),
-                                  fontSize: 11,
-                                ),
-                              ),
-                              Text(
-                                'Round ${match.currentRound}/${match.totalRounds}',
-                                style: const TextStyle(
-                                  color: Color(0xFF94A3B8),
-                                  fontSize: 11,
-                                ),
-                              ),
-                            ],
+                          const Text(
+                            ' • ',
+                            style: TextStyle(
+                              color: Color(0xFF64748B),
+                              fontSize: 11,
+                            ),
+                          ),
+                          Text(
+                            'Round ${match.currentRound}/${match.totalRounds}',
+                            style: const TextStyle(
+                              color: Color(0xFF94A3B8),
+                              fontSize: 11,
+                            ),
                           ),
                         ],
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
+              ],
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Column(
+              children: [
                 const SizedBox(height: 12),
 
                 // Mini Scoreboard Matrix
