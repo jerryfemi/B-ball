@@ -1,10 +1,9 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../services/auth_service.dart';
 import '../../match/match_config.dart';
+import '../common/app_modal_dialog.dart';
 
 /// Streamlined Arcade 1v1 Challenge Creator modal in muted luxury obsidian palette.
 class MatchSetupDialog extends StatefulWidget {
@@ -16,9 +15,8 @@ class MatchSetupDialog extends StatefulWidget {
     BuildContext context, {
     MatchConfig initialConfig = const MatchConfig(),
   }) {
-    return showDialog<MatchConfig>(
+    return AppModalDialog.show<MatchConfig>(
       context: context,
-      barrierColor: Colors.black.withValues(alpha: 0.8),
       builder: (context) => MatchSetupDialog(initialConfig: initialConfig),
     );
   }
@@ -67,88 +65,21 @@ class _MatchSetupDialogState extends State<MatchSetupDialog> {
     final myAvatar =
         profile?.avatarEmoji ?? 'assets/avatars/dunk_heads (1).webp';
 
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 24.0),
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 380.0),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(24.0),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 20.0, sigmaY: 20.0),
-              child: Material(
-                color: Colors.transparent,
-                child: Container(
-                  padding: const EdgeInsets.all(22.0),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF131826).withValues(alpha: 0.95),
-                    borderRadius: BorderRadius.circular(24.0),
-                    border: Border.all(
-                      color: const Color(0xFF2E3954),
-                      width: 1.5,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.5),
-                        blurRadius: 28.0,
-                        offset: const Offset(0, 10),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Header row with close button
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8.0),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF1E2638),
-                              borderRadius: BorderRadius.circular(12.0),
-                            ),
-                            child: const Icon(
-                              Icons.sports_basketball_rounded,
-                              color: Color(0xFFF59E0B),
-                              size: 22.0,
-                            ),
-                          ),
-                          const SizedBox(width: 12.0),
-                          const Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'NEW 1V1 MATCH',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16.5,
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: 1.0,
-                                  ),
-                                ),
-                                Text(
-                                  'Challenge a friend with match code',
-                                  style: TextStyle(
-                                    color: Color(0xFF94A3B8),
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(
-                              Icons.close_rounded,
-                              color: Colors.white54,
-                            ),
-                            onPressed: () => Navigator.of(context).pop(),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 18.0),
+    return AppModalDialog(
+      maxWidth: 380.0,
+      scrollable: true,
+      iconWidget: const Icon(
+        Icons.sports_basketball_rounded,
+        color: Color(0xFFF59E0B),
+        size: 22.0,
+      ),
+      title: 'NEW 1V1 MATCH',
+      subtitle: 'Challenge a friend with match code',
+      showCloseButton: true,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
 
                       // Player identity capsule
                       Container(
@@ -365,12 +296,6 @@ class _MatchSetupDialogState extends State<MatchSetupDialog> {
                       ),
                     ],
                   ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
+                );
   }
 }
