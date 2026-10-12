@@ -6,6 +6,7 @@ import '../../../services/firestore_match_service.dart';
 import 'join_match_dialog.dart';
 import 'match_inbox_card.dart';
 import 'match_thread_dialog.dart';
+import '../social/friends_hub_sheet.dart';
 
 /// The central 1v1 Match Hub bottom sheet modal.
 class MatchInboxSheet extends StatefulWidget {
@@ -178,33 +179,50 @@ class _MatchInboxSheetState extends State<MatchInboxSheet> {
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
                 children: [
-                  // Profile chip (tappable to edit)
                   InkWell(
                     onTap: myProfile != null ? () => _showEditProfileDialog(context, myProfile) : null,
                     borderRadius: BorderRadius.circular(14),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1E2638),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: const Color(0xFF334155)),
-                      ),
-                      child: Row(
-                        children: [
-                          Text(myProfile?.avatarEmoji ?? '🏀', style: const TextStyle(fontSize: 18)),
-                          const SizedBox(width: 8),
-                          Text(
-                            myProfile?.displayName ?? 'Player',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w800,
-                            ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1E2638),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFF334155)),
                           ),
-                          const SizedBox(width: 6),
-                          const Icon(Icons.edit_outlined, size: 12, color: Color(0xFF94A3B8)),
-                        ],
-                      ),
+                          child: Text(myProfile?.avatarEmoji ?? '🏀', style: const TextStyle(fontSize: 20)),
+                        ),
+                        const SizedBox(width: 12),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'MATCH INBOX',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 0.8,
+                              ),
+                            ),
+                            Row(
+                              children: [
+                                Text(
+                                  myProfile?.displayName ?? 'Baller',
+                                  style: const TextStyle(
+                                    color: Color(0xFF94A3B8),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                const Icon(Icons.edit_outlined, size: 11, color: Color(0xFF64748B)),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
                   const Spacer(),
@@ -217,19 +235,23 @@ class _MatchInboxSheetState extends State<MatchInboxSheet> {
             ),
             const SizedBox(height: 14),
 
-            // Quick Actions: "+ NEW MATCH" and "# JOIN CODE"
+            // Quick Actions: "+ CREATE MATCH", "JOIN MATCH", and "FRIENDS"
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
                 children: [
                   Expanded(
+                    flex: 11,
                     child: ElevatedButton.icon(
                       onPressed: () {
                         Navigator.of(context).pop();
                         widget.onCreateMatch();
                       },
-                      icon: const Icon(Icons.add_rounded, size: 18),
-                      label: const Text('NEW MATCH'),
+                      icon: const Icon(Icons.add_rounded, size: 16),
+                      label: const Text(
+                        'CREATE MATCH',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 0.4),
+                      ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF2563EB),
                         foregroundColor: Colors.white,
@@ -239,8 +261,9 @@ class _MatchInboxSheetState extends State<MatchInboxSheet> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 8),
                   Expanded(
+                    flex: 10,
                     child: OutlinedButton.icon(
                       onPressed: () async {
                         final match = await JoinMatchDialog.show(context);
@@ -249,11 +272,40 @@ class _MatchInboxSheetState extends State<MatchInboxSheet> {
                           widget.onPlayMatch(match);
                         }
                       },
-                      icon: const Icon(Icons.dialpad_rounded, size: 16),
-                      label: const Text('JOIN CODE'),
+                      icon: const Icon(Icons.dialpad_rounded, size: 14),
+                      label: const Text(
+                        'JOIN MATCH',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 0.4),
+                      ),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: const Color(0xFF00FFCC),
-                        side: const BorderSide(color: Color(0xFF00FFCC)),
+                        side: const BorderSide(color: Color(0xFF00FFCC), width: 1.2),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    flex: 8,
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        FriendsHubSheet.show(
+                          context,
+                          onPlayMatch: widget.onPlayMatch,
+                          onCreateMatch: widget.onCreateMatch,
+                          onViewPodium: widget.onViewPodium,
+                        );
+                      },
+                      icon: const Icon(Icons.people_alt_rounded, size: 14),
+                      label: const Text(
+                        'FRIENDS',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 0.4),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF818CF8),
+                        side: const BorderSide(color: Color(0xFF6366F1), width: 1.2),
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
@@ -269,9 +321,9 @@ class _MatchInboxSheetState extends State<MatchInboxSheet> {
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
                 children: [
-                  _buildTabPill(0, 'LIVE MATCHES 🔥'),
+                  _buildTabPill(0, 'ACTIVE MATCHES'),
                   const SizedBox(width: 8),
-                  _buildTabPill(1, 'TROPHY ROOM 🏆'),
+                  _buildTabPill(1, 'COMPLETED'),
                 ],
               ),
             ),
@@ -281,8 +333,9 @@ class _MatchInboxSheetState extends State<MatchInboxSheet> {
             Expanded(
               child: StreamBuilder<List<CloudMatch>>(
                 stream: FirestoreMatchService.instance.streamUserMatches(myUid),
+                initialData: FirestoreMatchService.instance.getCachedUserMatches(myUid),
                 builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
+                  if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
                     return const Center(
                       child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF00FFCC)),
                     );
@@ -314,19 +367,24 @@ class _MatchInboxSheetState extends State<MatchInboxSheet> {
                         match: match,
                         myUid: myUid,
                         onTap: () {
-                          MatchThreadDialog.show(
-                            context,
-                            match: match,
-                            myUid: myUid,
-                            onPlayTurn: () {
-                              Navigator.of(context).pop();
-                              widget.onPlayMatch(match);
-                            },
-                            onViewPodium: () {
-                              Navigator.of(context).pop();
-                              widget.onViewPodium?.call(match);
-                            },
-                          );
+                          if (match.status == MatchStatus.completed) {
+                            Navigator.of(context).pop();
+                            widget.onViewPodium?.call(match);
+                          } else {
+                            MatchThreadDialog.show(
+                              context,
+                              match: match,
+                              myUid: myUid,
+                              onPlayTurn: () {
+                                Navigator.of(context).pop();
+                                widget.onPlayMatch(match);
+                              },
+                              onViewPodium: () {
+                                Navigator.of(context).pop();
+                                widget.onViewPodium?.call(match);
+                              },
+                            );
+                          }
                         },
                         onPlayTurn: () {
                           Navigator.of(context).pop();
