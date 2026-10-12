@@ -1,11 +1,11 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
+
+import 'common/app_modal_dialog.dart';
 
 /// Displays the collegiate "HOW TO PLAY" rules dialog.
 Future<void> showGameRulesDialog(BuildContext context) {
-  return showDialog(
+  return AppModalDialog.show<void>(
     context: context,
-    barrierColor: const Color(0x99000000),
     builder: (context) => const GameRulesDialog(),
   );
 }
@@ -16,64 +16,13 @@ class GameRulesDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24.0),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24.0),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 16.0, sigmaY: 16.0),
-          child: Container(
-            padding: const EdgeInsets.all(24.0),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Color(0xF20F172A),
-                  Color(0xFA090D16),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(24.0),
-              border: Border.all(
-                color: const Color(0x38FFFFFF),
-                width: 1.2,
-              ),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x80000000),
-                  blurRadius: 28.0,
-                  offset: Offset(0, 10),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'HOW TO PLAY',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16.0,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.5,
-                      ),
-                    ),
-                    IconButton(
-                      visualDensity: VisualDensity.compact,
-                      onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(
-                        Icons.close_rounded,
-                        color: Color(0xFF94A3B8),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16.0),
+    return AppModalDialog(
+      title: 'HOW TO PLAY',
+      showCloseButton: true,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
                 const _RuleRow(
                   icon: '🏀',
                   title: 'Flick to Shoot',
@@ -128,10 +77,7 @@ class GameRulesDialog extends StatelessWidget {
                 ),
               ],
             ),
-          ),
-        ),
-      ),
-    );
+          );
   }
 }
 
