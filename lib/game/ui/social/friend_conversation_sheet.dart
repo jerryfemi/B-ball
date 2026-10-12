@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../../models/cloud_match.dart';
 import '../../../models/friend_profile.dart';
 import '../../../models/player_descriptor.dart';
+import '../../../providers/app_providers.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/firestore_match_service.dart';
 import '../../../services/friends_service.dart';
@@ -16,7 +18,7 @@ import '../match/match_setup_dialog.dart';
 
 /// GamePigeon-style conversation screen featuring a sticky top 1v1 match banner,
 /// persistent chat banter feed, and keyboard-safe layout.
-class FriendConversationSheet extends HookWidget {
+class FriendConversationSheet extends HookConsumerWidget {
   final FriendProfile friend;
   final String myUid;
   final CloudMatch? activeMatch;
@@ -62,10 +64,11 @@ class FriendConversationSheet extends HookWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final msgController = useTextEditingController();
     final scrollController = useScrollController();
     final currentMatch = useState<CloudMatch?>(activeMatch);
+    final currentUser = ref.watch(currentUserProfileProvider).value;
 
     void scrollToBottom() {
       Future.delayed(const Duration(milliseconds: 150), () {
@@ -83,7 +86,7 @@ class FriendConversationSheet extends HookWidget {
       final clean = text.trim();
       if (clean.isEmpty) return;
 
-      final user = AuthService.instance.currentUser;
+      final user = currentUser;
       final myName = user?.displayName ?? 'You';
       final myAvatar = user?.avatarEmoji ?? PlayerDescriptor.defaultAvatar;
       final now = DateTime.now().millisecondsSinceEpoch;
@@ -122,7 +125,7 @@ class FriendConversationSheet extends HookWidget {
       if (config == null || !context.mounted) return;
 
       final profile =
-          AuthService.instance.currentUser ??
+          currentUser ??
           UserProfile(
             uid: myUid,
             displayName: 'Player',
@@ -147,59 +150,45 @@ class FriendConversationSheet extends HookWidget {
     }
 
     final matchId = currentMatch.value?.id ?? friend.activeMatchId;
+    final streamedMatch = (matchId != null && matchId.isNotEmpty)
+        ? ref.watch(singleMatchProvider(matchId)).value
+        : null;
+    final effectiveMatch = streamedMatch ?? currentMatch.value;
+
+    final directChat = ref.watch(directChatProvider((
+      myUid: myUid,
+      friendUid: friend.uid,
+    ))).value ?? const <CloudChatMessage>[];
+
+    final matchChat = effectiveMatch?.chat ?? const [];
+    final allChat = <String, CloudChatMessage>{};
+    for (final m in matchChat) {
+      allChat[m.id] = m;
+    }
+    for (final m in directChat) {
+      allChat[m.id] = m;
+    }
+    final sortedChat = allChat.values.toList()
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
     return AppModalSheet(
       heightFactor: 0.88,
       header: _buildHeader(context),
       child: Column(
         children: [
-          // Stream active match state if present
-          if (matchId != null)
-            StreamBuilder<CloudMatch?>(
-              stream: FirestoreMatchService.instance.streamMatch(matchId),
-              initialData: currentMatch.value,
-              builder: (context, snapshot) {
-                if (snapshot.hasData && snapshot.data != null) {
-                  currentMatch.value = snapshot.data;
-                }
-                return _buildStickyGameBanner(
-                  context,
-                  currentMatch.value,
-                  handleCreateChallenge,
-                );
-              },
-            )
-          else
-            _buildStickyGameBanner(context, null, handleCreateChallenge),
-
+          _buildStickyGameBanner(
+            context,
+            effectiveMatch,
+            handleCreateChallenge,
+          ),
           const Divider(color: Color(0xFF1E2638), height: 1),
 
-          // Chat banter message stream
+          // Chat banter message list
           Expanded(
-            child: StreamBuilder<List<CloudChatMessage>>(
-              stream: FriendsService.instance.streamDirectChat(
-                myUid: myUid,
-                friendUid: friend.uid,
-              ),
-              builder: (context, snapshot) {
-                final directChat = snapshot.data ?? const [];
-                final matchChat = currentMatch.value?.chat ?? const [];
-                final allChat = <String, CloudChatMessage>{};
-                for (final m in matchChat) {
-                  allChat[m.id] = m;
-                }
-                for (final m in directChat) {
-                  allChat[m.id] = m;
-                }
-                final sortedChat = allChat.values.toList()
-                  ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
-
-                return ChatBubbleList(
-                  messages: sortedChat,
-                  myUid: myUid,
-                  controller: scrollController,
-                );
-              },
+            child: ChatBubbleList(
+              messages: sortedChat,
+              myUid: myUid,
+              controller: scrollController,
             ),
           ),
 

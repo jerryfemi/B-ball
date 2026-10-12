@@ -134,3 +134,17 @@ final singleMatchProvider = StreamProvider.autoDispose.family<CloudMatch?, Strin
   final matchService = ref.watch(matchServiceProvider);
   return matchService.streamMatch(matchId);
 });
+
+/// Streams direct banter messages between the user and a friend.
+final directChatProvider = StreamProvider.autoDispose.family<
+    List<CloudChatMessage>,
+    ({String myUid, String friendUid})>((ref, arg) {
+  if (arg.myUid.isEmpty || arg.friendUid.isEmpty) {
+    return Stream.value(const <CloudChatMessage>[]);
+  }
+  final friendsService = ref.watch(friendsServiceProvider);
+  return friendsService.streamDirectChat(
+    myUid: arg.myUid,
+    friendUid: arg.friendUid,
+  );
+});
