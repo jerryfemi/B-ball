@@ -220,8 +220,13 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
                     const SizedBox(width: 5.0),
                     ScoreboardOpponentAvatar(
                       isActive: p2Active,
-                      label: matchSession.player2.name,
+                      label: matchSession.isWaitingForOpponent
+                          ? (matchSession.joinCode != null ? 'CODE: ${matchSession.joinCode}' : 'WAITING')
+                          : matchSession.player2.name,
                       avatar: matchSession.player2.avatar,
+                      isWaiting: matchSession.isWaitingForOpponent,
+                      joinCode: matchSession.joinCode,
+                      activeMatchId: matchSession.cloudMatchId,
                     ),
                   ],
                 ],
@@ -280,7 +285,11 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
             ),
             const SizedBox(width: 10.0),
             ScoreboardBay(
-              label: is1v1 ? 'THEM' : 'BEST',
+              label: is1v1
+                  ? (matchSession.isWaitingForOpponent
+                      ? 'RIVAL'
+                      : matchSession.player2.name.toUpperCase())
+                  : 'BEST',
               valueListenable: is1v1
                   ? widget.game.player2MatchScoreNotifier
                   : widget.game.bestScoreNotifier,
