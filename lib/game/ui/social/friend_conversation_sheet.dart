@@ -160,7 +160,11 @@ class FriendConversationSheet extends HookConsumerWidget {
       friendUid: friend.uid,
     ))).value ?? const <CloudChatMessage>[];
 
-    final matchChat = effectiveMatch?.chat ?? const [];
+    // Stream match chat from lightweight subcollection (decoupled from telemetry)
+    final matchChat = (effectiveMatch != null && effectiveMatch.id.isNotEmpty)
+        ? ref.watch(matchChatProvider(effectiveMatch.id)).value ?? effectiveMatch.chat
+        : const <CloudChatMessage>[];
+
     final allChat = <String, CloudChatMessage>{};
     for (final m in matchChat) {
       allChat[m.id] = m;
