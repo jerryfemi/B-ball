@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../models/player_descriptor.dart';
 import '../../services/auth_service.dart';
 import '../../services/firestore_match_service.dart';
 import '../basketball_game.dart';
@@ -55,7 +56,7 @@ class GameHudOverlay extends StatelessWidget {
               UserProfile(
                 uid: user.uid,
                 displayName: user.displayName ?? 'Player',
-                avatarEmoji: 'assets/avatars/dunk_heads (1).webp',
+                avatarEmoji: PlayerDescriptor.defaultAvatar,
               );
           final newMatch = await FirestoreMatchService.instance.createMatch(
             config: config,
