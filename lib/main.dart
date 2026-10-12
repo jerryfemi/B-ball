@@ -37,7 +37,7 @@ class BasketballApp extends StatelessWidget {
       behavior: HitTestBehavior.translucent,
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
-        title: 'Basketball Challenge',
+        title: 'B-Ball',
         theme: ThemeData.dark(),
         home: Scaffold(
           body: GameWidget<BasketballGame>(
