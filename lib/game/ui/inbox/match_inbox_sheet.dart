@@ -333,7 +333,6 @@ class _MatchInboxSheetState extends State<MatchInboxSheet> {
             Expanded(
               child: StreamBuilder<List<CloudMatch>>(
                 stream: FirestoreMatchService.instance.streamUserMatches(myUid),
-                initialData: FirestoreMatchService.instance.getCachedUserMatches(myUid),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
                     return const Center(

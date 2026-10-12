@@ -84,7 +84,7 @@ class _InboxNotificationBadgeState extends State<InboxNotificationBadge>
 
         return StreamBuilder<List<CloudMatch>>(
           stream: _matchesStream,
-          initialData: FirestoreMatchService.instance.getCachedUserMatches(user.uid),
+          initialData: const <CloudMatch>[],
           builder: (context, snapshot) {
             final matches = snapshot.data ?? [];
             final activeId = widget.activeMatchId;
