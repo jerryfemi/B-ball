@@ -30,7 +30,8 @@
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
 
-  <!-- Favicon -->
+  <!-- Favicon & Preload Splash Icon -->
+  <link rel="preload" as="image" href="icons/Icon-180.png" />
   <link rel="icon" type="image/png" sizes="64x64" href="favicon.png"/>
   <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png"/>
 
@@ -52,7 +53,7 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
 
-    /* PWA Arcade Splash Screen */
+    /* Fast, Clean App Icon Splash */
     #splash-screen {
       position: fixed;
       top: 0;
@@ -63,10 +64,10 @@
       flex-direction: column;
       justify-content: center;
       align-items: center;
-      background: radial-gradient(circle at 50% 40%, #151D33 0%, #0A0E1A 75%, #05070D 100%);
+      background-color: #0A0E1A;
       z-index: 999999;
       opacity: 1;
-      transition: opacity 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+      transition: opacity 0.35s ease-out;
       pointer-events: auto;
     }
 
@@ -75,152 +76,81 @@
       pointer-events: none;
     }
 
-    .splash-brand {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      margin-bottom: 26px;
+    /* Responsive App Icon - properly fitted with smooth iOS continuous curve */
+    .splash-icon {
+      width: min(108px, 24vw);
+      height: min(108px, 24vw);
+      object-fit: cover;
+      border-radius: 24%;
+      box-shadow: 0 14px 34px rgba(0, 0, 0, 0.7), 0 0 20px rgba(0, 255, 204, 0.18);
+      animation: gentlePulse 1.8s infinite ease-in-out;
     }
 
-    .app-icon-badge {
-      width: 76px;
-      height: 76px;
-      border-radius: 20px;
-      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65), 0 0 24px rgba(0, 255, 204, 0.25);
-      border: 1.5px solid rgba(0, 255, 204, 0.4);
-      margin-bottom: 12px;
-      animation: pulseGlow 2s infinite ease-in-out;
-    }
-
-    .brand-title {
-      color: #FFFFFF;
-      font-weight: 900;
-      letter-spacing: 4px;
-      font-size: 1.25rem;
-      margin: 0;
-      text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8);
-    }
-
-    .brand-sub {
-      color: #00FFCC;
-      font-weight: 800;
-      letter-spacing: 2px;
-      font-size: 0.68rem;
-      margin-top: 4px;
-      text-transform: uppercase;
-      opacity: 0.9;
-    }
-
-    /* Bouncing Basketball Animation */
-    .bounce-stage {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      height: 90px;
-      justify-content: flex-end;
-    }
-
-    .ball {
-      width: 44px;
-      height: 44px;
-      background: radial-gradient(circle at 35% 32%, #FF7733 0%, #E65100 60%, #9C27B0 140%);
-      border-radius: 50%;
-      animation: bounce 0.58s infinite alternate ease-in;
-      box-shadow: inset -3px -3px 8px rgba(0, 0, 0, 0.6), 0 4px 14px rgba(255, 119, 51, 0.45);
-      position: relative;
-    }
-
-    /* Subtle basketball seam line */
-    .ball::after {
-      content: '';
-      position: absolute;
-      top: 50%;
-      left: 0;
-      width: 100%;
-      height: 2px;
-      background: rgba(0, 0, 0, 0.35);
-      transform: translateY(-50%);
-    }
-
-    .shadow {
-      width: 38px;
-      height: 9px;
-      background: rgba(0, 0, 0, 0.65);
-      border-radius: 50%;
-      animation: scaleShadow 0.58s infinite alternate ease-in;
-      margin-top: 8px;
-      filter: blur(1.5px);
-    }
-
-    @keyframes bounce {
-      0% {
-        transform: translateY(-55px) scale(1, 1);
-      }
-      90% {
-        transform: translateY(0) scale(1, 1);
-      }
-      100% {
-        transform: translateY(2px) scale(1.12, 0.88);
-      }
-    }
-
-    @keyframes scaleShadow {
-      0% {
-        transform: scale(0.35);
-        opacity: 0.2;
-      }
-      100% {
-        transform: scale(1.1);
-        opacity: 0.7;
-      }
-    }
-
-    @keyframes pulseGlow {
+    @keyframes gentlePulse {
       0%, 100% {
         transform: scale(1);
-        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65), 0 0 20px rgba(0, 255, 204, 0.25);
+        opacity: 0.95;
       }
       50% {
-        transform: scale(1.025);
-        box-shadow: 0 14px 36px rgba(0, 0, 0, 0.75), 0 0 32px rgba(0, 255, 204, 0.45);
+        transform: scale(1.04);
+        opacity: 1;
       }
     }
+
+    /*
+    --- COMMENTED OUT: Animated bouncing ball and title splash ---
+    .ball {
+      width: 60px;
+      height: 60px;
+      background: radial-gradient(circle at 35% 35%, #ff7733, #b83a00);
+      border-radius: 50%;
+      animation: bounce 0.6s infinite alternate ease-in;
+      box-shadow: inset -4px -4px 10px rgba(0,0,0,0.5);
+    }
+    .shadow {
+      width: 50px;
+      height: 12px;
+      background: rgba(0, 0, 0, 0.4);
+      border-radius: 50%;
+      animation: scaleShadow 0.6s infinite alternate ease-in;
+      margin-top: 15px;
+    }
+    .title {
+      color: #ffffff;
+      font-weight: 800;
+      letter-spacing: 4px;
+      margin-top: 25px;
+      font-size: 1.1rem;
+      opacity: 0.8;
+    }
+    */
   </style>
 </head>
 <body>
-  <!-- Seamless PWA Arcade Splash Screen -->
+  <!-- Clean App Icon Splash -->
   <div id="splash-screen">
-    <div class="splash-brand">
-      <img class="app-icon-badge" src="icons/Icon-180.png" alt="B-Ball Logo" />
-      <h1 class="brand-title">B-BALL</h1>
-      <span class="brand-sub">3D ARCADE HOOPS</span>
-    </div>
-
-    <div class="bounce-stage">
-      <div class="ball"></div>
-      <div class="shadow"></div>
-    </div>
+    <img class="splash-icon" src="icons/Icon-180.png" alt="B-Ball" />
   </div>
 
   <script>
-    // Smoothly dismiss splash screen when Flutter renders its very first frame
+    // Smoothly dismiss splash screen as soon as Flutter renders the first frame
     window.addEventListener('flutter-first-frame', function () {
       const splash = document.getElementById('splash-screen');
       if (splash) {
         splash.classList.add('fade-out');
-        setTimeout(() => splash.remove(), 480);
+        setTimeout(() => splash.remove(), 360);
       }
     });
 
-    // Fallback safety timer: ensure splash never stays stuck if first-frame event is delayed
+    // Safety fallback
     window.addEventListener('load', function () {
       setTimeout(function () {
         const splash = document.getElementById('splash-screen');
         if (splash && !splash.classList.contains('fade-out')) {
           splash.classList.add('fade-out');
-          setTimeout(() => splash.remove(), 480);
+          setTimeout(() => splash.remove(), 360);
         }
-      }, 7000);
+      }, 5000);
     });
   </script>
 
