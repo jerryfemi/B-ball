@@ -127,7 +127,7 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
     final myUser = AuthService.instance.currentUser;
     final myName = myUser?.displayName ?? 'Player';
     final myAvatar =
-        myUser?.avatarEmoji ?? 'assets/avatars/dunk_heads (1).webp';
+        myUser?.avatarEmoji ?? AppAvatar.defaultAvatar;
 
     return AppModalDialog(
       maxWidth: 380,
