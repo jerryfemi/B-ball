@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 
 import '../basketball_game.dart';
 
@@ -18,7 +19,7 @@ class _ToastItem {
 /// Floating Score Toast System that listens to [BasketballGame.scoreEventNotifier]
 /// and spawns celebratory floating badges (+3 SWISH!, +3 BANK SHOT!, +2 PTS)
 /// that gently drift upward and fade out.
-class FloatingScoreToastSystem extends StatefulWidget {
+class FloatingScoreToastSystem extends HookWidget {
   final BasketballGame game;
 
   const FloatingScoreToastSystem({
@@ -27,68 +28,42 @@ class FloatingScoreToastSystem extends StatefulWidget {
   });
 
   @override
-  State<FloatingScoreToastSystem> createState() =>
-      _FloatingScoreToastSystemState();
-}
-
-class _FloatingScoreToastSystemState extends State<FloatingScoreToastSystem> {
-  final List<_ToastItem> _activeToasts = [];
-  int _toastCounter = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    widget.game.scoreEventNotifier.addListener(_onScoreEvent);
-  }
-
-  @override
-  void didUpdateWidget(covariant FloatingScoreToastSystem oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.game != widget.game) {
-      oldWidget.game.scoreEventNotifier.removeListener(_onScoreEvent);
-      widget.game.scoreEventNotifier.addListener(_onScoreEvent);
-    }
-  }
-
-  @override
-  void dispose() {
-    widget.game.scoreEventNotifier.removeListener(_onScoreEvent);
-    super.dispose();
-  }
-
-  void _onScoreEvent() {
-    final event = widget.game.scoreEventNotifier.value;
-    if (event == null || !mounted) return;
-
-    setState(() {
-      _toastCounter++;
-      _activeToasts.add(
-        _ToastItem(
-          key: ValueKey('toast_$_toastCounter'),
-          event: event,
-          createdAt: DateTime.now(),
-        ),
-      );
-    });
-  }
-
-  void _removeToast(Key key) {
-    if (!mounted) return;
-    setState(() {
-      _activeToasts.removeWhere((item) => item.key == key);
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
+    final activeToasts = useState<List<_ToastItem>>([]);
+    final toastCounterRef = useRef<int>(0);
+
+    useEffect(() {
+      void onScoreEvent() {
+        final event = game.scoreEventNotifier.value;
+        if (event == null) return;
+        toastCounterRef.value++;
+        activeToasts.value = [
+          ...activeToasts.value,
+          _ToastItem(
+            key: ValueKey('toast_${toastCounterRef.value}'),
+            event: event,
+            createdAt: DateTime.now(),
+          ),
+        ];
+      }
+
+      game.scoreEventNotifier.addListener(onScoreEvent);
+      return () => game.scoreEventNotifier.removeListener(onScoreEvent);
+    }, [game]);
+
+    void removeToast(Key key) {
+      activeToasts.value =
+          activeToasts.value.where((item) => item.key != key).toList();
+    }
+
     return IgnorePointer(
       child: Stack(
         alignment: Alignment.center,
-        children: _activeToasts.map((toast) {
+        children: activeToasts.value.map((toast) {
           return _FloatingToastWidget(
             key: toast.key,
             event: toast.event,
-            onComplete: () => _removeToast(toast.key),
+            onComplete: () => removeToast(toast.key),
           );
         }).toList(),
       ),
@@ -96,7 +71,7 @@ class _FloatingScoreToastSystemState extends State<FloatingScoreToastSystem> {
   }
 }
 
-class _FloatingToastWidget extends StatefulWidget {
+class _FloatingToastWidget extends HookWidget {
   final ScoreEvent event;
   final VoidCallback onComplete;
 
@@ -107,74 +82,60 @@ class _FloatingToastWidget extends StatefulWidget {
   });
 
   @override
-  State<_FloatingToastWidget> createState() => _FloatingToastWidgetState();
-}
-
-class _FloatingToastWidgetState extends State<_FloatingToastWidget>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  late final Animation<double> _scaleAnimation;
-  late final Animation<double> _fadeAnimation;
-  late final Animation<Offset> _slideAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
+  Widget build(BuildContext context) {
+    final controller = useAnimationController(
       duration: const Duration(milliseconds: 900),
     );
 
     // Initial punchy spring pop-in
-    _scaleAnimation = TweenSequence<double>([
-      TweenSequenceItem(
-        tween: Tween<double>(begin: 0.5, end: 1.15)
-            .chain(CurveTween(curve: Curves.easeOutBack)),
-        weight: 35,
-      ),
-      TweenSequenceItem(
-        tween: Tween<double>(begin: 1.15, end: 1.0)
-            .chain(CurveTween(curve: Curves.easeInOut)),
-        weight: 20,
-      ),
-      TweenSequenceItem(
-        tween: Tween<double>(begin: 1.0, end: 0.95),
-        weight: 45,
-      ),
-    ]).animate(_controller);
+    final scaleAnimation = useMemoized(
+      () => TweenSequence<double>([
+        TweenSequenceItem(
+          tween: Tween<double>(begin: 0.5, end: 1.15)
+              .chain(CurveTween(curve: Curves.easeOutBack)),
+          weight: 35,
+        ),
+        TweenSequenceItem(
+          tween: Tween<double>(begin: 1.15, end: 1.0)
+              .chain(CurveTween(curve: Curves.easeInOut)),
+          weight: 20,
+        ),
+        TweenSequenceItem(
+          tween: Tween<double>(begin: 1.0, end: 0.95),
+          weight: 45,
+        ),
+      ]).animate(controller),
+      [controller],
+    );
 
     // Upward float drift
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0.0, 0.0),
-      end: const Offset(0.0, -1.3),
-    ).chain(CurveTween(curve: Curves.easeOutCubic)).animate(_controller);
+    final slideAnimation = useMemoized(
+      () => Tween<Offset>(
+        begin: const Offset(0.0, 0.0),
+        end: const Offset(0.0, -1.3),
+      ).chain(CurveTween(curve: Curves.easeOutCubic)).animate(controller),
+      [controller],
+    );
 
     // Smooth fade out in the final 40% of duration
-    _fadeAnimation = TweenSequence<double>([
-      TweenSequenceItem(tween: ConstantTween<double>(1.0), weight: 60),
-      TweenSequenceItem(
-        tween: Tween<double>(begin: 1.0, end: 0.0)
-            .chain(CurveTween(curve: Curves.easeIn)),
-        weight: 40,
-      ),
-    ]).animate(_controller);
+    final fadeAnimation = useMemoized(
+      () => TweenSequence<double>([
+        TweenSequenceItem(tween: ConstantTween<double>(1.0), weight: 60),
+        TweenSequenceItem(
+          tween: Tween<double>(begin: 1.0, end: 0.0)
+              .chain(CurveTween(curve: Curves.easeIn)),
+          weight: 40,
+        ),
+      ]).animate(controller),
+      [controller],
+    );
 
-    _controller.forward().then((_) {
-      if (mounted) {
-        widget.onComplete();
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final event = widget.event;
+    useEffect(() {
+      controller.forward().then((_) {
+        onComplete();
+      });
+      return null;
+    }, const []);
 
     // Palette & Label resolution
     final Color primaryColor;
@@ -202,38 +163,37 @@ class _FloatingToastWidgetState extends State<_FloatingToastWidget>
     final hasStreakBonus = event.streak >= 3;
 
     return SlideTransition(
-      position: _slideAnimation,
+      position: slideAnimation,
       child: FadeTransition(
-        opacity: _fadeAnimation,
+        opacity: fadeAnimation,
         child: ScaleTransition(
-          scale: _scaleAnimation,
+          scale: scaleAnimation,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 16.0,
-                  vertical: 8.0,
+                  horizontal: 14.0,
+                  vertical: 6.0,
                 ),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
                     colors: [
-                      const Color(0xE60F172A),
-                      const Color(0xCC1E293B),
+                      const Color(0xF20F172A),
+                      primaryColor.withValues(alpha: 0.20),
                     ],
                   ),
-                  borderRadius: BorderRadius.circular(24.0),
+                  borderRadius: BorderRadius.circular(20.0),
                   border: Border.all(
-                    color: primaryColor.withValues(alpha: 0.65),
+                    color: primaryColor.withValues(alpha: 0.85),
                     width: 1.5,
                   ),
                   boxShadow: [
                     BoxShadow(
                       color: glowColor,
-                      blurRadius: 18.0,
+                      blurRadius: 16.0,
                       spreadRadius: 2.0,
+                      offset: const Offset(0, 2),
                     ),
                   ],
                 ),
@@ -242,59 +202,56 @@ class _FloatingToastWidgetState extends State<_FloatingToastWidget>
                   children: [
                     Icon(
                       icon,
+                      size: 16.0,
                       color: primaryColor,
-                      size: 20.0,
                     ),
-                    const SizedBox(width: 8.0),
+                    const SizedBox(width: 6.0),
                     Text(
                       label,
                       style: TextStyle(
                         color: primaryColor,
-                        fontSize: 18.0,
+                        fontSize: 13.5,
                         fontWeight: FontWeight.w900,
-                        letterSpacing: 1.0,
-                        fontFeatures: const [FontFeature.tabularFigures()],
+                        letterSpacing: 1.2,
+                        shadows: [
+                          Shadow(
+                            color: glowColor,
+                            blurRadius: 8.0,
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
               ),
+
+              // Consecutive Streak Multiplier Sub-Badge
               if (hasStreakBonus) ...[
-                const SizedBox(height: 6.0),
+                const SizedBox(height: 3.0),
                 Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 10.0,
-                    vertical: 3.0,
+                    horizontal: 8.0,
+                    vertical: 2.0,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xE6EA580C),
-                    borderRadius: BorderRadius.circular(12.0),
+                    color: const Color(0xFFEF4444).withValues(alpha: 0.90),
+                    borderRadius: BorderRadius.circular(8.0),
                     boxShadow: const [
                       BoxShadow(
-                        color: Color(0x66EA580C),
-                        blurRadius: 10.0,
-                        spreadRadius: 1.0,
+                        color: Color(0x88EF4444),
+                        blurRadius: 8.0,
+                        offset: Offset(0, 1),
                       ),
                     ],
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text(
-                        '🔥',
-                        style: TextStyle(fontSize: 12.0),
-                      ),
-                      const SizedBox(width: 4.0),
-                      Text(
-                        'STREAK x${event.streak} (+${event.streak - 2} BONUS)',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11.0,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ],
+                  child: Text(
+                    '🔥 ${event.streak} STREAK (+${event.streak - 2} BONUS)',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.8,
+                    ),
                   ),
                 ),
               ],
