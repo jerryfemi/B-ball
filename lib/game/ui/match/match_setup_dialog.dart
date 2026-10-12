@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 
 import '../../../models/cloud_match.dart';
 import '../../../models/friend_profile.dart';
@@ -14,7 +15,7 @@ import 'components/friend_selector_ribbon.dart';
 import 'components/match_code_card.dart';
 
 /// Streamlined Arcade 1v1 Challenge Creator modal in muted luxury obsidian palette.
-class MatchSetupDialog extends StatefulWidget {
+class MatchSetupDialog extends HookWidget {
   final MatchConfig initialConfig;
 
   const MatchSetupDialog({super.key, this.initialConfig = const MatchConfig()});
@@ -29,116 +30,120 @@ class MatchSetupDialog extends StatefulWidget {
     );
   }
 
-  @override
-  State<MatchSetupDialog> createState() => _MatchSetupDialogState();
-}
-
-class _MatchSetupDialogState extends State<MatchSetupDialog> {
-  late int _selectedRounds;
-  late int _selectedDuration;
-  int _opponentMode = 0; // 0: Open Code, 1: Friend Challenge
-  FriendProfile? _selectedFriend;
-  bool _isGeneratingCode = false;
-  CloudMatch? _precreatedMatch;
-  bool _codeCopied = false;
-
   static const List<int> _roundOptions = [2, 3, 4];
   static const List<int> _durationOptions = [30, 60];
 
   @override
-  void initState() {
-    super.initState();
-    _selectedRounds = widget.initialConfig.totalRounds;
-    _selectedDuration = widget.initialConfig.roundDurationSeconds;
-    if (widget.initialConfig.opponentFriend != null) {
-      _selectedFriend = widget.initialConfig.opponentFriend;
-      _opponentMode = 1;
-    }
-  }
+  Widget build(BuildContext context) {
+    final selectedRounds = useState(initialConfig.totalRounds);
+    final selectedDuration = useState(initialConfig.roundDurationSeconds);
+    final opponentMode = useState(
+      initialConfig.opponentFriend != null ? 1 : 0,
+    ); // 0: Open Code, 1: Friend Challenge
+    final selectedFriend = useState<FriendProfile?>(
+      initialConfig.opponentFriend,
+    );
+    final isGeneratingCode = useState(false);
+    final precreatedMatch = useState<CloudMatch?>(null);
+    final codeCopied = useState(false);
 
-  Future<void> _generateUpfrontCode(UserProfile profile) async {
-    if (_isGeneratingCode) return;
-    setState(() => _isGeneratingCode = true);
-    try {
-      final config = MatchConfig(
-        totalRounds: _selectedRounds,
-        roundDurationSeconds: _selectedDuration,
-        player1Name: profile.displayName,
-        player1Avatar: profile.avatarEmoji,
-        player2Name: 'Opponent',
-        player2Avatar: '⏳',
-      );
-      final match = await FirestoreMatchService.instance.createMatch(
-        config: config,
-        player1Profile: profile,
-      );
-      await Clipboard.setData(ClipboardData(text: match.joinCode));
-      HapticFeedback.mediumImpact();
-      if (mounted) {
-        setState(() {
-          _precreatedMatch = match;
-          _codeCopied = true;
-          _isGeneratingCode = false;
-        });
+    Future<void> generateUpfrontCode(UserProfile profile) async {
+      if (isGeneratingCode.value) return;
+      isGeneratingCode.value = true;
+      try {
+        final config = MatchConfig(
+          totalRounds: selectedRounds.value,
+          roundDurationSeconds: selectedDuration.value,
+          player1Name: profile.displayName,
+          player1Avatar: profile.avatarEmoji,
+          player2Name: 'Opponent',
+          player2Avatar: '⏳',
+        );
+        final match = await FirestoreMatchService.instance.createMatch(
+          config: config,
+          player1Profile: profile,
+        );
+        await Clipboard.setData(ClipboardData(text: match.joinCode));
+        HapticFeedback.mediumImpact();
+        if (context.mounted) {
+          precreatedMatch.value = match;
+          codeCopied.value = true;
+          isGeneratingCode.value = false;
+        }
+      } catch (e) {
+        if (context.mounted) {
+          isGeneratingCode.value = false;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to generate code: $e'),
+              backgroundColor: const Color(0xFFEF4444),
+            ),
+          );
+        }
       }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isGeneratingCode = false);
+    }
+
+    Future<void> copyCode() async {
+      if (precreatedMatch.value == null) return;
+      await Clipboard.setData(
+        ClipboardData(text: precreatedMatch.value!.joinCode),
+      );
+      HapticFeedback.lightImpact();
+      codeCopied.value = true;
+      if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to generate code: $e'),
-            backgroundColor: const Color(0xFFEF4444),
+            content: Text(
+              'Match code ${precreatedMatch.value!.joinCode} copied!',
+            ),
+            backgroundColor: const Color(0xFF1E2638),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
           ),
         );
       }
     }
-  }
 
-  Future<void> _copyCode() async {
-    if (_precreatedMatch == null) return;
-    await Clipboard.setData(ClipboardData(text: _precreatedMatch!.joinCode));
-    HapticFeedback.lightImpact();
-    setState(() => _codeCopied = true);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Match code ${_precreatedMatch!.joinCode} copied!'),
-          backgroundColor: const Color(0xFF1E2638),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 2),
-        ),
+    void onStartPressed() {
+      HapticFeedback.mediumImpact();
+      final profile = AuthService.instance.currentUser;
+      final myName = profile?.displayName ?? 'Player';
+      final myAvatar =
+          profile?.avatarEmoji ?? PlayerDescriptor.defaultAvatar;
+
+      final config = MatchConfig(
+        totalRounds: selectedRounds.value,
+        roundDurationSeconds: selectedDuration.value,
+        player1Name: myName,
+        player1Avatar: myAvatar,
+        player2Name:
+            opponentMode.value == 1 && selectedFriend.value != null
+                ? selectedFriend.value!.displayName
+                : 'Opponent',
+        player2Avatar:
+            opponentMode.value == 1 && selectedFriend.value != null
+                ? selectedFriend.value!.avatarEmoji
+                : '⏳',
+        player2Uid:
+            opponentMode.value == 1 ? selectedFriend.value?.uid : null,
+        opponentFriend:
+            opponentMode.value == 1 ? selectedFriend.value : null,
+        precreatedMatch: precreatedMatch.value,
       );
+
+      Navigator.of(context).pop(config);
     }
-  }
 
-  void _onStartPressed() {
-    HapticFeedback.mediumImpact();
-    final profile = AuthService.instance.currentUser;
-    final myName = profile?.displayName ?? 'Player';
-    final myAvatar =
-        profile?.avatarEmoji ?? PlayerDescriptor.defaultAvatar;
+    String getStartButtonLabel() {
+      if (opponentMode.value == 1 && selectedFriend.value != null) {
+        return 'CHALLENGE ${selectedFriend.value!.displayName.toUpperCase()} ➔';
+      }
+      if (precreatedMatch.value != null) {
+        return 'START ROUND 1 ➔';
+      }
+      return 'START 1V1 MATCH';
+    }
 
-    final config = MatchConfig(
-      totalRounds: _selectedRounds,
-      roundDurationSeconds: _selectedDuration,
-      player1Name: myName,
-      player1Avatar: myAvatar,
-      player2Name: _opponentMode == 1 && _selectedFriend != null
-          ? _selectedFriend!.displayName
-          : 'Opponent',
-      player2Avatar: _opponentMode == 1 && _selectedFriend != null
-          ? _selectedFriend!.avatarEmoji
-          : '⏳',
-      player2Uid: _opponentMode == 1 ? _selectedFriend?.uid : null,
-      opponentFriend: _opponentMode == 1 ? _selectedFriend : null,
-      precreatedMatch: _precreatedMatch,
-    );
-
-    Navigator.of(context).pop(config);
-  }
-
-  @override
-  Widget build(BuildContext context) {
     final profile = AuthService.instance.currentUser;
     final myName = profile?.displayName ?? 'Player';
     final myAvatar =
@@ -229,33 +234,43 @@ class _MatchSetupDialogState extends State<MatchSetupDialog> {
           const SizedBox(height: 8.0),
           Row(
             children: [
-              _buildOpponentTab(0, 'OPEN CODE', Icons.qr_code_rounded),
+              _buildOpponentTab(
+                0,
+                'OPEN CODE',
+                Icons.qr_code_rounded,
+                opponentMode,
+              ),
               const SizedBox(width: 8.0),
-              _buildOpponentTab(1, 'CHALLENGE FRIEND', Icons.people_alt_rounded),
+              _buildOpponentTab(
+                1,
+                'CHALLENGE FRIEND',
+                Icons.people_alt_rounded,
+                opponentMode,
+              ),
             ],
           ),
           const SizedBox(height: 10.0),
 
           // Opponent Details / Options
-          if (_opponentMode == 0)
+          if (opponentMode.value == 0)
             MatchCodeCard(
-              precreatedMatch: _precreatedMatch,
-              isGeneratingCode: _isGeneratingCode,
-              codeCopied: _codeCopied,
+              precreatedMatch: precreatedMatch.value,
+              isGeneratingCode: isGeneratingCode.value,
+              codeCopied: codeCopied.value,
               profile: profile,
               onGenerateCode: () {
-                if (profile != null) _generateUpfrontCode(profile);
+                if (profile != null) generateUpfrontCode(profile);
               },
-              onCopyCode: _copyCode,
+              onCopyCode: copyCode,
             )
           else
             FriendSelectorRibbon(
               profile: profile,
-              selectedFriend: _selectedFriend,
+              selectedFriend: selectedFriend.value,
               onFriendSelected: (friend) {
-                setState(() => _selectedFriend = friend);
+                selectedFriend.value = friend;
               },
-              onUseOpenCode: () => setState(() => _opponentMode = 0),
+              onUseOpenCode: () => opponentMode.value = 0,
             ),
           const SizedBox(height: 18.0),
 
@@ -272,14 +287,14 @@ class _MatchSetupDialogState extends State<MatchSetupDialog> {
           const SizedBox(height: 8.0),
           Row(
             children: _roundOptions.map((rounds) {
-              final isSelected = _selectedRounds == rounds;
+              final isSelected = selectedRounds.value == rounds;
               return Expanded(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 4.0),
                   child: InkWell(
                     onTap: () {
                       HapticFeedback.selectionClick();
-                      setState(() => _selectedRounds = rounds);
+                      selectedRounds.value = rounds;
                     },
                     borderRadius: BorderRadius.circular(12.0),
                     child: Container(
@@ -331,14 +346,14 @@ class _MatchSetupDialogState extends State<MatchSetupDialog> {
           const SizedBox(height: 8.0),
           Row(
             children: _durationOptions.map((dur) {
-              final isSelected = _selectedDuration == dur;
+              final isSelected = selectedDuration.value == dur;
               return Expanded(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 4.0),
                   child: InkWell(
                     onTap: () {
                       HapticFeedback.selectionClick();
-                      setState(() => _selectedDuration = dur);
+                      selectedDuration.value = dur;
                     },
                     borderRadius: BorderRadius.circular(12.0),
                     child: Container(
@@ -379,32 +394,41 @@ class _MatchSetupDialogState extends State<MatchSetupDialog> {
 
           // Primary Start Challenge Button
           AppPrimaryButton(
-            label: _getStartButtonLabel(),
+            label: getStartButtonLabel(),
             backgroundColor: const Color(0xFF38BDF8),
             iconData: Icons.arrow_forward_rounded,
-            onPressed: _onStartPressed,
+            onPressed: onStartPressed,
           ),
         ],
       ),
     );
   }
 
-  Widget _buildOpponentTab(int mode, String label, IconData icon) {
-    final isSelected = _opponentMode == mode;
+  Widget _buildOpponentTab(
+    int mode,
+    String label,
+    IconData icon,
+    ValueNotifier<int> opponentMode,
+  ) {
+    final isSelected = opponentMode.value == mode;
     return Expanded(
       child: InkWell(
         onTap: () {
           HapticFeedback.selectionClick();
-          setState(() => _opponentMode = mode);
+          opponentMode.value = mode;
         },
         borderRadius: BorderRadius.circular(12.0),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 8.0),
           decoration: BoxDecoration(
-            color: isSelected ? const Color(0xFF1E3A5F) : const Color(0xFF1E2638),
+            color: isSelected
+                ? const Color(0xFF1E3A5F)
+                : const Color(0xFF1E2638),
             borderRadius: BorderRadius.circular(12.0),
             border: Border.all(
-              color: isSelected ? const Color(0xFF38BDF8) : const Color(0xFF334155),
+              color: isSelected
+                  ? const Color(0xFF38BDF8)
+                  : const Color(0xFF334155),
               width: isSelected ? 1.5 : 1.0,
             ),
           ),
@@ -414,13 +438,17 @@ class _MatchSetupDialogState extends State<MatchSetupDialog> {
               Icon(
                 icon,
                 size: 14.0,
-                color: isSelected ? const Color(0xFF38BDF8) : const Color(0xFF94A3B8),
+                color: isSelected
+                    ? const Color(0xFF38BDF8)
+                    : const Color(0xFF94A3B8),
               ),
               const SizedBox(width: 6.0),
               Text(
                 label,
                 style: TextStyle(
-                  color: isSelected ? Colors.white : const Color(0xFF94A3B8),
+                  color: isSelected
+                      ? Colors.white
+                      : const Color(0xFF94A3B8),
                   fontSize: 11.0,
                   fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
                 ),
@@ -430,15 +458,5 @@ class _MatchSetupDialogState extends State<MatchSetupDialog> {
         ),
       ),
     );
-  }
-
-  String _getStartButtonLabel() {
-    if (_opponentMode == 1 && _selectedFriend != null) {
-      return 'CHALLENGE ${_selectedFriend!.displayName.toUpperCase()} ➔';
-    }
-    if (_precreatedMatch != null) {
-      return 'START ROUND 1 ➔';
-    }
-    return 'START 1V1 MATCH';
   }
 }
