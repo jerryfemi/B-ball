@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../game/telemetry/shot_telemetry.dart';
+import 'player_descriptor.dart';
 
 /// Status state of a remote cloud match.
 enum MatchStatus {
@@ -96,12 +97,19 @@ class RoundSummaryStats {
 }
 
 /// Participant metadata and round performance in a cloud match.
-class CloudPlayer {
+class CloudPlayer implements PlayerDescriptor {
   final String uid;
+  @override
   final String displayName;
   final String avatarEmoji;
   final List<int> roundScores;
   final List<RoundSummaryStats> roundSummaries;
+
+  @override
+  String get id => uid;
+
+  @override
+  String get avatar => avatarEmoji;
 
   const CloudPlayer({
     required this.uid,
@@ -163,7 +171,7 @@ class CloudPlayer {
     uid: map['uid'] as String? ?? '',
     displayName: map['displayName'] as String? ?? 'Player',
     avatarEmoji:
-        map['avatarEmoji'] as String? ?? 'assets/avatars/dunk_heads (1).webp',
+        map['avatarEmoji'] as String? ?? PlayerDescriptor.defaultAvatar,
     roundScores:
         (map['roundScores'] as List<dynamic>?)
             ?.map((e) => (e as num).toInt())
@@ -211,7 +219,7 @@ class CloudChatMessage {
         senderName: map['senderName'] as String? ?? 'Player',
         senderAvatar:
             map['senderAvatar'] as String? ??
-            'assets/avatars/dunk_heads (1).webp',
+            PlayerDescriptor.defaultAvatar,
         text: map['text'] as String? ?? '',
         timestamp: (map['timestamp'] as num?)?.toInt() ?? 0,
       );
@@ -414,7 +422,7 @@ class CloudMatch {
         player1: const CloudPlayer(
           uid: '',
           displayName: 'Unknown',
-          avatarEmoji: 'assets/avatars/dunk_heads (1).webp',
+          avatarEmoji: PlayerDescriptor.defaultAvatar,
           roundScores: [],
         ),
         totalRounds: 2,
