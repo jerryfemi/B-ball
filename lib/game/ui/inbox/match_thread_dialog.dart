@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../../models/cloud_match.dart';
 import '../../../services/firestore_match_service.dart';
+import '../common/app_avatar.dart';
 
 /// Modal sheet showing the live game conversation thread, round score breakdown, and banter chat.
 class MatchThreadDialog extends StatefulWidget {
@@ -55,26 +56,6 @@ class _MatchThreadDialogState extends State<MatchThreadDialog> {
     '🍀 Lucky bounce!',
     '👑 Rematch?',
   ];
-
-  Widget _buildAvatarView(String avatar, {double size = 20}) {
-    if (avatar.startsWith('assets/') ||
-        avatar.endsWith('.png') ||
-        avatar.endsWith('.jpg') ||
-        avatar.endsWith('.jpeg') ||
-        avatar.endsWith('.webp')) {
-      return ClipOval(
-        child: Image.asset(
-          avatar,
-          width: size,
-          height: size,
-          fit: BoxFit.cover,
-          errorBuilder: (_, _, _) =>
-              Text('🏀', style: TextStyle(fontSize: size * 0.85)),
-        ),
-      );
-    }
-    return Text(avatar, style: TextStyle(fontSize: size));
-  }
 
   @override
   void dispose() {
@@ -178,21 +159,12 @@ class _MatchThreadDialogState extends State<MatchThreadDialog> {
                       onPressed: () => Navigator.of(context).pop(),
                     ),
                     const SizedBox(width: 12),
-                    Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: const Color(0xFF38BDF8),
-                          width: 1.5,
-                        ),
-                      ),
-                      child: _buildAvatarView(
-                        opponent?.avatarEmoji ??
-                            'assets/avatars/dunk_heads (2).webp',
-                        size: 36,
-                      ),
+                    AppAvatar(
+                      avatar: opponent?.avatarEmoji ??
+                          'assets/avatars/dunk_heads (2).webp',
+                      size: 36,
+                      borderColor: const Color(0xFF38BDF8),
+                      borderWidth: 1.5,
                     ),
                     const SizedBox(width: 10),
                     Expanded(
@@ -505,7 +477,7 @@ class _MatchThreadDialogState extends State<MatchThreadDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildAvatarView(msg.senderAvatar, size: 14),
+            AppAvatar(avatar: msg.senderAvatar, size: 14),
             const SizedBox(width: 6),
             Flexible(
               child: Text(
