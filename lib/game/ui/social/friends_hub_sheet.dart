@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../../models/cloud_match.dart';
 import '../../../models/friend_profile.dart';
+import '../../../providers/app_providers.dart';
 import '../../../services/auth_service.dart';
-import '../../../services/firestore_match_service.dart';
-import '../../../services/friends_service.dart';
 import 'add_friend_dialog.dart';
 import 'components/friend_card_tile.dart';
 import 'components/friend_invite_tile.dart';
@@ -16,7 +15,7 @@ import '../common/app_avatar.dart';
 import '../common/app_modal_sheet.dart';
 
 /// Dedicated Friends Management sheet for launching 1v1 challenges and banter chat.
-class FriendsHubSheet extends HookWidget {
+class FriendsHubSheet extends ConsumerWidget {
   final ValueChanged<CloudMatch> onPlayMatch;
   final VoidCallback onCreateMatch;
   final ValueChanged<CloudMatch>? onViewPodium;
@@ -45,7 +44,7 @@ class FriendsHubSheet extends HookWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     void openAddFriend(Set<String> existingUids) {
       HapticFeedback.lightImpact();
       AddFriendDialog.show(context, existingFriendUids: existingUids);
@@ -70,27 +69,18 @@ class FriendsHubSheet extends HookWidget {
       );
     }
 
-    return ValueListenableBuilder<UserProfile?>(
-      valueListenable: AuthService.instance.currentUserNotifier,
-      builder: (context, user, _) {
-        final myUid = user?.uid ?? '';
+    final user = ref.watch(currentUserProfileProvider).value;
+    final myUid = user?.uid ?? '';
+    final invites = ref.watch(incomingInvitesProvider).value ?? const <FriendInvite>[];
+    final friendsAsync = ref.watch(friendsListProvider);
+    final friends = friendsAsync.value ?? const <FriendProfile>[];
+    final matches = ref.watch(userMatchesProvider).value ?? const <CloudMatch>[];
+    final friendUids = friends.map((f) => f.uid).toSet();
 
-        return AppModalSheet(
-          heightFactor: 0.85,
-          child: StreamBuilder<List<FriendInvite>>(
-            stream: FriendsService.instance.streamIncomingInvites(myUid),
-            initialData: const <FriendInvite>[],
-            builder: (context, invitesSnap) {
-              final invites = invitesSnap.data ?? [];
-
-              return StreamBuilder<List<FriendProfile>>(
-                stream: FriendsService.instance.streamFriends(myUid),
-                builder: (context, friendsSnap) {
-                  final friends = friendsSnap.data ?? [];
-                  final friendUids = friends.map((f) => f.uid).toSet();
-
-                  return Column(
-                    children: [
+    return AppModalSheet(
+      heightFactor: 0.85,
+      child: Column(
+        children: [
 
                         // Dedicated Friends Header
                         Padding(
@@ -199,9 +189,8 @@ class FriendsHubSheet extends HookWidget {
                         Expanded(
                           child: Builder(
                             builder: (context) {
-                              if (friendsSnap.connectionState ==
-                                      ConnectionState.waiting &&
-                                  !friendsSnap.hasData) {
+                              if (friendsAsync.isLoading &&
+                                  !friendsAsync.hasValue) {
                                 return const Center(
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
@@ -219,13 +208,7 @@ class FriendsHubSheet extends HookWidget {
                                 );
                               }
 
-                              return StreamBuilder<List<CloudMatch>>(
-                                stream: FirestoreMatchService.instance
-                                    .streamUserMatches(myUid),
-                                builder: (context, matchSnap) {
-                                  final matches = matchSnap.data ?? [];
-
-                                  return ListView(
+                              return ListView(
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 16,
                                       vertical: 8,
@@ -354,20 +337,12 @@ class FriendsHubSheet extends HookWidget {
                                       ],
                                     ],
                                   );
-                                },
-                              );
                             },
                           ),
                         ),
                       ],
-                    );
-                  },
-                );
-              },
-            ),
-        );
-      },
-    );
+                    ),
+                  );
   }
 
   Widget _buildEmptyState(
