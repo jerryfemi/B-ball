@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../../../models/cloud_match.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/firestore_match_service.dart';
+import '../common/app_button.dart';
 import '../common/app_modal_dialog.dart';
 
 /// Modal dialog for entering a 6-character arcade code to join a remote match.
@@ -138,24 +139,10 @@ class _JoinMatchDialogState extends State<JoinMatchDialog> {
             const SizedBox(height: 22),
 
             // Submit button
-            ElevatedButton(
-              onPressed: _isLoading ? null : _handleJoin,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF2563EB),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              ),
-              child: _isLoading
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Text(
-                      'JOIN ROOM',
-                      style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.2),
-                    ),
+            AppPrimaryButton(
+              label: 'JOIN ROOM',
+              isLoading: _isLoading,
+              onPressed: _handleJoin,
             ),
           ],
         ),
