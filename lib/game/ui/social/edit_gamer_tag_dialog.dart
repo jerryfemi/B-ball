@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../services/auth_service.dart';
+import '../common/app_button.dart';
 import '../common/app_modal_dialog.dart';
+import '../common/app_text_field.dart';
 
 /// Modal dialog allowing the player to customize or randomize their unique Gamer Tag.
 class EditGamerTagDialog extends StatefulWidget {
@@ -96,46 +98,15 @@ class _EditGamerTagDialogState extends State<EditGamerTagDialog> {
         children: [
 
               // Text Field with Randomize Suffix
-              TextField(
+              AppTextField(
                 controller: _controller,
                 autofocus: true,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 15,
-                  letterSpacing: 0.5,
-                ),
-                decoration: InputDecoration(
-                  labelText: 'PLAYER TAG',
-                  labelStyle: const TextStyle(
-                    color: Color(0xFF38BDF8),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.0,
-                  ),
-                  errorText: _errorText,
-                  filled: true,
-                  fillColor: const Color(0xFF1E2638),
-                  suffixIcon: IconButton(
-                    icon: const Text('🎲', style: TextStyle(fontSize: 18)),
-                    tooltip: 'Roll random tag',
-                    onPressed: _randomizeTag,
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 14,
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: Color(0xFF334155)),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(
-                      color: Color(0xFF38BDF8),
-                      width: 1.8,
-                    ),
-                  ),
+                labelText: 'PLAYER TAG',
+                errorText: _errorText,
+                suffixIcon: IconButton(
+                  icon: const Text('🎲', style: TextStyle(fontSize: 18)),
+                  tooltip: 'Roll random tag',
+                  onPressed: _randomizeTag,
                 ),
                 onSubmitted: (_) => _save(),
               ),
@@ -151,51 +122,19 @@ class _EditGamerTagDialogState extends State<EditGamerTagDialog> {
               Row(
                 children: [
                   Expanded(
-                    child: TextButton(
+                    child: AppSecondaryButton(
+                      label: 'CANCEL',
                       onPressed: () => Navigator.of(context).pop(),
-                      style: TextButton.styleFrom(
-                        foregroundColor: const Color(0xFF94A3B8),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      child: const Text(
-                        'CANCEL',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12,
-                        ),
-                      ),
                     ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
                     flex: 2,
-                    child: ElevatedButton(
-                      onPressed: _isSaving ? null : _save,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF38BDF8),
-                        foregroundColor: const Color(0xFF0F172A),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: _isSaving
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Color(0xFF0F172A),
-                              ),
-                            )
-                          : const Text(
-                              'SAVE TAG',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w900,
-                                fontSize: 13,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
+                    child: AppPrimaryButton(
+                      label: 'SAVE TAG',
+                      backgroundColor: const Color(0xFF38BDF8),
+                      isLoading: _isSaving,
+                      onPressed: _save,
                     ),
                   ),
                 ],
