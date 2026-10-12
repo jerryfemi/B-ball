@@ -8,6 +8,7 @@ import '../../../services/auth_service.dart';
 import '../../../services/friends_service.dart';
 import '../common/app_avatar.dart';
 import '../common/app_modal_dialog.dart';
+import '../common/app_text_field.dart';
 
 /// Modal dialog to search and add friends by display name or player tag,
 /// and share one's own tag with others.
@@ -220,53 +221,28 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
               const SizedBox(height: 16),
 
               // Search field
-              TextField(
+              AppTextField(
                 controller: _searchController,
                 onChanged: _onSearchChanged,
-                style: const TextStyle(color: Colors.white, fontSize: 13),
-                decoration: InputDecoration(
-                  hintText: "Enter friend's name or tag...",
-                  hintStyle: const TextStyle(
-                    color: Color(0xFF64748B),
-                    fontSize: 12.5,
-                  ),
-                  prefixIcon: const Icon(
-                    Icons.search_rounded,
-                    color: Color(0xFF64748B),
-                    size: 20,
-                  ),
-                  suffixIcon: _isSearching
-                      ? const Padding(
-                          padding: EdgeInsets.all(12),
-                          child: SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Color(0xFF38BDF8),
-                            ),
-                          ),
-                        )
-                      : null,
-                  filled: true,
-                  fillColor: const Color(0xFF1E2638),
-                  isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: Color(0xFF334155)),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(
-                      color: Color(0xFF38BDF8),
-                      width: 1.5,
-                    ),
-                  ),
+                hintText: "Enter friend's name or tag...",
+                prefixIcon: const Icon(
+                  Icons.search_rounded,
+                  color: Color(0xFF64748B),
+                  size: 20,
                 ),
+                suffixIcon: _isSearching
+                    ? const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Color(0xFF38BDF8),
+                          ),
+                        ),
+                      )
+                    : null,
               ),
               const SizedBox(height: 12),
 
