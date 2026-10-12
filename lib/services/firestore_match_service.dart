@@ -141,20 +141,6 @@ class FirestoreMatchService {
       roundSummaries: initialSummaries,
     );
 
-    final chat = <CloudChatMessage>[];
-    if (initialChatMessage != null && initialChatMessage.trim().isNotEmpty) {
-      chat.add(
-        CloudChatMessage(
-          id: '${now}_p1',
-          senderUid: player1Profile.uid,
-          senderName: player1Profile.displayName,
-          senderAvatar: player1Profile.avatarEmoji,
-          text: initialChatMessage.trim(),
-          timestamp: now,
-        ),
-      );
-    }
-
     final friend = config.opponentFriend;
     final CloudPlayer? player2 = friend != null
         ? CloudPlayer(
@@ -191,10 +177,23 @@ class FirestoreMatchService {
       latestTelemetryRound: hasCompletedFirstTurn ? 1 : null,
       latestTelemetryShooterUid:
           hasCompletedFirstTurn ? player1Profile.uid : null,
-      chat: chat,
+      chat: const [],
     );
 
     await docRef.set(match.toMap());
+
+    // Write initial chat message to lightweight subcollection (decoupled from match telemetry)
+    if (initialChatMessage != null && initialChatMessage.trim().isNotEmpty) {
+      final chatMsg = CloudChatMessage(
+        id: '${now}_p1',
+        senderUid: player1Profile.uid,
+        senderName: player1Profile.displayName,
+        senderAvatar: player1Profile.avatarEmoji,
+        text: initialChatMessage.trim(),
+        timestamp: now,
+      );
+      await docRef.collection('messages').doc(chatMsg.id).set(chatMsg.toMap());
+    }
     debugPrint('[FirestoreMatchService] Created match with docId/code $joinCode');
 
     if (friend != null) {
@@ -294,7 +293,7 @@ class FirestoreMatchService {
   }) async {
     final docRef = _matchesRef.doc(matchId);
 
-    return await _firestore.runTransaction((transaction) async {
+    await _firestore.runTransaction((transaction) async {
       final snapshot = await transaction.get(docRef);
       if (!snapshot.exists) {
         throw MatchNotFoundException('Cannot submit turn: match $matchId not found.');
@@ -392,32 +391,56 @@ class FirestoreMatchService {
         },
       };
 
-      if (optionalChatMessage != null && optionalChatMessage.trim().isNotEmpty) {
-        final newMsg = CloudChatMessage(
-          id: '${now}_$shooterUid',
-          senderUid: shooterUid,
-          senderName: currentShooter.displayName,
-          senderAvatar: currentShooter.avatarEmoji,
-          text: optionalChatMessage.trim(),
-          timestamp: now,
-        );
-        updateData['chat'] = FieldValue.arrayUnion([newMsg.toMap()]);
-      }
-
       transaction.update(docRef, updateData);
       debugPrint('[FirestoreMatchService] Submitted turn atomically for $shooterUid (Round $roundIndex)');
     });
+
+    // Write optional chat message to lightweight subcollection (outside transaction for efficiency)
+    if (optionalChatMessage != null && optionalChatMessage.trim().isNotEmpty) {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final newMsg = CloudChatMessage(
+        id: '${now}_$shooterUid',
+        senderUid: shooterUid,
+        senderName: 'Player',
+        senderAvatar: '',
+        text: optionalChatMessage.trim(),
+        timestamp: now,
+      );
+      await docRef.collection('messages').doc(newMsg.id).set(newMsg.toMap());
+    }
   }
 
-  /// Appends a chat message to the match's banter stream.
+  /// Appends a chat message to the match's lightweight subcollection.
+  ///
+  /// Chat messages are now stored in `matches/{id}/messages/{msgId}` instead
+  /// of the root document's `chat` array. This prevents re-downloading
+  /// heavy shot telemetry on every chat message.
   Future<void> sendChatMessage({
     required String matchId,
     required CloudChatMessage message,
   }) async {
     final docRef = _matchesRef.doc(matchId);
+    await docRef.collection('messages').doc(message.id).set(message.toMap());
+    // Touch updatedAt on root to signal activity to inbox listeners
     await docRef.update({
-      'chat': FieldValue.arrayUnion([message.toMap()]),
       'updatedAt': DateTime.now().millisecondsSinceEpoch,
+    });
+  }
+
+  /// Streams real-time chat messages from the match's messages subcollection.
+  Stream<List<CloudChatMessage>> streamMatchChat(String matchId) {
+    if (matchId.isEmpty) return Stream.value(const <CloudChatMessage>[]);
+    return _matchesRef
+        .doc(matchId)
+        .collection('messages')
+        .orderBy('timestamp', descending: false)
+        .snapshots()
+        .map((snap) => snap.docs
+            .map((doc) => CloudChatMessage.fromMap(doc.data()))
+            .toList())
+        .handleError((e) {
+      debugPrint('[FirestoreMatchService] Stream match chat error: $e');
+      return const <CloudChatMessage>[];
     });
   }
 
@@ -455,13 +478,22 @@ class FirestoreMatchService {
       _cachedUserMatches[userUid] ?? const [];
 
   /// Streams active matches for the Match Inbox ("Your Turn" vs "Waiting for Opponent").
-  /// Firestore's native SDK automatically pools query listeners and emits current cache immediately.
+  ///
+  /// Query is now bounded: only active/waiting matches are streamed, with a
+  /// hard limit of 20 documents to prevent downloading hundreds of historical matches.
+  /// Completed matches can still be fetched on-demand via [getMatch].
   Stream<List<CloudMatch>> streamUserMatches(String userUid) {
     if (userUid.isEmpty) {
       return Stream.value(const <CloudMatch>[]);
     }
     return _matchesRef
         .where('playerIds', arrayContains: userUid)
+        .where('status', whereIn: [
+          MatchStatus.active.key,
+          MatchStatus.waitingForOpponent.key,
+          MatchStatus.completed.key,
+        ])
+        .limit(20)
         .snapshots()
         .map((snapshot) {
       final matches = snapshot.docs
