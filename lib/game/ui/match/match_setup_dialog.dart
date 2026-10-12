@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../../models/player_descriptor.dart';
 import '../../../services/auth_service.dart';
 import '../../match/match_config.dart';
+import '../common/app_avatar.dart';
 import '../common/app_button.dart';
 import '../common/app_modal_dialog.dart';
 
@@ -96,9 +97,11 @@ class _MatchSetupDialogState extends State<MatchSetupDialog> {
                         ),
                         child: Row(
                           children: [
-                            Text(
-                              myAvatar,
-                              style: const TextStyle(fontSize: 20.0),
+                            AppAvatar(
+                              avatar: myAvatar,
+                              size: 34.0,
+                              borderColor: const Color(0xFF38BDF8),
+                              borderWidth: 1.5,
                             ),
                             const SizedBox(width: 10.0),
                             Expanded(
