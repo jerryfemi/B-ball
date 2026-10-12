@@ -60,6 +60,26 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
   final ScrollController _scrollController = ScrollController();
   CloudMatch? _currentMatch;
 
+  Widget _buildAvatarView(String avatar, {double size = 20}) {
+    if (avatar.startsWith('assets/') ||
+        avatar.endsWith('.png') ||
+        avatar.endsWith('.jpg') ||
+        avatar.endsWith('.jpeg') ||
+        avatar.endsWith('.webp')) {
+      return ClipOval(
+        child: Image.asset(
+          avatar,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) =>
+              Text('🏀', style: TextStyle(fontSize: size * 0.85)),
+        ),
+      );
+    }
+    return Text(avatar, style: TextStyle(fontSize: size));
+  }
+
   static const List<String> _quickBanter = [
     '🎯 Swish!',
     '🧱 Brick!',
@@ -260,10 +280,7 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: const Color(0xFF334155)),
             ),
-            child: Text(
-              widget.friend.avatarEmoji,
-              style: const TextStyle(fontSize: 20),
-            ),
+            child: _buildAvatarView(widget.friend.avatarEmoji, size: 22),
           ),
           const SizedBox(width: 10),
           Expanded(
