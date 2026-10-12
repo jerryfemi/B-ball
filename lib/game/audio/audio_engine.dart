@@ -99,6 +99,17 @@ class AudioEngine {
     }
   }
 
+  static bool _audioUnlocked = false;
+
+  /// Unlocks Web Audio playback on iOS Safari / mobile browsers upon user touch.
+  static void unlockAudio() {
+    if (_audioUnlocked) return;
+    _audioUnlocked = true;
+    if (!_initialized) {
+      unawaited(init());
+    }
+  }
+
   /// Triggers a metallic rim clank with volume and heavy haptics scaled by impact velocity.
   static void playRimClank(double impactSpeed) {
     if (isMuted || !_initialized) return;
