@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import '../../../models/cloud_match.dart';
 import '../../../services/firestore_match_service.dart';
-import 'share_turn_sheet.dart';
 
 /// Modal sheet showing the live game conversation thread, round score breakdown, and banter chat.
 class MatchThreadDialog extends StatefulWidget {
@@ -63,7 +63,11 @@ class _MatchThreadDialogState extends State<MatchThreadDialog> {
     super.dispose();
   }
 
-  Future<void> _sendText(String matchId, CloudPlayer myPlayer, String text) async {
+  Future<void> _sendText(
+    String matchId,
+    CloudPlayer myPlayer,
+    String text,
+  ) async {
     final clean = text.trim();
     if (clean.isEmpty) return;
 
@@ -98,12 +102,20 @@ class _MatchThreadDialogState extends State<MatchThreadDialog> {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<CloudMatch?>(
-      stream: FirestoreMatchService.instance.streamMatch(widget.initialMatch.id),
+      stream: FirestoreMatchService.instance.streamMatch(
+        widget.initialMatch.id,
+      ),
       initialData: widget.initialMatch,
       builder: (context, snapshot) {
         final match = snapshot.data ?? widget.initialMatch;
-        final myPlayer = match.myPlayer(widget.myUid) ??
-            CloudPlayer(uid: widget.myUid, displayName: 'You', avatarEmoji: '🏀', roundScores: const []);
+        final myPlayer =
+            match.myPlayer(widget.myUid) ??
+            CloudPlayer(
+              uid: widget.myUid,
+              displayName: 'You',
+              avatarEmoji: '🏀',
+              roundScores: const [],
+            );
         final opponent = match.opponentPlayer(widget.myUid);
         final isMyTurn = match.isMyTurn(widget.myUid);
         final isCompleted = match.status == MatchStatus.completed;
@@ -114,7 +126,9 @@ class _MatchThreadDialogState extends State<MatchThreadDialog> {
           decoration: const BoxDecoration(
             color: Color(0xFF131826),
             borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-            border: Border(top: BorderSide(color: Color(0xFF2E3954), width: 1.5)),
+            border: Border(
+              top: BorderSide(color: Color(0xFF2E3954), width: 1.5),
+            ),
           ),
           child: SafeArea(
             child: Column(
@@ -130,16 +144,30 @@ class _MatchThreadDialogState extends State<MatchThreadDialog> {
                 ),
                 const SizedBox(height: 12),
 
-                // Header with opponent name and join code
+                // Header with back chevron, opponent info, and match code copy
                 Row(
                   children: [
+                    IconButton(
+                      icon: const Icon(
+                        Icons.arrow_back_ios_new_rounded,
+                        color: Colors.white70,
+                        size: 20,
+                      ),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                    const SizedBox(width: 12),
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
                         color: const Color(0xFF26324A),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Text(opponent?.avatarEmoji ?? '⏳', style: const TextStyle(fontSize: 20)),
+                      child: Text(
+                        opponent?.avatarEmoji ?? '⏳',
+                        style: const TextStyle(fontSize: 20),
+                      ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
@@ -148,18 +176,78 @@ class _MatchThreadDialogState extends State<MatchThreadDialog> {
                         children: [
                           Text(
                             opponent?.displayName ?? 'Waiting for opponent',
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 16,
+                            ),
                           ),
-                          Text(
-                            'Code: ${match.joinCode} • Round ${match.currentRound}/${match.totalRounds}',
-                            style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              InkWell(
+                                borderRadius: BorderRadius.circular(6),
+                                onTap: () {
+                                  Clipboard.setData(
+                                    ClipboardData(text: match.joinCode),
+                                  );
+                                  HapticFeedback.lightImpact();
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        'Match code ${match.joinCode} copied! 📋',
+                                      ),
+                                      duration: const Duration(seconds: 2),
+                                      behavior: SnackBarBehavior.floating,
+                                      backgroundColor: const Color(0xFF1E2638),
+                                    ),
+                                  );
+                                },
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 2,
+                                    horizontal: 2,
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        'Code: ${match.joinCode}',
+                                        style: const TextStyle(
+                                          color: Color(0xFF38BDF8),
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w700,
+                                          letterSpacing: 0.5,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      const Icon(
+                                        Icons.copy_rounded,
+                                        color: Color(0xFF38BDF8),
+                                        size: 13,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const Text(
+                                ' • ',
+                                style: TextStyle(
+                                  color: Color(0xFF64748B),
+                                  fontSize: 11,
+                                ),
+                              ),
+                              Text(
+                                'Round ${match.currentRound}/${match.totalRounds}',
+                                style: const TextStyle(
+                                  color: Color(0xFF94A3B8),
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white54),
-                      onPressed: () => Navigator.of(context).pop(),
                     ),
                   ],
                 ),
@@ -175,7 +263,10 @@ class _MatchThreadDialogState extends State<MatchThreadDialog> {
                       ? const Center(
                           child: Text(
                             'No banter yet. Send a reaction below! 🎯',
-                            style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                            style: TextStyle(
+                              color: Color(0xFF64748B),
+                              fontSize: 13,
+                            ),
                           ),
                         )
                       : ListView.builder(
@@ -195,14 +286,23 @@ class _MatchThreadDialogState extends State<MatchThreadDialog> {
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
                     itemCount: _quickBanter.length,
-                    separatorBuilder: (context, index) => const SizedBox(width: 8),
+                    separatorBuilder: (context, index) =>
+                        const SizedBox(width: 8),
                     itemBuilder: (ctx, i) {
                       final text = _quickBanter[i];
                       return ActionChip(
-                        label: Text(text, style: const TextStyle(fontSize: 11, color: Colors.white)),
+                        label: Text(
+                          text,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.white,
+                          ),
+                        ),
                         backgroundColor: const Color(0xFF1E2638),
                         side: const BorderSide(color: Color(0xFF334155)),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                         onPressed: () => _sendText(match.id, myPlayer, text),
                       );
                     },
@@ -216,33 +316,50 @@ class _MatchThreadDialogState extends State<MatchThreadDialog> {
                     Expanded(
                       child: TextField(
                         controller: _msgController,
-                        style: const TextStyle(color: Colors.white, fontSize: 13),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                        ),
                         decoration: InputDecoration(
                           hintText: 'Type banter message...',
-                          hintStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                          hintStyle: const TextStyle(
+                            color: Color(0xFF64748B),
+                            fontSize: 13,
+                          ),
                           filled: true,
                           fillColor: const Color(0xFF1E2638),
                           isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(14),
-                            borderSide: const BorderSide(color: Color(0xFF334155)),
+                            borderSide: const BorderSide(
+                              color: Color(0xFF334155),
+                            ),
                           ),
                         ),
-                        onSubmitted: (val) => _sendText(match.id, myPlayer, val),
+                        onSubmitted: (val) =>
+                            _sendText(match.id, myPlayer, val),
                       ),
                     ),
                     const SizedBox(width: 8),
                     IconButton(
-                      icon: const Icon(Icons.send_rounded, color: Color(0xFF00FFCC), size: 20),
-                      onPressed: () => _sendText(match.id, myPlayer, _msgController.text),
+                      icon: const Icon(
+                        Icons.send_rounded,
+                        color: Color(0xFF00FFCC),
+                        size: 20,
+                      ),
+                      onPressed: () =>
+                          _sendText(match.id, myPlayer, _msgController.text),
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
 
-                // Primary Bottom Action Bar
-                if (isCompleted)
+                // Primary Bottom Action Bar (shown when completed or when it is my turn)
+                if (isCompleted) ...[
+                  const SizedBox(height: 12),
                   ElevatedButton.icon(
                     onPressed: () {
                       Navigator.of(context).pop();
@@ -254,10 +371,13 @@ class _MatchThreadDialogState extends State<MatchThreadDialog> {
                       backgroundColor: Colors.amber,
                       foregroundColor: Colors.black,
                       minimumSize: const Size.fromHeight(44),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                     ),
-                  )
-                else if (isMyTurn)
+                  ),
+                ] else if (isMyTurn) ...[
+                  const SizedBox(height: 12),
                   ElevatedButton.icon(
                     onPressed: () {
                       Navigator.of(context).pop();
@@ -269,27 +389,12 @@ class _MatchThreadDialogState extends State<MatchThreadDialog> {
                       backgroundColor: const Color(0xFF00FFCC),
                       foregroundColor: Colors.black,
                       minimumSize: const Size.fromHeight(44),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    ),
-                  )
-                else
-                  OutlinedButton.icon(
-                    onPressed: () => ShareTurnSheet.show(
-                      context,
-                      joinCode: match.joinCode,
-                      roundIndex: match.currentRound,
-                      roundScore: myPlayer.roundScores.isNotEmpty ? myPlayer.roundScores.last : 0,
-                      opponentName: opponent?.displayName,
-                    ),
-                    icon: const Icon(Icons.share, size: 16),
-                    label: const Text('NUDGE / SHARE MATCH CODE'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF38BDF8),
-                      side: const BorderSide(color: Color(0xFF38BDF8)),
-                      minimumSize: const Size.fromHeight(44),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                     ),
                   ),
+                ],
               ],
             ),
           ),
@@ -298,7 +403,11 @@ class _MatchThreadDialogState extends State<MatchThreadDialog> {
     );
   }
 
-  Widget _buildMiniScoreboard(CloudMatch match, CloudPlayer myPlayer, CloudPlayer? opponent) {
+  Widget _buildMiniScoreboard(
+    CloudMatch match,
+    CloudPlayer myPlayer,
+    CloudPlayer? opponent,
+  ) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
@@ -309,9 +418,24 @@ class _MatchThreadDialogState extends State<MatchThreadDialog> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _buildScoreColumn(myPlayer.displayName, myPlayer.totalScore, const Color(0xFF00FFCC)),
-          const Text('VS', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w900, fontSize: 13)),
-          _buildScoreColumn(opponent?.displayName ?? 'Opponent', opponent?.totalScore ?? 0, const Color(0xFF38BDF8)),
+          _buildScoreColumn(
+            myPlayer.displayName,
+            myPlayer.totalScore,
+            const Color(0xFF00FFCC),
+          ),
+          const Text(
+            'VS',
+            style: TextStyle(
+              color: Color(0xFF64748B),
+              fontWeight: FontWeight.w900,
+              fontSize: 13,
+            ),
+          ),
+          _buildScoreColumn(
+            opponent?.displayName ?? 'Opponent',
+            opponent?.totalScore ?? 0,
+            const Color(0xFF38BDF8),
+          ),
         ],
       ),
     );
@@ -320,9 +444,23 @@ class _MatchThreadDialogState extends State<MatchThreadDialog> {
   Widget _buildScoreColumn(String name, int score, Color color) {
     return Column(
       children: [
-        Text(name, style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.w700)),
+        Text(
+          name,
+          style: const TextStyle(
+            color: Color(0xFF94A3B8),
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
         const SizedBox(height: 2),
-        Text('$score', style: TextStyle(color: color, fontSize: 22, fontWeight: FontWeight.w900)),
+        Text(
+          '$score',
+          style: TextStyle(
+            color: color,
+            fontSize: 22,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
       ],
     );
   }
@@ -347,7 +485,11 @@ class _MatchThreadDialogState extends State<MatchThreadDialog> {
             Flexible(
               child: Text(
                 msg.text,
-                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
           ],
