@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../models/cloud_match.dart';
+import '../../../models/player_descriptor.dart';
 import '../../../services/firestore_match_service.dart';
 import '../common/app_avatar.dart';
 import '../common/app_modal_sheet.dart';
@@ -115,7 +116,7 @@ class _MatchThreadDialogState extends State<MatchThreadDialog> {
             CloudPlayer(
               uid: widget.myUid,
               displayName: 'You',
-              avatarEmoji: 'assets/avatars/dunk_heads (1).webp',
+              avatarEmoji: PlayerDescriptor.defaultAvatar,
               roundScores: const [],
             );
         final opponent = match.opponentPlayer(widget.myUid);
