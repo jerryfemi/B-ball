@@ -3,6 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flame/game.dart';
 import 'package:flame_forge2d/flame_forge2d.dart';
 import 'package:flutter/material.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'firebase_options.dart';
 import 'game/basketball_game.dart';
 import 'game/ui/game_hud_overlay.dart';
@@ -21,7 +22,7 @@ Future<void> main() async {
     debugPrint('[Main] Firebase Core init error: $e');
   }
   unawaited(AuthService.instance.initialize());
-  runApp(const BasketballApp());
+  runApp(const ProviderScope(child: BasketballApp()));
 }
 
 class BasketballApp extends StatelessWidget {
