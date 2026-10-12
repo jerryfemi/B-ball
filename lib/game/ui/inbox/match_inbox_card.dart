@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../../models/cloud_match.dart';
 import '../common/app_avatar.dart';
+import '../common/match_status_badge.dart';
 
 /// Punchy Arcade Head-to-Head Versus Match Card.
 ///
@@ -100,7 +101,7 @@ class MatchInboxCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                    _buildStatusPill(isMyTurn, isCompleted, isWaitingOpponent),
+                    MatchStatusBadge.fromMatch(match: match, myUid: myUid),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -326,94 +327,4 @@ class MatchInboxCard extends StatelessWidget {
     );
   }
 
-  Widget _buildStatusPill(
-    bool isMyTurn,
-    bool isCompleted,
-    bool isWaitingOpponent,
-  ) {
-    if (isCompleted) {
-      final won = match.winnerUid == myUid;
-      final tie = match.outcome == MatchOutcome.tie;
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: tie
-              ? Colors.amber.withValues(alpha: 0.15)
-              : won
-              ? const Color(0xFF22C55E).withValues(alpha: 0.15)
-              : const Color(0xFFEF4444).withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Text(
-          tie
-              ? 'TIED 🤝'
-              : won
-              ? 'WON 👑'
-              : 'LOST 💥',
-          style: TextStyle(
-            color: tie
-                ? Colors.amber
-                : won
-                ? const Color(0xFF22C55E)
-                : const Color(0xFFEF4444),
-            fontSize: 10,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-      );
-    }
-
-    if (isWaitingOpponent) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: Colors.amber.withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: const Text(
-          'WAITING FOR OPPONENT',
-          style: TextStyle(
-            color: Colors.amber,
-            fontSize: 9.5,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      );
-    }
-
-    if (isMyTurn) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: const Color(0xFF00FFCC).withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: const Color(0xFF00FFCC), width: 1.0),
-        ),
-        child: const Text(
-          'YOUR TURN ⚡',
-          style: TextStyle(
-            color: Color(0xFF00FFCC),
-            fontSize: 9.5,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E2638),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: const Text(
-        'THEIR TURN ⏳',
-        style: TextStyle(
-          color: Color(0xFF94A3B8),
-          fontSize: 9.5,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
 }
