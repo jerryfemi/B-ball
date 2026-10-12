@@ -64,3 +64,37 @@ class FriendProfile {
     h2hLosses: (map['h2hLosses'] as num?)?.toInt() ?? 0,
   );
 }
+
+/// Represents an incoming or outgoing friend invitation.
+class FriendInvite {
+  final String senderUid;
+  final String senderName;
+  final String senderAvatar;
+  final String status;
+  final int timestamp;
+
+  const FriendInvite({
+    required this.senderUid,
+    required this.senderName,
+    required this.senderAvatar,
+    this.status = 'pending',
+    required this.timestamp,
+  });
+
+  Map<String, dynamic> toMap() => {
+    'senderUid': senderUid,
+    'senderName': senderName,
+    'senderAvatar': senderAvatar,
+    'status': status,
+    'timestamp': timestamp,
+  };
+
+  factory FriendInvite.fromMap(Map<String, dynamic> map, String docId) =>
+      FriendInvite(
+        senderUid: (map['senderUid'] as String?) ?? docId,
+        senderName: (map['senderName'] as String?) ?? 'Player',
+        senderAvatar: (map['senderAvatar'] as String?) ?? '🏀',
+        status: (map['status'] as String?) ?? 'pending',
+        timestamp: (map['timestamp'] as num?)?.toInt() ?? 0,
+      );
+}
