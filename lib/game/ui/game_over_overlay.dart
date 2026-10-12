@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 
 import '../basketball_game.dart';
 import 'game_over/game_over_header.dart';
@@ -9,14 +10,7 @@ import 'game_over/see_replay_button.dart';
 import 'match/match_setup_dialog.dart';
 
 /// Celebratory Game Over recap modal shown when the 60-second round clock expires.
-///
-/// Orchestrates:
-/// 1. Frosted obsidian glass modal container with metallic border
-/// 2. Smooth entrance scale and fade animations
-/// 3. [GameOverHeader]: Accolades and big final score numerals
-/// 4. [GameOverStatsGrid]: 2x2 field goal accuracy and bonus counts
-/// 5. [PlayAgainButton]: Interactive restart trigger
-class GameOverOverlay extends StatefulWidget {
+class GameOverOverlay extends HookWidget {
   final BasketballGame game;
 
   const GameOverOverlay({
@@ -25,57 +19,45 @@ class GameOverOverlay extends StatefulWidget {
   });
 
   @override
-  State<GameOverOverlay> createState() => _GameOverOverlayState();
-}
-
-class _GameOverOverlayState extends State<GameOverOverlay>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _animController;
-  late final Animation<double> _scaleAnimation;
-  late final Animation<double> _fadeAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _animController = AnimationController(
-      vsync: this,
+  Widget build(BuildContext context) {
+    final animController = useAnimationController(
       duration: const Duration(milliseconds: 380),
     );
 
-    _scaleAnimation = Tween<double>(begin: 0.85, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _animController,
-        curve: Curves.easeOutBack,
+    final scaleAnimation = useMemoized(
+      () => Tween<double>(begin: 0.85, end: 1.0).animate(
+        CurvedAnimation(
+          parent: animController,
+          curve: Curves.easeOutBack,
+        ),
       ),
+      [animController],
     );
 
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _animController,
-        curve: Curves.easeOut,
+    final fadeAnimation = useMemoized(
+      () => Tween<double>(begin: 0.0, end: 1.0).animate(
+        CurvedAnimation(
+          parent: animController,
+          curve: Curves.easeOut,
+        ),
       ),
+      [animController],
     );
 
-    _animController.forward();
-  }
+    useEffect(() {
+      animController.forward();
+      return null;
+    }, const []);
 
-  @override
-  void dispose() {
-    _animController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
     return ValueListenableBuilder<GameRoundStats?>(
-      valueListenable: widget.game.statsNotifier,
+      valueListenable: game.statsNotifier,
       builder: (context, stats, _) {
         if (stats == null) return const SizedBox.shrink();
 
         return FadeTransition(
-          opacity: _fadeAnimation,
+          opacity: fadeAnimation,
           child: ScaleTransition(
-            scale: _scaleAnimation,
+            scale: scaleAnimation,
             child: Center(
               child: Container(
                 margin: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -122,15 +104,15 @@ class _GameOverOverlayState extends State<GameOverOverlay>
                           const SizedBox(height: 22.0),
                           GameOverStatsGrid(stats: stats),
                           const SizedBox(height: 20.0),
-                          if (widget.game.lastRoundTelemetry != null &&
-                              widget.game.lastRoundTelemetry!.shots.isNotEmpty) ...[
+                          if (game.lastRoundTelemetry != null &&
+                              game.lastRoundTelemetry!.shots.isNotEmpty) ...[
                             SeeReplayButton(
-                              onPressed: () => widget.game.startReplayMode(),
+                              onPressed: () => game.startReplayMode(),
                             ),
                             const SizedBox(height: 10.0),
                           ],
                           PlayAgainButton(
-                            onPressed: () => widget.game.exitToSoloMode(),
+                            onPressed: () => game.exitToSoloMode(),
                           ),
                           const SizedBox(height: 10.0),
                           SizedBox(
@@ -139,10 +121,10 @@ class _GameOverOverlayState extends State<GameOverOverlay>
                               onPressed: () async {
                                 final config = await MatchSetupDialog.show(
                                   context,
-                                  initialConfig: widget.game.currentMatchConfig,
+                                  initialConfig: game.currentMatchConfig,
                                 );
                                 if (config != null) {
-                                  widget.game.startPassAndPlayMatch(config: config);
+                                  game.startPassAndPlayMatch(config: config);
                                 }
                               },
                               style: OutlinedButton.styleFrom(

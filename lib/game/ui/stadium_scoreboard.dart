@@ -201,6 +201,7 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
+                  // Left Flank: Player Avatar + Pause Badge
                   ScoreboardPlayerAvatar(
                     isActive: p1Active,
                     label: p1Label,
@@ -208,16 +209,19 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
                     activeMatchId: matchSession?.cloudMatchId,
                     onTap: widget.onInboxTapped,
                   ),
-                  const SizedBox(width: 5.0),
+                  const SizedBox(width: 6.0),
                   ScoreboardPauseBadge(game: widget.game),
-                  const SizedBox(width: 5.0),
-                  ScoreboardHelpBadge(onTap: widget.onHelpTapped),
+
                   const SizedBox(width: 8.0),
                   _buildTrapezoidalConsole(matchSession, shootingPlayerIndex),
                   const SizedBox(width: 8.0),
+
+                  // Right Flank: Help Badge + Mute Badge (+ Opponent Avatar in 1v1)
+                  ScoreboardHelpBadge(onTap: widget.onHelpTapped),
+                  const SizedBox(width: 6.0),
                   const ScoreboardMuteBadge(),
                   if (is1v1) ...[
-                    const SizedBox(width: 5.0),
+                    const SizedBox(width: 6.0),
                     ScoreboardOpponentAvatar(
                       isActive: p2Active,
                       label: matchSession.isWaitingForOpponent

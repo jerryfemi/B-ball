@@ -206,9 +206,10 @@ class BallPhysics3D {
     // 7. Cylindrical Pole Collision Detection & Response
     _checkPoleCollision();
 
-    // 8. Solid Gymnasium Back Wall & Side Wall Colliders
+    // 8. Solid Gymnasium Back Wall, Side Walls & Ceiling Colliders
     _checkBackWallCollision();
     _checkSideWallsCollision();
+    _checkCeilingCollision();
 
     // 9. Hardwood Court Floor Collision (strictly on the court floor)
     _checkFloorCollision(dt);
@@ -387,6 +388,16 @@ class BallPhysics3D {
       pos.x = -halfWidth + radius + 0.001;
       final n = Vector3(1.0, 0.0, 0.0);
       _contact(n, e: 0.55, mu: 0.40);
+    }
+  }
+
+  /// Solid gymnasium overhead ceiling boundary collider.
+  /// Strictly prevents extreme upward ricochets or trajectories from escaping the court.
+  void _checkCeilingCollision() {
+    if (pos.y + radius >= ceilingY) {
+      pos.y = ceilingY - radius - 0.001;
+      final n = Vector3(0.0, -1.0, 0.0);
+      _contact(n, e: 0.35, mu: 0.20);
     }
   }
 

@@ -1,19 +1,15 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 
 import '../audio/audio_engine.dart';
 import '../basketball_game.dart';
+import '../physics/shot_difficulty.dart';
 import 'match/match_setup_dialog.dart';
 
 /// Frosted obsidian glass Pause Overlay displayed when mid-round action is paused.
-///
-/// Features:
-/// 1. Smooth entrance fade & scale animations
-/// 2. Stadium Pause header with glowing cyan accents
-/// 3. In-flight snapshot metric chips (Score, Clock, Streak)
-/// 4. Primary "Resume" button & secondary "Restart Round" button
-/// 5. Quick audio mute toggle pill
-class PauseOverlay extends StatefulWidget {
+class PauseOverlay extends HookWidget {
   final BasketballGame game;
 
   const PauseOverlay({
@@ -22,52 +18,40 @@ class PauseOverlay extends StatefulWidget {
   });
 
   @override
-  State<PauseOverlay> createState() => _PauseOverlayState();
-}
-
-class _PauseOverlayState extends State<PauseOverlay>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _animController;
-  late final Animation<double> _scaleAnimation;
-  late final Animation<double> _fadeAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _animController = AnimationController(
-      vsync: this,
+  Widget build(BuildContext context) {
+    final animController = useAnimationController(
       duration: const Duration(milliseconds: 260),
     );
 
-    _scaleAnimation = Tween<double>(begin: 0.90, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _animController,
-        curve: Curves.easeOutBack,
+    final scaleAnimation = useMemoized(
+      () => Tween<double>(begin: 0.90, end: 1.0).animate(
+        CurvedAnimation(
+          parent: animController,
+          curve: Curves.easeOutBack,
+        ),
       ),
+      [animController],
     );
 
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _animController,
-        curve: Curves.easeOut,
+    final fadeAnimation = useMemoized(
+      () => Tween<double>(begin: 0.0, end: 1.0).animate(
+        CurvedAnimation(
+          parent: animController,
+          curve: Curves.easeOut,
+        ),
       ),
+      [animController],
     );
 
-    _animController.forward();
-  }
+    useEffect(() {
+      animController.forward();
+      return null;
+    }, const []);
 
-  @override
-  void dispose() {
-    _animController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
     return FadeTransition(
-      opacity: _fadeAnimation,
+      opacity: fadeAnimation,
       child: ScaleTransition(
-        scale: _scaleAnimation,
+        scale: scaleAnimation,
         child: Center(
           child: Container(
             margin: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -148,7 +132,7 @@ class _PauseOverlayState extends State<PauseOverlay>
                           Expanded(
                             child: _buildMetricChip(
                               label: 'SCORE',
-                              value: '${widget.game.scoreNotifier.value}',
+                              value: '${game.scoreNotifier.value}',
                               color: const Color(0xFFFF4444),
                             ),
                           ),
@@ -156,8 +140,7 @@ class _PauseOverlayState extends State<PauseOverlay>
                           Expanded(
                             child: _buildMetricChip(
                               label: 'CLOCK',
-                              value:
-                                  '${widget.game.timeRemainingNotifier.value}s',
+                              value: '${game.timeRemainingNotifier.value}s',
                               color: const Color(0xFFFFE000),
                             ),
                           ),
@@ -165,7 +148,7 @@ class _PauseOverlayState extends State<PauseOverlay>
                           Expanded(
                             child: _buildMetricChip(
                               label: 'STREAK',
-                              value: '${widget.game.streakNotifier.value}',
+                              value: '${game.streakNotifier.value}',
                               color: const Color(0xFFF97316),
                             ),
                           ),
@@ -197,7 +180,7 @@ class _PauseOverlayState extends State<PauseOverlay>
                           child: Material(
                             color: Colors.transparent,
                             child: InkWell(
-                              onTap: () => widget.game.resumeGame(),
+                              onTap: () => game.resumeGame(),
                               borderRadius: BorderRadius.circular(16.0),
                               child: const Center(
                                 child: Text(
@@ -214,16 +197,144 @@ class _PauseOverlayState extends State<PauseOverlay>
                           ),
                         ),
                       ),
-                      const SizedBox(height: 10.0),
+                      const SizedBox(height: 14.0),
 
-                      // 4. Secondary Action: Restart Round / Exit Match / 1v1 Setup
+                      // 4. Solo Difficulty Selector (Active only during Solo Play)
                       ValueListenableBuilder(
-                        valueListenable: widget.game.matchSessionNotifier,
+                        valueListenable: game.matchSessionNotifier,
                         builder: (context, session, _) {
                           final isMatch = session != null;
+                          if (isMatch) {
+                            // In 1v1 match: Strict lock-in to prevent cheating/dodging.
+                            // Players cannot restart round or exit mid-turn.
+                            return Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14.0,
+                                vertical: 10.0,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0x180284C7),
+                                borderRadius: BorderRadius.circular(14.0),
+                                border: Border.all(
+                                  color: const Color(0x4438BDF8),
+                                  width: 1.0,
+                                ),
+                              ),
+                              child: const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.lock_outline_rounded,
+                                    size: 15.0,
+                                    color: Color(0xFF38BDF8),
+                                  ),
+                                  SizedBox(width: 8.0),
+                                  Text(
+                                    '1V1 TURN IN PROGRESS • FINISH ROUND',
+                                    style: TextStyle(
+                                      color: Color(0xFF38BDF8),
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 0.6,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
+
                           return Column(
-                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+                              // Difficulty Preset selector
+                              ValueListenableBuilder<ShotDifficulty>(
+                                valueListenable: game.soloDifficultyNotifier,
+                                builder: (context, currentDiff, _) {
+                                  return Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        'SOLO DIFFICULTY',
+                                        style: TextStyle(
+                                          color: Color(0xFF94A3B8),
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.w800,
+                                          letterSpacing: 0.8,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6.0),
+                                      Row(
+                                        children: ShotDifficulty.values.map((diff) {
+                                          final isSel = currentDiff == diff;
+                                          return Expanded(
+                                            child: Padding(
+                                              padding: const EdgeInsets.symmetric(
+                                                horizontal: 2.5,
+                                              ),
+                                              child: InkWell(
+                                                onTap: () {
+                                                  HapticFeedback.selectionClick();
+                                                  game.soloDifficultyNotifier.value =
+                                                      diff;
+                                                },
+                                                borderRadius:
+                                                    BorderRadius.circular(10.0),
+                                                child: Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                    vertical: 7.0,
+                                                  ),
+                                                  decoration: BoxDecoration(
+                                                    color: isSel
+                                                        ? const Color(0xFF1E293B)
+                                                        : const Color(0x661E2638),
+                                                    borderRadius:
+                                                        BorderRadius.circular(10.0),
+                                                    border: Border.all(
+                                                      color: isSel
+                                                          ? const Color(0xFF38BDF8)
+                                                          : const Color(0xFF334155),
+                                                      width: isSel ? 1.4 : 1.0,
+                                                    ),
+                                                  ),
+                                                  child: Column(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      Text(
+                                                        diff.emoji,
+                                                        style: const TextStyle(
+                                                          fontSize: 13.0,
+                                                        ),
+                                                      ),
+                                                      const SizedBox(height: 1.0),
+                                                      Text(
+                                                        diff.label,
+                                                        style: TextStyle(
+                                                          color: isSel
+                                                              ? const Color(0xFF38BDF8)
+                                                              : const Color(0xFFCBD5E1),
+                                                          fontSize: 10.0,
+                                                          fontWeight: isSel
+                                                              ? FontWeight.w900
+                                                              : FontWeight.w600,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          );
+                                        }).toList(),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              ),
+                              const SizedBox(height: 12.0),
+
+                              // Solo Actions: Start 1v1 or Restart Round
                               SizedBox(
                                 width: double.infinity,
                                 height: 42.0,
@@ -231,10 +342,10 @@ class _PauseOverlayState extends State<PauseOverlay>
                                   onPressed: () async {
                                     final config = await MatchSetupDialog.show(
                                       context,
-                                      initialConfig: widget.game.currentMatchConfig,
+                                      initialConfig: game.currentMatchConfig,
                                     );
                                     if (config != null) {
-                                      widget.game.startPassAndPlayMatch(config: config);
+                                      game.startPassAndPlayMatch(config: config);
                                     }
                                   },
                                   style: OutlinedButton.styleFrom(
@@ -247,18 +358,18 @@ class _PauseOverlayState extends State<PauseOverlay>
                                     ),
                                     backgroundColor: const Color(0x180284C7),
                                   ),
-                                  child: Row(
+                                  child: const Row(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
-                                      const Icon(
+                                      Icon(
                                         Icons.tune_rounded,
                                         size: 16.0,
                                         color: Color(0xFF38BDF8),
                                       ),
-                                      const SizedBox(width: 8.0),
+                                      SizedBox(width: 8.0),
                                       Text(
-                                        isMatch ? 'MATCH SETTINGS' : 'START 1V1 MATCH',
-                                        style: const TextStyle(
+                                        'START 1V1 MATCH',
+                                        style: TextStyle(
                                           color: Color(0xFF38BDF8),
                                           fontSize: 13.0,
                                           fontWeight: FontWeight.w800,
@@ -274,13 +385,7 @@ class _PauseOverlayState extends State<PauseOverlay>
                                 width: double.infinity,
                                 height: 42.0,
                                 child: OutlinedButton(
-                                  onPressed: () {
-                                    if (isMatch) {
-                                      widget.game.exitToSoloMode();
-                                    } else {
-                                      widget.game.restartRound();
-                                    }
-                                  },
+                                  onPressed: () => game.restartRound(),
                                   style: OutlinedButton.styleFrom(
                                     side: const BorderSide(
                                       color: Color(0x4494A3B8),
@@ -291,9 +396,9 @@ class _PauseOverlayState extends State<PauseOverlay>
                                     ),
                                     backgroundColor: const Color(0x1E334155),
                                   ),
-                                  child: Text(
-                                    isMatch ? 'EXIT MATCH TO SOLO' : 'RESTART ROUND',
-                                    style: const TextStyle(
+                                  child: const Text(
+                                    'RESTART ROUND',
+                                    style: TextStyle(
                                       color: Color(0xFFCBD5E1),
                                       fontSize: 13.0,
                                       fontWeight: FontWeight.w700,
@@ -306,53 +411,86 @@ class _PauseOverlayState extends State<PauseOverlay>
                           );
                         },
                       ),
-                      const SizedBox(height: 12.0),
+                      const SizedBox(height: 14.0),
 
-                      // 5. Sound Quick-Toggle Pill
-                      ValueListenableBuilder<bool>(
-                        valueListenable: AudioEngine.isMutedNotifier,
-                        builder: (context, isMuted, _) {
-                          return Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              onTap: AudioEngine.toggleMute,
-                              borderRadius: BorderRadius.circular(12.0),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10.0,
-                                  vertical: 6.0,
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      isMuted
-                                          ? Icons.volume_off_rounded
-                                          : Icons.volume_up_rounded,
-                                      size: 16.0,
-                                      color: isMuted
-                                          ? const Color(0xFFFF6B6B)
-                                          : const Color(0xFF94A3B8),
-                                    ),
-                                    const SizedBox(width: 6.0),
-                                    Text(
-                                      isMuted
-                                          ? 'Sound: Muted (Tap to unmute)'
-                                          : 'Sound: Enabled',
-                                      style: TextStyle(
-                                        color: isMuted
-                                          ? const Color(0xFFFF6B6B)
-                                          : const Color(0xFF94A3B8),
-                                        fontSize: 12.0,
-                                        fontWeight: FontWeight.w600,
+                      // 5. Audio Settings Card: SFX & Music Sliders + Mute Toggle
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14.0,
+                          vertical: 12.0,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0F172A),
+                          borderRadius: BorderRadius.circular(16.0),
+                          border: Border.all(
+                            color: const Color(0x3338BDF8),
+                            width: 1.0,
+                          ),
+                        ),
+                        child: Column(
+                          children: [
+                            _VolumeSliderRow(
+                              icon: Icons.sports_basketball_rounded,
+                              label: 'SFX',
+                              notifier: AudioEngine.sfxVolumeNotifier,
+                              onChanged: (val) => AudioEngine.sfxVolume = val,
+                            ),
+                            const SizedBox(height: 6.0),
+                            _VolumeSliderRow(
+                              icon: Icons.music_note_rounded,
+                              label: 'MUSIC',
+                              notifier: AudioEngine.musicVolumeNotifier,
+                              onChanged: (val) => AudioEngine.musicVolume = val,
+                            ),
+                            const SizedBox(height: 8.0),
+                            const Divider(color: Color(0x2238BDF8), height: 1.0),
+                            const SizedBox(height: 6.0),
+                            ValueListenableBuilder<bool>(
+                              valueListenable: AudioEngine.isMutedNotifier,
+                              builder: (context, isMuted, _) {
+                                return Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    onTap: AudioEngine.toggleMute,
+                                    borderRadius: BorderRadius.circular(10.0),
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8.0,
+                                        vertical: 4.0,
+                                      ),
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Icon(
+                                            isMuted
+                                                ? Icons.volume_off_rounded
+                                                : Icons.volume_up_rounded,
+                                            size: 15.0,
+                                            color: isMuted
+                                                ? const Color(0xFFFF6B6B)
+                                                : const Color(0xFF38BDF8),
+                                          ),
+                                          const SizedBox(width: 6.0),
+                                          Text(
+                                            isMuted ? 'Muted (Tap to Unmute)' : 'Sound On',
+                                            style: TextStyle(
+                                              color: isMuted
+                                                  ? const Color(0xFFFF6B6B)
+                                                  : const Color(0xFF94A3B8),
+                                              fontSize: 11.5,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
-                                  ],
-                                ),
-                              ),
+                                  ),
+                                );
+                              },
                             ),
-                          );
-                        },
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -402,6 +540,86 @@ class _PauseOverlayState extends State<PauseOverlay>
           ),
         ],
       ),
+    );
+  }
+}
+
+class _VolumeSliderRow extends StatelessWidget {
+  const _VolumeSliderRow({
+    required this.icon,
+    required this.label,
+    required this.notifier,
+    required this.onChanged,
+  });
+
+  final IconData icon;
+  final String label;
+  final ValueNotifier<double> notifier;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<double>(
+      valueListenable: notifier,
+      builder: (context, volume, _) {
+        return Row(
+          children: [
+            Icon(
+              icon,
+              size: 15.0,
+              color: const Color(0xFF38BDF8),
+            ),
+            const SizedBox(width: 8.0),
+            SizedBox(
+              width: 50.0,
+              child: Text(
+                label,
+                style: const TextStyle(
+                  color: Color(0xFF94A3B8),
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.8,
+                ),
+              ),
+            ),
+            Expanded(
+              child: SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  trackHeight: 3.5,
+                  activeTrackColor: const Color(0xFF38BDF8),
+                  inactiveTrackColor: const Color(0x3338BDF8),
+                  thumbColor: Colors.white,
+                  thumbShape: const RoundSliderThumbShape(
+                    enabledThumbRadius: 6.0,
+                    pressedElevation: 4.0,
+                  ),
+                  overlayColor: const Color(0x3338BDF8),
+                  overlayShape:
+                      const RoundSliderOverlayShape(overlayRadius: 12.0),
+                ),
+                child: Slider(
+                  value: volume.clamp(0.0, 1.0),
+                  min: 0.0,
+                  max: 1.0,
+                  onChanged: onChanged,
+                ),
+              ),
+            ),
+            SizedBox(
+              width: 32.0,
+              child: Text(
+                '${(volume * 100).round()}%',
+                textAlign: TextAlign.right,
+                style: const TextStyle(
+                  color: Color(0xFFE2E8F0),
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 
 import '../../../models/friend_profile.dart';
 import '../../../services/auth_service.dart';
@@ -12,7 +13,7 @@ import '../common/app_text_field.dart';
 
 /// Modal dialog to search and add friends by display name or player tag,
 /// and share one's own tag with others.
-class AddFriendDialog extends StatefulWidget {
+class AddFriendDialog extends HookWidget {
   final Set<String> existingFriendUids;
   final ValueChanged<FriendProfile>? onFriendAdded;
 
@@ -37,93 +38,76 @@ class AddFriendDialog extends StatefulWidget {
   }
 
   @override
-  State<AddFriendDialog> createState() => _AddFriendDialogState();
-}
-
-class _AddFriendDialogState extends State<AddFriendDialog> {
-  final TextEditingController _searchController = TextEditingController();
-  Timer? _debounceTimer;
-  List<FriendProfile> _results = [];
-  bool _isSearching = false;
-  late final Set<String> _friendUids;
-  final Set<String> _invitedUids = {};
-
-
-  @override
-  void initState() {
-    super.initState();
-    _friendUids = Set.from(widget.existingFriendUids);
-  }
-
-  @override
-  void dispose() {
-    _debounceTimer?.cancel();
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  void _onSearchChanged(String val) {
-    _debounceTimer?.cancel();
-    final query = val.trim();
-    if (query.length < 2) {
-      setState(() {
-        _results = [];
-        _isSearching = false;
-      });
-      return;
-    }
-
-    setState(() => _isSearching = true);
-    _debounceTimer = Timer(const Duration(milliseconds: 350), () async {
-      final myUid = AuthService.instance.currentUser?.uid ?? '';
-      final results = await FriendsService.instance.searchUsers(query, myUid);
-      if (mounted) {
-        setState(() {
-          _results = results;
-          _isSearching = false;
-        });
-      }
-    });
-  }
-
-  Future<void> _handleSendInvite(FriendProfile friend) async {
-    HapticFeedback.mediumImpact();
-    final myProfile = AuthService.instance.currentUser;
-    if (myProfile != null) {
-      await FriendsService.instance.sendFriendInvite(
-        targetUid: friend.uid,
-        myProfile: myProfile,
-      );
-      if (mounted) {
-        setState(() => _invitedUids.add(friend.uid));
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Friend invite sent to ${friend.displayName}! 📨'),
-            backgroundColor: const Color(0xFF1E2638),
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-    }
-  }
-
-  void _copyMyTag() {
-    final user = AuthService.instance.currentUser;
-    if (user == null) return;
-    Clipboard.setData(ClipboardData(text: user.displayName));
-    HapticFeedback.lightImpact();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Copied "${user.displayName}" to clipboard!'),
-        backgroundColor: const Color(0xFF1E2638),
-        duration: const Duration(seconds: 2),
-      ),
-    );
-  }
-
-  @override
   Widget build(BuildContext context) {
+    final searchController = useTextEditingController();
+    final debounceTimer = useRef<Timer?>(null);
+    final results = useState<List<FriendProfile>>([]);
+    final isSearching = useState<bool>(false);
+    final invitedUids = useState<Set<String>>({});
+    final friendUids = useMemoized(
+      () => Set<String>.from(existingFriendUids),
+      [existingFriendUids],
+    );
+
+    useEffect(() {
+      return () => debounceTimer.value?.cancel();
+    }, const []);
+
+    void onSearchChanged(String val) {
+      debounceTimer.value?.cancel();
+      final query = val.trim();
+      if (query.length < 2) {
+        results.value = [];
+        isSearching.value = false;
+        return;
+      }
+
+      isSearching.value = true;
+      debounceTimer.value = Timer(const Duration(milliseconds: 350), () async {
+        final myUid = AuthService.instance.currentUser?.uid ?? '';
+        final res = await FriendsService.instance.searchUsers(query, myUid);
+        if (context.mounted) {
+          results.value = res;
+          isSearching.value = false;
+        }
+      });
+    }
+
+    Future<void> handleSendInvite(FriendProfile friend) async {
+      HapticFeedback.mediumImpact();
+      final myProfile = AuthService.instance.currentUser;
+      if (myProfile != null) {
+        await FriendsService.instance.sendFriendInvite(
+          targetUid: friend.uid,
+          myProfile: myProfile,
+        );
+        if (context.mounted) {
+          invitedUids.value = {...invitedUids.value, friend.uid};
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Friend invite sent to ${friend.displayName}! 📨'),
+              backgroundColor: const Color(0xFF1E2638),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    }
+
+    void copyMyTag() {
+      final user = AuthService.instance.currentUser;
+      if (user == null) return;
+      Clipboard.setData(ClipboardData(text: user.displayName));
+      HapticFeedback.lightImpact();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Copied "${user.displayName}" to clipboard!'),
+          backgroundColor: const Color(0xFF1E2638),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
     final myUser = AuthService.instance.currentUser;
     final myName = myUser?.displayName ?? 'Player';
     final myAvatar =
@@ -183,7 +167,7 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
                       ),
                     ),
                     InkWell(
-                      onTap: _copyMyTag,
+                      onTap: copyMyTag,
                       borderRadius: BorderRadius.circular(8),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
@@ -222,15 +206,15 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
 
               // Search field
               AppTextField(
-                controller: _searchController,
-                onChanged: _onSearchChanged,
+                controller: searchController,
+                onChanged: onSearchChanged,
                 hintText: "Enter friend's name or tag...",
                 prefixIcon: const Icon(
                   Icons.search_rounded,
                   color: Color(0xFF64748B),
                   size: 20,
                 ),
-                suffixIcon: _isSearching
+                suffixIcon: isSearching.value
                     ? const Padding(
                         padding: EdgeInsets.all(12),
                         child: SizedBox(
@@ -249,16 +233,16 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
               // Search results list
               ConstrainedBox(
                 constraints: const BoxConstraints(maxHeight: 200),
-                child: _results.isEmpty
+                child: results.value.isEmpty
                     ? Padding(
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         child: Center(
                           child: Text(
-                            _searchController.text.trim().isEmpty
+                            searchController.text.trim().isEmpty
                                 ? 'Search by username above to add friends'
-                                : _isSearching
+                                : isSearching.value
                                 ? 'Searching players...'
-                                : 'No players found matching "$_searchController.text"',
+                                : 'No players found matching "${searchController.text}"',
                             style: const TextStyle(
                               color: Color(0xFF64748B),
                               fontSize: 12,
@@ -269,11 +253,11 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
                       )
                     : ListView.separated(
                         shrinkWrap: true,
-                        itemCount: _results.length,
+                        itemCount: results.value.length,
                         separatorBuilder: (_, _) => const SizedBox(height: 8),
                         itemBuilder: (context, index) {
-                          final friend = _results[index];
-                          final isAlreadyFriend = _friendUids.contains(
+                          final friend = results.value[index];
+                          final isAlreadyFriend = friendUids.contains(
                             friend.uid,
                           );
 
@@ -323,7 +307,7 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
                                       ),
                                     ),
                                   )
-                                else if (_invitedUids.contains(friend.uid))
+                                else if (invitedUids.value.contains(friend.uid))
                                   Container(
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 8,
@@ -345,7 +329,7 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
                                   )
                                 else
                                   InkWell(
-                                    onTap: () => _handleSendInvite(friend),
+                                    onTap: () => handleSendInvite(friend),
                                     borderRadius: BorderRadius.circular(8),
                                     child: Container(
                                       padding: const EdgeInsets.symmetric(

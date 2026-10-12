@@ -218,6 +218,7 @@ class MatchSession {
       config: MatchConfig(
         totalRounds: cloudMatch.totalRounds,
         roundDurationSeconds: cloudMatch.roundDurationSeconds,
+        difficulty: cloudMatch.difficulty,
         player1Name: myPlayer.displayName,
         player1Avatar: myPlayer.avatarEmoji,
         player2Name: oppPlayer.displayName,

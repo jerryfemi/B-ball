@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../game/physics/shot_difficulty.dart';
 import '../game/telemetry/shot_telemetry.dart';
 import 'player_descriptor.dart';
 
@@ -239,6 +240,7 @@ class CloudMatch {
 
   final int totalRounds;
   final int roundDurationSeconds;
+  final ShotDifficulty difficulty;
   final int currentRound;
 
   /// UID of the player whose turn it is to shoot.
@@ -263,6 +265,7 @@ class CloudMatch {
     this.player2,
     required this.totalRounds,
     required this.roundDurationSeconds,
+    this.difficulty = ShotDifficulty.medium,
     required this.currentRound,
     required this.activeTurnPlayerUid,
     this.latestTelemetry,
@@ -324,6 +327,7 @@ class CloudMatch {
     CloudPlayer? player2,
     int? totalRounds,
     int? roundDurationSeconds,
+    ShotDifficulty? difficulty,
     int? currentRound,
     String? activeTurnPlayerUid,
     RoundTelemetry? latestTelemetry,
@@ -342,6 +346,7 @@ class CloudMatch {
       player2: player2 ?? this.player2,
       totalRounds: totalRounds ?? this.totalRounds,
       roundDurationSeconds: roundDurationSeconds ?? this.roundDurationSeconds,
+      difficulty: difficulty ?? this.difficulty,
       currentRound: currentRound ?? this.currentRound,
       activeTurnPlayerUid: activeTurnPlayerUid ?? this.activeTurnPlayerUid,
       latestTelemetry: latestTelemetry ?? this.latestTelemetry,
@@ -362,6 +367,7 @@ class CloudMatch {
     'player2': player2?.toMap(),
     'totalRounds': totalRounds,
     'roundDurationSeconds': roundDurationSeconds,
+    'difficulty': difficulty.name,
     'currentRound': currentRound,
     'activeTurnPlayerUid': activeTurnPlayerUid,
     'latestTelemetry': latestTelemetry?.toJson(),
@@ -393,6 +399,10 @@ class CloudMatch {
         totalRounds: (map['totalRounds'] as num?)?.toInt() ?? 2,
         roundDurationSeconds:
             (map['roundDurationSeconds'] as num?)?.toInt() ?? 60,
+        difficulty: ShotDifficulty.values.firstWhere(
+          (d) => d.name == map['difficulty'],
+          orElse: () => ShotDifficulty.medium,
+        ),
         currentRound: (map['currentRound'] as num?)?.toInt() ?? 1,
         activeTurnPlayerUid: map['activeTurnPlayerUid'] as String? ?? '',
         latestTelemetry: map['latestTelemetry'] != null

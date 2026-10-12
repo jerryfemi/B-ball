@@ -1,6 +1,7 @@
 import '../../models/cloud_match.dart';
 import '../../models/friend_profile.dart';
 import '../../models/player_descriptor.dart';
+import '../physics/shot_difficulty.dart';
 
 /// Immutable configuration parameters for a 1v1 turn-based match.
 class MatchConfig {
@@ -9,6 +10,9 @@ class MatchConfig {
 
   /// Duration of each round in seconds (e.g. 30, 45, or 60; defaults to 60).
   final int roundDurationSeconds;
+
+  /// Shot forgiveness and aim assist difficulty preset for the match.
+  final ShotDifficulty difficulty;
 
   /// Display name for Player 1 (defaults to 'You').
   final String player1Name;
@@ -34,6 +38,7 @@ class MatchConfig {
   const MatchConfig({
     this.totalRounds = 2,
     this.roundDurationSeconds = 60,
+    this.difficulty = ShotDifficulty.medium,
     this.player1Name = 'You',
     this.player2Name = 'Them',
     this.player1Avatar = PlayerDescriptor.defaultAvatar,
@@ -46,6 +51,7 @@ class MatchConfig {
   MatchConfig copyWith({
     int? totalRounds,
     int? roundDurationSeconds,
+    ShotDifficulty? difficulty,
     String? player1Name,
     String? player2Name,
     String? player1Avatar,
@@ -57,6 +63,7 @@ class MatchConfig {
     return MatchConfig(
       totalRounds: totalRounds ?? this.totalRounds,
       roundDurationSeconds: roundDurationSeconds ?? this.roundDurationSeconds,
+      difficulty: difficulty ?? this.difficulty,
       player1Name: player1Name ?? this.player1Name,
       player2Name: player2Name ?? this.player2Name,
       player1Avatar: player1Avatar ?? this.player1Avatar,

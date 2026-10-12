@@ -79,8 +79,15 @@ class UserProfile implements PlayerDescriptor {
 /// Service handling silent background guest authentication,
 /// local profile persistence, and reactive auth state updates.
 class AuthService {
-  AuthService._internal();
+  final FriendsService? friendsService;
+
+  AuthService({this.friendsService});
+
+  AuthService._internal() : friendsService = null;
   static final AuthService instance = AuthService._internal();
+
+  FriendsService get _effectiveFriendsService =>
+      friendsService ?? FriendsService.instance;
 
   static const String _prefKeyUid = 'bball_local_guest_uid';
   static const String _prefKeyName = 'bball_player_name';
@@ -235,7 +242,7 @@ class AuthService {
 
     currentUserNotifier.value = profile;
     if (isVerified) {
-      unawaited(FriendsService.instance.publishMyProfile(profile));
+      unawaited(_effectiveFriendsService.publishMyProfile(profile));
     }
 
     // Listen to background auth changes
@@ -308,7 +315,7 @@ class AuthService {
       avatarEmoji: newAvatar,
     );
     currentUserNotifier.value = updated;
-    unawaited(FriendsService.instance.publishMyProfile(updated));
+    unawaited(_effectiveFriendsService.publishMyProfile(updated));
   }
 
   /// Links the anonymous guest account with a permanent credential (Google, Email, etc.)

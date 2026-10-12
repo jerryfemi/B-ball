@@ -12,10 +12,18 @@ import 'auth_service.dart';
 
 /// Service managing social friends list, user discovery, and 1v1 conversation bindings.
 class FriendsService {
-  FriendsService._internal() {
+  final AuthService? authService;
+
+  FriendsService({this.authService}) {
+    _initLocalCache();
+  }
+  FriendsService._internal() : authService = null {
     _initLocalCache();
   }
   static final FriendsService instance = FriendsService._internal();
+
+  AuthService get _effectiveAuthService =>
+      authService ?? AuthService.instance;
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   static const String _prefFriendsCacheKey = 'bball_cached_friends_json';
@@ -102,7 +110,7 @@ class FriendsService {
     friendsNotifier.value = updatedList;
     await _cacheFriendsLocally(updatedList);
 
-    // 2. Persist to Firestore user document (guaranteed permitted by rules)
+    // 2. Persist to canonical Firestore user document array (single source of truth)
     if (myUid.isNotEmpty) {
       try {
         await _usersRef.doc(myUid).set({
@@ -112,15 +120,6 @@ class FriendsService {
       } catch (e) {
         debugPrint('[FriendsService] Firestore save friends notice: $e');
       }
-
-      // Also try subcollection write as secondary store
-      try {
-        await _usersRef
-            .doc(myUid)
-            .collection('friends')
-            .doc(friend.uid)
-            .set(updatedFriend.toMap(), SetOptions(merge: true));
-      } catch (_) {}
     }
   }
 
@@ -276,8 +275,12 @@ class FriendsService {
 
   /// Accepts an incoming friend invite, adds them to my friends list,
   /// notifies the sender so they also reciprocate, and deletes the invite.
-  Future<void> acceptFriendInvite(String myUid, FriendInvite invite) async {
-    final myProfile = AuthService.instance.currentUser;
+  Future<void> acceptFriendInvite(
+    String myUid,
+    FriendInvite invite, {
+    UserProfile? myProfile,
+  }) async {
+    final effectiveProfile = myProfile ?? _effectiveAuthService.currentUser;
     final friend = FriendProfile(
       uid: invite.senderUid,
       displayName: invite.senderName,
@@ -293,12 +296,12 @@ class FriendsService {
           .delete();
     } catch (_) {}
 
-    if (myProfile != null) {
+    if (effectiveProfile != null) {
       try {
         final reciprocate = FriendInvite(
           senderUid: myUid,
-          senderName: myProfile.displayName,
-          senderAvatar: myProfile.avatarEmoji,
+          senderName: effectiveProfile.displayName,
+          senderAvatar: effectiveProfile.avatarEmoji,
           status: 'accepted',
           timestamp: DateTime.now().millisecondsSinceEpoch,
         );
@@ -346,6 +349,9 @@ class FriendsService {
       (uid1.compareTo(uid2) < 0) ? '${uid1}_$uid2' : '${uid2}_$uid1';
 
   /// Sends a direct banter/chat message between two friends.
+  ///
+  /// Writes to a single canonical `conversations/{convId}` document.
+  /// No longer dual-writes to user outbox documents.
   Future<void> sendDirectMessage({
     required String fromUid,
     required String toUid,
@@ -354,124 +360,50 @@ class FriendsService {
     final convId = getConversationId(fromUid, toUid);
     final msgMap = message.toMap();
 
-    // 1. Try writing to conversations collection
     try {
       await _firestore.collection('conversations').doc(convId).set({
         'participants': [fromUid, toUid],
         'chat': FieldValue.arrayUnion([msgMap]),
         'updatedAt': DateTime.now().millisecondsSinceEpoch,
       }, SetOptions(merge: true));
-    } catch (_) {}
-
-    // 2. Also persist in sender's user document under outbox (guaranteed permission allowed)
-    try {
-      await _usersRef.doc(fromUid).set({
-        'outbox': FieldValue.arrayUnion([
-          {...msgMap, 'toUid': toUid},
-        ]),
-        'updatedAt': DateTime.now().millisecondsSinceEpoch,
-      }, SetOptions(merge: true));
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[FriendsService] Send direct message error: $e');
+    }
   }
 
   /// Streams direct conversation banter between two players in real time.
+  ///
+  /// Uses a single `conversations/{convId}` document listener instead of
+  /// the previous 3-stream pattern (conversations + my outbox + friend outbox).
+  /// This reduces Firestore listener count by 66% and eliminates manual merging.
   Stream<List<CloudChatMessage>> streamDirectChat({
     required String myUid,
     required String friendUid,
   }) {
     final convId = getConversationId(myUid, friendUid);
 
-    late StreamController<List<CloudChatMessage>> controller;
-    StreamSubscription? subConv;
-    StreamSubscription? subMyUser;
-    StreamSubscription? subFriendUser;
-
-    final myMessages = <String, CloudChatMessage>{};
-    final friendMessages = <String, CloudChatMessage>{};
-    final convMessages = <String, CloudChatMessage>{};
-
-    void emitMerged() {
-      final all = <String, CloudChatMessage>{
-        ...myMessages,
-        ...friendMessages,
-        ...convMessages,
-      };
-      final sorted = all.values.toList()
-        ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
-      if (!controller.isClosed) {
-        controller.add(sorted);
-      }
-    }
-
-    controller = StreamController<List<CloudChatMessage>>.broadcast(
-      onListen: () {
-        // 1. Conversations collection stream
-        try {
-          subConv = _firestore
-              .collection('conversations')
-              .doc(convId)
-              .snapshots()
-              .listen((doc) {
-                if (doc.exists && doc.data() != null) {
-                  final rawChat = doc.data()!['chat'] as List<dynamic>?;
-                  if (rawChat != null) {
-                    convMessages.clear();
-                    for (final e in rawChat) {
-                      final m = CloudChatMessage.fromMap(
-                        e as Map<String, dynamic>,
-                      );
-                      convMessages[m.id] = m;
-                    }
-                    emitMerged();
-                  }
-                }
-              }, onError: (_) {});
-        } catch (_) {}
-
-        // 2. User outbox streams (guaranteed permitted by live rules)
-        try {
-          subMyUser = _usersRef.doc(myUid).snapshots().listen((doc) {
-            if (doc.exists && doc.data() != null) {
-              final raw = doc.data()!['outbox'] as List<dynamic>?;
-              if (raw != null) {
-                myMessages.clear();
-                for (final e in raw) {
-                  if (e is Map<String, dynamic> && e['toUid'] == friendUid) {
-                    final m = CloudChatMessage.fromMap(e);
-                    myMessages[m.id] = m;
-                  }
-                }
-                emitMerged();
-              }
-            }
-          }, onError: (_) {});
-        } catch (_) {}
-
-        try {
-          subFriendUser = _usersRef.doc(friendUid).snapshots().listen((doc) {
-            if (doc.exists && doc.data() != null) {
-              final raw = doc.data()!['outbox'] as List<dynamic>?;
-              if (raw != null) {
-                friendMessages.clear();
-                for (final e in raw) {
-                  if (e is Map<String, dynamic> && e['toUid'] == myUid) {
-                    final m = CloudChatMessage.fromMap(e);
-                    friendMessages[m.id] = m;
-                  }
-                }
-                emitMerged();
-              }
-            }
-          }, onError: (_) {});
-        } catch (_) {}
-      },
-      onCancel: () {
-        subConv?.cancel();
-        subMyUser?.cancel();
-        subFriendUser?.cancel();
-      },
-    );
-
-    return controller.stream;
+    return _firestore
+        .collection('conversations')
+        .doc(convId)
+        .snapshots()
+        .map((doc) {
+          if (!doc.exists || doc.data() == null) {
+            return const <CloudChatMessage>[];
+          }
+          final rawChat = doc.data()!['chat'] as List<dynamic>?;
+          if (rawChat == null || rawChat.isEmpty) {
+            return const <CloudChatMessage>[];
+          }
+          final messages = rawChat
+              .map((e) =>
+                  CloudChatMessage.fromMap(e as Map<String, dynamic>))
+              .toList()
+            ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+          return messages;
+        })
+        .handleError((e) {
+          debugPrint('[FriendsService] Stream direct chat error: $e');
+          return const <CloudChatMessage>[];
+        });
   }
 }

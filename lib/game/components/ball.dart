@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flame/events.dart';
 import 'package:flame_forge2d/flame_forge2d.dart';
 import 'package:forge2d/forge2d.dart' as forge2d;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:vector_math/vector_math_64.dart' show Vector3;
 
@@ -587,18 +588,32 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     // Only launch when swiped upwards toward the hoop
     if (vy >= -120.0) return;
 
-    // Upward swipe velocity in pixels/second
-    final swipeSpeedY = vy.abs();
-    // Lateral swipe ratio (aim angle dx / |dy|)
-    final swipeRatioX = (vx / swipeSpeedY).clamp(-0.80, 0.80);
+    // Platform-aware velocity normalization:
+    // On touch devices (iOS / Android), human finger flicks generate velocities
+    // ~2.0x-2.3x higher (~1400-2500 px/s) than mouse cursor drags (~600-900 px/s).
+    // Damping touch velocity normalizes the input so the calibrated 720 px/s sweet spot
+    // feels natural, responsive, and consistent across both touch and pointer devices.
+    final bool isTouchDevice = defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.android;
+    final double touchScale = isTouchDevice ? 0.46 : 1.0;
 
-    // 4. GamePigeon Power Plateau calculation via LaunchSolver
-    final powerRatio = LaunchSolver.flickToPower(swipeSpeedY);
+    // Upward swipe velocity in pixels/second (normalized for touch vs pointer)
+    final swipeSpeedY = vy.abs() * touchScale;
+    // Lateral swipe ratio (aim angle dx / |dy| remains invariant since both axes scale identically)
+    final swipeRatioX = (vx / vy.abs()).clamp(-0.80, 0.80);
+
+    // 4. GamePigeon Power Plateau calculation via LaunchSolver with room difficulty
+    final difficulty = game.currentDifficulty;
+    final powerRatio = LaunchSolver.flickToPower(
+      swipeSpeedY,
+      difficulty: difficulty,
+    );
 
     final launchVel = LaunchSolver.calculateLaunchVelocity(
       powerRatio: powerRatio,
       aimRatio: swipeRatioX,
       from: physics.pos,
+      difficulty: difficulty,
     );
 
     game.recordShotAttempt();

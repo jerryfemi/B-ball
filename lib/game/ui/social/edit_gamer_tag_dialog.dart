@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 
 import '../../../services/auth_service.dart';
 import '../common/app_button.dart';
@@ -7,7 +8,7 @@ import '../common/app_modal_dialog.dart';
 import '../common/app_text_field.dart';
 
 /// Modal dialog allowing the player to customize or randomize their unique Gamer Tag.
-class EditGamerTagDialog extends StatefulWidget {
+class EditGamerTagDialog extends HookWidget {
   const EditGamerTagDialog({super.key});
 
   static Future<void> show(BuildContext context) {
@@ -18,57 +19,39 @@ class EditGamerTagDialog extends StatefulWidget {
   }
 
   @override
-  State<EditGamerTagDialog> createState() => _EditGamerTagDialogState();
-}
+  Widget build(BuildContext context) {
+    final currentName = useMemoized(
+      () => AuthService.instance.currentUser?.displayName ?? 'Baller',
+    );
+    final controller = useTextEditingController(text: currentName);
+    final errorText = useState<String?>(null);
+    final isSaving = useState<bool>(false);
 
-class _EditGamerTagDialogState extends State<EditGamerTagDialog> {
-  late final TextEditingController _controller;
-  String? _errorText;
-  bool _isSaving = false;
-
-  @override
-  void initState() {
-    super.initState();
-    final currentName =
-        AuthService.instance.currentUser?.displayName ?? 'Baller';
-    _controller = TextEditingController(text: currentName);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _randomizeTag() {
-    HapticFeedback.lightImpact();
-    final newTag = AuthService.generateUniqueGamerTag();
-    setState(() {
-      _controller.text = newTag;
-      _errorText = null;
-    });
-  }
-
-  Future<void> _save() async {
-    final clean = _controller.text.trim();
-    if (clean.length < 3) {
-      setState(() => _errorText = 'Gamer tag must be at least 3 characters');
-      return;
-    }
-    if (clean.length > 20) {
-      setState(() => _errorText = 'Gamer tag cannot exceed 20 characters');
-      return;
+    void randomizeTag() {
+      HapticFeedback.lightImpact();
+      final newTag = AuthService.generateUniqueGamerTag();
+      controller.text = newTag;
+      errorText.value = null;
     }
 
-    setState(() {
-      _isSaving = true;
-      _errorText = null;
-    });
+    Future<void> save() async {
+      final clean = controller.text.trim();
+      if (clean.length < 3) {
+        errorText.value = 'Gamer tag must be at least 3 characters';
+        return;
+      }
+      if (clean.length > 20) {
+        errorText.value = 'Gamer tag cannot exceed 20 characters';
+        return;
+      }
 
-    HapticFeedback.mediumImpact();
-    await AuthService.instance.updateProfile(displayName: clean);
+      isSaving.value = true;
+      errorText.value = null;
 
-    if (mounted) {
+      HapticFeedback.mediumImpact();
+      await AuthService.instance.updateProfile(displayName: clean);
+
+      if (!context.mounted) return;
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -79,10 +62,7 @@ class _EditGamerTagDialogState extends State<EditGamerTagDialog> {
         ),
       );
     }
-  }
 
-  @override
-  Widget build(BuildContext context) {
     return AppModalDialog(
       maxWidth: 360,
       iconWidget: const Icon(
@@ -96,51 +76,50 @@ class _EditGamerTagDialogState extends State<EditGamerTagDialog> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Text Field with Randomize Suffix
+          AppTextField(
+            controller: controller,
+            autofocus: true,
+            labelText: 'PLAYER TAG',
+            errorText: errorText.value,
+            suffixIcon: IconButton(
+              icon: const Text('🎲', style: TextStyle(fontSize: 18)),
+              tooltip: 'Roll random tag',
+              onPressed: randomizeTag,
+            ),
+            onSubmitted: (_) => save(),
+          ),
+          const SizedBox(height: 10),
 
-              // Text Field with Randomize Suffix
-              AppTextField(
-                controller: _controller,
-                autofocus: true,
-                labelText: 'PLAYER TAG',
-                errorText: _errorText,
-                suffixIcon: IconButton(
-                  icon: const Text('🎲', style: TextStyle(fontSize: 18)),
-                  tooltip: 'Roll random tag',
-                  onPressed: _randomizeTag,
+          const Text(
+            'Tip: Use the 🎲 button to roll cool monikers like Baller#4829 or Hooper#7182.',
+            style: TextStyle(color: Color(0xFF64748B), fontSize: 11),
+          ),
+          const SizedBox(height: 20),
+
+          // Action Buttons
+          Row(
+            children: [
+              Expanded(
+                child: AppSecondaryButton(
+                  label: 'CANCEL',
+                  onPressed: () => Navigator.of(context).pop(),
                 ),
-                onSubmitted: (_) => _save(),
               ),
-              const SizedBox(height: 10),
-
-              const Text(
-                'Tip: Use the 🎲 button to roll cool monikers like Baller#4829 or Hooper#7182.',
-                style: TextStyle(color: Color(0xFF64748B), fontSize: 11),
-              ),
-              const SizedBox(height: 20),
-
-              // Action Buttons
-              Row(
-                children: [
-                  Expanded(
-                    child: AppSecondaryButton(
-                      label: 'CANCEL',
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    flex: 2,
-                    child: AppPrimaryButton(
-                      label: 'SAVE TAG',
-                      backgroundColor: const Color(0xFF38BDF8),
-                      isLoading: _isSaving,
-                      onPressed: _save,
-                    ),
-                  ),
-                ],
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 2,
+                child: AppPrimaryButton(
+                  label: 'SAVE TAG',
+                  backgroundColor: const Color(0xFF38BDF8),
+                  isLoading: isSaving.value,
+                  onPressed: save,
+                ),
               ),
             ],
           ),
-        );
+        ],
+      ),
+    );
   }
 }
