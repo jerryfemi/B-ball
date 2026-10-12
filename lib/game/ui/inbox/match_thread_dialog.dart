@@ -56,6 +56,26 @@ class _MatchThreadDialogState extends State<MatchThreadDialog> {
     '👑 Rematch?',
   ];
 
+  Widget _buildAvatarView(String avatar, {double size = 20}) {
+    if (avatar.startsWith('assets/') ||
+        avatar.endsWith('.png') ||
+        avatar.endsWith('.jpg') ||
+        avatar.endsWith('.jpeg') ||
+        avatar.endsWith('.webp')) {
+      return ClipOval(
+        child: Image.asset(
+          avatar,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) =>
+              Text('🏀', style: TextStyle(fontSize: size * 0.85)),
+        ),
+      );
+    }
+    return Text(avatar, style: TextStyle(fontSize: size));
+  }
+
   @override
   void dispose() {
     _msgController.dispose();
@@ -164,9 +184,9 @@ class _MatchThreadDialogState extends State<MatchThreadDialog> {
                         color: const Color(0xFF26324A),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Text(
+                      child: _buildAvatarView(
                         opponent?.avatarEmoji ?? '⏳',
-                        style: const TextStyle(fontSize: 20),
+                        size: 20,
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -480,7 +500,7 @@ class _MatchThreadDialogState extends State<MatchThreadDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(msg.senderAvatar, style: const TextStyle(fontSize: 13)),
+            _buildAvatarView(msg.senderAvatar, size: 14),
             const SizedBox(width: 6),
             Flexible(
               child: Text(
