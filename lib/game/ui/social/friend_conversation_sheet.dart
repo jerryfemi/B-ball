@@ -10,6 +10,8 @@ import '../../../services/firestore_match_service.dart';
 import '../../../services/friends_service.dart';
 import '../common/app_avatar.dart';
 import '../common/app_modal_sheet.dart';
+import '../common/chat/chat_bubble_list.dart';
+import '../common/chat/chat_input_bar.dart';
 import '../match/match_setup_dialog.dart';
 
 /// GamePigeon-style conversation screen featuring a sticky top 1v1 match banner,
@@ -207,16 +209,22 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
                     final sortedChat = allChat.values.toList()
                       ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
-                    return _buildChatList(sortedChat);
+                    return ChatBubbleList(
+                      messages: sortedChat,
+                      myUid: widget.myUid,
+                      controller: _scrollController,
+                    );
                   },
                 ),
               ),
 
-              // Banter Chips
-              _buildBanterChips(),
-
-              // Bottom Input Bar
-              _buildInputField(),
+              // Banter Chips & Input Bar
+              ChatInputBar(
+                controller: _msgController,
+                quickBanter: _quickBanter,
+                onSend: _sendText,
+                accentColor: const Color(0xFF38BDF8),
+              ),
             ],
           ),
         );
@@ -475,135 +483,5 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
     );
   }
 
-  Widget _buildChatList(List<CloudChatMessage> chat) {
-    if (chat.isEmpty) {
-      return const Center(
-        child: Text(
-          'No banter yet. Send a quick reaction below! 🎯',
-          style: TextStyle(color: Color(0xFF64748B), fontSize: 12.5),
-        ),
-      );
-    }
-
-    return ListView.builder(
-      controller: _scrollController,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      itemCount: chat.length,
-      itemBuilder: (ctx, i) {
-        final msg = chat[i];
-        final isMe = msg.senderUid == widget.myUid;
-
-        return Align(
-          alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-          child: Container(
-            margin: const EdgeInsets.symmetric(vertical: 4),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            constraints: const BoxConstraints(maxWidth: 260),
-            decoration: BoxDecoration(
-              color: isMe ? const Color(0xFF2563EB) : const Color(0xFF1E2638),
-              borderRadius: BorderRadius.only(
-                topLeft: const Radius.circular(14),
-                topRight: const Radius.circular(14),
-                bottomLeft: Radius.circular(isMe ? 14 : 2),
-                bottomRight: Radius.circular(isMe ? 2 : 14),
-              ),
-              border: Border.all(
-                color: isMe ? const Color(0xFF3B82F6) : const Color(0xFF334155),
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: isMe
-                  ? CrossAxisAlignment.end
-                  : CrossAxisAlignment.start,
-              children: [
-                Text(
-                  msg.text,
-                  style: const TextStyle(color: Colors.white, fontSize: 13),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildBanterChips() {
-    return Container(
-      height: 36,
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      child: ListView.separated(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        scrollDirection: Axis.horizontal,
-        itemCount: _quickBanter.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
-        itemBuilder: (ctx, i) {
-          final text = _quickBanter[i];
-          return ActionChip(
-            label: Text(
-              text,
-              style: const TextStyle(fontSize: 11, color: Colors.white),
-            ),
-            backgroundColor: const Color(0xFF1E2638),
-            side: const BorderSide(color: Color(0xFF334155)),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-            onPressed: () => _sendText(text),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildInputField() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: _msgController,
-              style: const TextStyle(color: Colors.white, fontSize: 13),
-              decoration: InputDecoration(
-                hintText: 'Type message...',
-                hintStyle: const TextStyle(
-                  color: Color(0xFF64748B),
-                  fontSize: 13,
-                ),
-                filled: true,
-                fillColor: const Color(0xFF1E2638),
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 10,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: const BorderSide(color: Color(0xFF334155)),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: const BorderSide(
-                    color: Color(0xFF38BDF8),
-                    width: 1.5,
-                  ),
-                ),
-              ),
-              onSubmitted: _sendText,
-            ),
-          ),
-          const SizedBox(width: 8),
-          IconButton(
-            icon: const Icon(
-              Icons.send_rounded,
-              color: Color(0xFF38BDF8),
-              size: 20,
-            ),
-            onPressed: () => _sendText(_msgController.text),
-          ),
-        ],
-      ),
-    );
-  }
 }
+
