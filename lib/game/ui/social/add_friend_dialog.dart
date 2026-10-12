@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -43,6 +44,7 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
   List<FriendProfile> _results = [];
   bool _isSearching = false;
   late final Set<String> _friendUids;
+  final Set<String> _invitedUids = {};
 
   @override
   void initState() {
@@ -81,12 +83,26 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
     });
   }
 
-  Future<void> _handleAddFriend(FriendProfile friend) async {
+  Future<void> _handleSendInvite(FriendProfile friend) async {
     HapticFeedback.mediumImpact();
-    final myUid = AuthService.instance.currentUser?.uid ?? '';
-    await FriendsService.instance.addFriend(myUid, friend);
-    setState(() => _friendUids.add(friend.uid));
-    widget.onFriendAdded?.call(friend);
+    final myProfile = AuthService.instance.currentUser;
+    if (myProfile != null) {
+      await FriendsService.instance.sendFriendInvite(
+        targetUid: friend.uid,
+        myProfile: myProfile,
+      );
+      if (mounted) {
+        setState(() => _invitedUids.add(friend.uid));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Friend invite sent to ${friend.displayName}! 📨'),
+            backgroundColor: const Color(0xFF1E2638),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
   }
 
   void _copyMyTag() {
@@ -141,7 +157,11 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
                       color: const Color(0xFF1E2638),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(Icons.person_add_rounded, color: Color(0xFF38BDF8), size: 20),
+                    child: const Icon(
+                      Icons.person_add_rounded,
+                      color: Color(0xFF38BDF8),
+                      size: 20,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   const Expanded(
@@ -156,7 +176,11 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close_rounded, color: Colors.white54, size: 20),
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      color: Colors.white54,
+                      size: 20,
+                    ),
                     onPressed: () => Navigator.of(context).pop(),
                   ),
                 ],
@@ -165,7 +189,10 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
 
               // Player tag card
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xFF1E2638),
                   borderRadius: BorderRadius.circular(14),
@@ -203,7 +230,10 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
                       onTap: _copyMyTag,
                       borderRadius: BorderRadius.circular(8),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xFF2E3954),
                           borderRadius: BorderRadius.circular(8),
@@ -211,7 +241,11 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
                         child: const Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.copy_rounded, color: Color(0xFF38BDF8), size: 14),
+                            Icon(
+                              Icons.copy_rounded,
+                              color: Color(0xFF38BDF8),
+                              size: 14,
+                            ),
                             SizedBox(width: 4),
                             Text(
                               'COPY',
@@ -237,29 +271,45 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
                 style: const TextStyle(color: Colors.white, fontSize: 13),
                 decoration: InputDecoration(
                   hintText: "Enter friend's name or tag...",
-                  hintStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 12.5),
-                  prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF64748B), size: 20),
+                  hintStyle: const TextStyle(
+                    color: Color(0xFF64748B),
+                    fontSize: 12.5,
+                  ),
+                  prefixIcon: const Icon(
+                    Icons.search_rounded,
+                    color: Color(0xFF64748B),
+                    size: 20,
+                  ),
                   suffixIcon: _isSearching
                       ? const Padding(
                           padding: EdgeInsets.all(12),
                           child: SizedBox(
                             width: 14,
                             height: 14,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF38BDF8)),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Color(0xFF38BDF8),
+                            ),
                           ),
                         )
                       : null,
                   filled: true,
                   fillColor: const Color(0xFF1E2638),
                   isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
                     borderSide: const BorderSide(color: Color(0xFF334155)),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: Color(0xFF38BDF8), width: 1.5),
+                    borderSide: const BorderSide(
+                      color: Color(0xFF38BDF8),
+                      width: 1.5,
+                    ),
                   ),
                 ),
               ),
@@ -276,9 +326,12 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
                             _searchController.text.trim().isEmpty
                                 ? 'Search by username above to add friends'
                                 : _isSearching
-                                    ? 'Searching players...'
-                                    : 'No players found matching "$_searchController.text"',
-                            style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+                                ? 'Searching players...'
+                                : 'No players found matching "$_searchController.text"',
+                            style: const TextStyle(
+                              color: Color(0xFF64748B),
+                              fontSize: 12,
+                            ),
                             textAlign: TextAlign.center,
                           ),
                         ),
@@ -289,18 +342,28 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
                         separatorBuilder: (_, _) => const SizedBox(height: 8),
                         itemBuilder: (context, index) {
                           final friend = _results[index];
-                          final isAlreadyFriend = _friendUids.contains(friend.uid);
+                          final isAlreadyFriend = _friendUids.contains(
+                            friend.uid,
+                          );
 
                           return Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
                             decoration: BoxDecoration(
                               color: const Color(0xFF1A2234),
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: const Color(0xFF2E3954)),
+                              border: Border.all(
+                                color: const Color(0xFF2E3954),
+                              ),
                             ),
                             child: Row(
                               children: [
-                                Text(friend.avatarEmoji, style: const TextStyle(fontSize: 20)),
+                                Text(
+                                  friend.avatarEmoji,
+                                  style: const TextStyle(fontSize: 20),
+                                ),
                                 const SizedBox(width: 10),
                                 Expanded(
                                   child: Text(
@@ -314,13 +377,17 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
                                 ),
                                 if (isAlreadyFriend)
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                                      color: const Color(0xFF10B981)
+                                          .withValues(alpha: 0.15),
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                     child: const Text(
-                                      'ADDED ✓',
+                                      'FRIENDS ✓',
                                       style: TextStyle(
                                         color: Color(0xFF10B981),
                                         fontSize: 10,
@@ -328,18 +395,41 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
                                       ),
                                     ),
                                   )
+                                else if (_invitedUids.contains(friend.uid))
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFF59E0B)
+                                          .withValues(alpha: 0.15),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Text(
+                                      'INVITED ⏳',
+                                      style: TextStyle(
+                                        color: Color(0xFFF59E0B),
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                  )
                                 else
                                   InkWell(
-                                    onTap: () => _handleAddFriend(friend),
+                                    onTap: () => _handleSendInvite(friend),
                                     borderRadius: BorderRadius.circular(8),
                                     child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 6,
+                                      ),
                                       decoration: BoxDecoration(
                                         color: const Color(0xFF38BDF8),
                                         borderRadius: BorderRadius.circular(8),
                                       ),
                                       child: const Text(
-                                        '+ ADD',
+                                        'INVITE +',
                                         style: TextStyle(
                                           color: Color(0xFF0F172A),
                                           fontSize: 10.5,
