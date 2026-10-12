@@ -15,6 +15,7 @@ class MatchInboxCard extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onPlayTurn;
   final VoidCallback? onViewPodium;
+  final VoidCallback? onLeave;
 
   const MatchInboxCard({
     super.key,
@@ -23,6 +24,7 @@ class MatchInboxCard extends StatelessWidget {
     required this.onTap,
     required this.onPlayTurn,
     this.onViewPodium,
+    this.onLeave,
   });
 
   @override
@@ -101,7 +103,39 @@ class MatchInboxCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                    MatchStatusBadge.fromMatch(match: match, myUid: myUid),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        MatchStatusBadge.fromMatch(match: match, myUid: myUid),
+                        if (onLeave != null) ...[
+                          const SizedBox(width: 8),
+                          Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: () {
+                                HapticFeedback.lightImpact();
+                                onLeave!();
+                              },
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                padding: const EdgeInsets.all(4.0),
+                                decoration: BoxDecoration(
+                                  color: const Color(0x1A64748B),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Icon(
+                                  isCompleted
+                                      ? Icons.delete_outline_rounded
+                                      : Icons.close_rounded,
+                                  size: 14,
+                                  color: const Color(0xFF94A3B8),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                   ],
                 ),
                 const SizedBox(height: 12),
