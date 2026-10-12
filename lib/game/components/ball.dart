@@ -43,6 +43,32 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
   static Future<ui.FragmentProgram?>? _programFuture;
   static ui.FragmentProgram? _cachedProgram;
 
+  // ── Static Shadow Sprite Cache (Eliminates per-frame ui.Gradient.radial recompilations) ──
+  static ui.Image? _cachedShadowSprite;
+  static const Rect _shadowSrcRect = Rect.fromLTWH(0, 0, 64, 64);
+  static final Paint _sharedShadowPaint = Paint()..filterQuality = FilterQuality.low;
+
+  static void _ensureShadowSprite() {
+    if (_cachedShadowSprite != null) return;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    final paint = Paint()
+      ..shader = ui.Gradient.radial(
+        const Offset(32, 32),
+        32,
+        const [
+          Color(0xFF000000),
+          Color(0x73000000),
+          Color(0x00000000),
+        ],
+        const [0.0, 0.55, 1.0],
+      );
+    canvas.drawRect(const Rect.fromLTWH(0, 0, 64, 64), paint);
+    final picture = recorder.endRecording();
+    _cachedShadowSprite = picture.toImageSync(64, 64);
+    picture.dispose();
+  }
+
   /// Loads and statically caches the GPU [FragmentProgram] across all basketball instances.
   /// Pre-warming this during [BasketballGame.onLoad] completely eliminates feeder-spawn compilation hitches.
   static Future<ui.FragmentProgram?> loadProgram() {
@@ -295,6 +321,9 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     final double effectiveOpacity = (baseOpacity * fadeOut).clamp(0.0, 1.0);
     if (effectiveOpacity <= 0.01) return;
 
+    _ensureShadowSprite();
+    final shadowImage = _cachedShadowSprite;
+
     // 1. Continuous Hardwood Floor Drop Shadow
     // Shadow is calculated at (physics.pos.x, 0.0, physics.pos.z) on the court floor
     final bool onCourtFloor =
@@ -316,7 +345,7 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
       final shadowAlpha = ((0.52 / (1.0 + heightAboveFloor * 0.40)) * opacity)
           .clamp(0.0, 0.52);
 
-      if (shadowAlpha > 0.01) {
+      if (shadowAlpha > 0.01 && shadowImage != null) {
         final zScale = camera3D.scaleAtDepth(physics.pos.z);
         final visualRadius = radius * zScale * 1.38;
         final shadowScale = 1.0 + heightAboveFloor * 0.16;
@@ -326,18 +355,13 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
           height: visualRadius * 0.42 * shadowScale, // Perspective flattening
         );
 
-        final shadowPaint = Paint()
-          ..shader = ui.Gradient.radial(
-            shadowLocalOffset,
-            visualRadius * 1.1 * shadowScale,
-            [
-              Color.fromRGBO(0, 0, 0, shadowAlpha),
-              Color.fromRGBO(0, 0, 0, shadowAlpha * 0.45),
-              const Color(0x00000000),
-            ],
-            const [0.0, 0.55, 1.0],
-          );
-        canvas.drawOval(shadowRect, shadowPaint);
+        canvas.drawImageRect(
+          shadowImage,
+          _shadowSrcRect,
+          shadowRect,
+          _sharedShadowPaint
+            ..color = Color.fromRGBO(0, 0, 0, shadowAlpha),
+        );
       }
     }
 
@@ -356,7 +380,7 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
       final double boardShadowAlpha =
           (boardProximity * 0.42 * opacity).clamp(0.0, 0.42);
 
-      if (boardShadowAlpha > 0.01) {
+      if (boardShadowAlpha > 0.01 && shadowImage != null) {
         // Overhead arena spotlight: casts shadow slightly downward on the glass
         final double shadowY = physics.pos.y - (0.02 + distToBoard * 0.05);
         final boardF2D = camera3D.projectToForge2D(
@@ -373,24 +397,18 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
         final boardVisualRadius = radius * boardZScale * 1.38;
         final shadowSpread = 1.0 + (1.0 - boardProximity) * 0.30;
 
-        final boardShadowPaint = Paint()
-          ..shader = ui.Gradient.radial(
-            boardShadowOffset,
-            boardVisualRadius * 0.95 * shadowSpread,
-            [
-              Color.fromRGBO(0, 0, 0, boardShadowAlpha),
-              Color.fromRGBO(0, 0, 0, boardShadowAlpha * 0.35),
-              const Color(0x00000000),
-            ],
-            const [0.0, 0.55, 1.0],
-          );
-
         final boardShadowRect = Rect.fromCenter(
           center: boardShadowOffset,
           width: boardVisualRadius * 1.9 * shadowSpread,
           height: boardVisualRadius * 1.9 * shadowSpread,
         );
-        canvas.drawOval(boardShadowRect, boardShadowPaint);
+        canvas.drawImageRect(
+          shadowImage,
+          _shadowSrcRect,
+          boardShadowRect,
+          _sharedShadowPaint
+            ..color = Color.fromRGBO(0, 0, 0, boardShadowAlpha),
+        );
       }
     }
 
@@ -418,7 +436,7 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
       final bool occludedByBoard =
           inBackboardFrame && physics.pos.z < BallPhysics3D.backboardZ;
 
-      if (!occludedByBoard && wallShadowAlpha > 0.01) {
+      if (!occludedByBoard && wallShadowAlpha > 0.01 && shadowImage != null) {
         // Overhead arena spotlight: casts shadow slightly downward on the vertical wall
         final double shadowY = physics.pos.y - (0.04 + distToWall * 0.08);
         final wallF2D = camera3D.projectToForge2D(
@@ -435,24 +453,18 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
         final wallVisualRadius = radius * wallZScale * 1.38;
         final shadowSpread = 1.0 + (1.0 - wallProximity) * 0.35;
 
-        final wallShadowPaint = Paint()
-          ..shader = ui.Gradient.radial(
-            wallShadowOffset,
-            wallVisualRadius * 1.0 * shadowSpread,
-            [
-              Color.fromRGBO(0, 0, 0, wallShadowAlpha),
-              Color.fromRGBO(0, 0, 0, wallShadowAlpha * 0.35),
-              const Color(0x00000000),
-            ],
-            const [0.0, 0.55, 1.0],
-          );
-
         final wallShadowRect = Rect.fromCenter(
           center: wallShadowOffset,
           width: wallVisualRadius * 2.0 * shadowSpread,
           height: wallVisualRadius * 2.0 * shadowSpread,
         );
-        canvas.drawOval(wallShadowRect, wallShadowPaint);
+        canvas.drawImageRect(
+          shadowImage,
+          _shadowSrcRect,
+          wallShadowRect,
+          _sharedShadowPaint
+            ..color = Color.fromRGBO(0, 0, 0, wallShadowAlpha),
+        );
       }
     }
 
