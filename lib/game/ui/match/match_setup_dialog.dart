@@ -8,6 +8,7 @@ import '../../../models/player_descriptor.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/firestore_match_service.dart';
 import '../../match/match_config.dart';
+import '../../physics/shot_difficulty.dart';
 import '../common/app_avatar.dart';
 import '../common/app_button.dart';
 import '../common/app_modal_dialog.dart';
@@ -37,6 +38,7 @@ class MatchSetupDialog extends HookWidget {
   Widget build(BuildContext context) {
     final selectedRounds = useState(initialConfig.totalRounds);
     final selectedDuration = useState(initialConfig.roundDurationSeconds);
+    final selectedDifficulty = useState(initialConfig.difficulty);
     final opponentMode = useState(
       initialConfig.opponentFriend != null ? 1 : 0,
     ); // 0: Open Code, 1: Friend Challenge
@@ -54,6 +56,7 @@ class MatchSetupDialog extends HookWidget {
         final config = MatchConfig(
           totalRounds: selectedRounds.value,
           roundDurationSeconds: selectedDuration.value,
+          difficulty: selectedDifficulty.value,
           player1Name: profile.displayName,
           player1Avatar: profile.avatarEmoji,
           player2Name: 'Opponent',
@@ -114,6 +117,7 @@ class MatchSetupDialog extends HookWidget {
       final config = MatchConfig(
         totalRounds: selectedRounds.value,
         roundDurationSeconds: selectedDuration.value,
+        difficulty: selectedDifficulty.value,
         player1Name: myName,
         player1Avatar: myAvatar,
         player2Name:
@@ -383,6 +387,73 @@ class MatchSetupDialog extends HookWidget {
                                 : FontWeight.w600,
                           ),
                         ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 16.0),
+
+          // Option 3: Shot Difficulty
+          const Text(
+            'DIFFICULTY PRESET',
+            style: TextStyle(
+              color: Color(0xFF94A3B8),
+              fontSize: 11.0,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.0,
+            ),
+          ),
+          const SizedBox(height: 8.0),
+          Row(
+            children: ShotDifficulty.values.map((diff) {
+              final isSelected = selectedDifficulty.value == diff;
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 3.0),
+                  child: InkWell(
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      selectedDifficulty.value = diff;
+                    },
+                    borderRadius: BorderRadius.circular(12.0),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 8.0),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? const Color(0xFF1E293B)
+                            : const Color(0xFF1E2638),
+                        borderRadius: BorderRadius.circular(12.0),
+                        border: Border.all(
+                          color: isSelected
+                              ? const Color(0xFF38BDF8)
+                              : const Color(0xFF334155),
+                          width: isSelected ? 1.5 : 1.0,
+                        ),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            diff.emoji,
+                            style: const TextStyle(fontSize: 14.0),
+                          ),
+                          const SizedBox(height: 2.0),
+                          Text(
+                            diff.label,
+                            style: TextStyle(
+                              color: isSelected
+                                  ? const Color(0xFF38BDF8)
+                                  : const Color(0xFFCBD5E1),
+                              fontSize: 11.0,
+                              fontWeight: isSelected
+                                  ? FontWeight.w900
+                                  : FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
