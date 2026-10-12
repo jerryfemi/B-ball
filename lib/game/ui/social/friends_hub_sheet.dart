@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 
 import '../../../models/cloud_match.dart';
 import '../../../models/friend_profile.dart';
@@ -15,7 +16,7 @@ import '../common/app_avatar.dart';
 import '../common/app_modal_sheet.dart';
 
 /// Dedicated Friends Management sheet for launching 1v1 challenges and banter chat.
-class FriendsHubSheet extends StatefulWidget {
+class FriendsHubSheet extends HookWidget {
   final ValueChanged<CloudMatch> onPlayMatch;
   final VoidCallback onCreateMatch;
   final ValueChanged<CloudMatch>? onViewPodium;
@@ -44,36 +45,31 @@ class FriendsHubSheet extends StatefulWidget {
   }
 
   @override
-  State<FriendsHubSheet> createState() => _FriendsHubSheetState();
-}
-
-class _FriendsHubSheetState extends State<FriendsHubSheet> {
-  void _openAddFriend(Set<String> existingUids) {
-    HapticFeedback.lightImpact();
-    AddFriendDialog.show(context, existingFriendUids: existingUids);
-  }
-
-  void _openConversation(
-    FriendProfile friend,
-    String myUid,
-    CloudMatch? match,
-  ) {
-    HapticFeedback.lightImpact();
-    FriendConversationSheet.show(
-      context,
-      friend: friend,
-      myUid: myUid,
-      activeMatch: match,
-      onPlayTurn: (m) {
-        Navigator.of(context).pop();
-        widget.onPlayMatch(m);
-      },
-      onViewPodium: widget.onViewPodium,
-    );
-  }
-
-  @override
   Widget build(BuildContext context) {
+    void openAddFriend(Set<String> existingUids) {
+      HapticFeedback.lightImpact();
+      AddFriendDialog.show(context, existingFriendUids: existingUids);
+    }
+
+    void openConversation(
+      FriendProfile friend,
+      String myUid,
+      CloudMatch? match,
+    ) {
+      HapticFeedback.lightImpact();
+      FriendConversationSheet.show(
+        context,
+        friend: friend,
+        myUid: myUid,
+        activeMatch: match,
+        onPlayTurn: (m) {
+          Navigator.of(context).pop();
+          onPlayMatch(m);
+        },
+        onViewPodium: onViewPodium,
+      );
+    }
+
     return ValueListenableBuilder<UserProfile?>(
       valueListenable: AuthService.instance.currentUserNotifier,
       builder: (context, user, _) {
@@ -169,7 +165,7 @@ class _FriendsHubSheetState extends State<FriendsHubSheet> {
                                 ),
                               ),
                               ElevatedButton.icon(
-                                onPressed: () => _openAddFriend(friendUids),
+                                onPressed: () => openAddFriend(friendUids),
                                 icon: const Icon(
                                   Icons.person_add_rounded,
                                   size: 14,
@@ -215,7 +211,12 @@ class _FriendsHubSheetState extends State<FriendsHubSheet> {
                               }
 
                               if (friends.isEmpty && invites.isEmpty) {
-                                return _buildEmptyState(user, friendUids);
+                                return _buildEmptyState(
+                                  context,
+                                  user,
+                                  friendUids,
+                                  openAddFriend,
+                                );
                               }
 
                               return StreamBuilder<List<CloudMatch>>(
@@ -324,14 +325,14 @@ class _FriendsHubSheetState extends State<FriendsHubSheet> {
                                                   friend: friend,
                                                   myUid: myUid,
                                                   match: match,
-                                                  onTap: () => _openConversation(
+                                                  onTap: () => openConversation(
                                                     friend,
                                                     myUid,
                                                     match,
                                                   ),
                                                   onPlayMatch: (m) {
                                                     Navigator.of(context).pop();
-                                                    widget.onPlayMatch(m);
+                                                    onPlayMatch(m);
                                                   },
                                                 ),
                                               );
@@ -369,7 +370,12 @@ class _FriendsHubSheetState extends State<FriendsHubSheet> {
     );
   }
 
-  Widget _buildEmptyState(UserProfile? user, Set<String> existingUids) {
+  Widget _buildEmptyState(
+    BuildContext context,
+    UserProfile? user,
+    Set<String> existingUids,
+    void Function(Set<String>) openAddFriend,
+  ) {
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
@@ -407,7 +413,7 @@ class _FriendsHubSheetState extends State<FriendsHubSheet> {
             ),
             const SizedBox(height: 20),
             ElevatedButton.icon(
-              onPressed: () => _openAddFriend(existingUids),
+              onPressed: () => openAddFriend(existingUids),
               icon: const Icon(Icons.person_add_rounded, size: 16),
               label: const Text(
                 '+ ADD FRIEND',
