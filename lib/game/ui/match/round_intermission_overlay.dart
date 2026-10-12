@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
 import '../../basketball_game.dart';
@@ -39,10 +37,8 @@ class RoundIntermissionOverlay extends StatelessWidget {
         constraints: const BoxConstraints(maxWidth: 380.0),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(24.0),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 20.0, sigmaY: 20.0),
-            child: Container(
-              padding: const EdgeInsets.symmetric(
+          child: Container(
+            padding: const EdgeInsets.symmetric(
                 horizontal: 22.0,
                 vertical: 22.0,
               ),
@@ -327,9 +323,8 @@ class RoundIntermissionOverlay extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
-  }
+      );
+    }
 
 
   Widget _buildPlayerTally({
