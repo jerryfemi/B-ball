@@ -104,7 +104,7 @@ class LaunchSolver {
     final powerScaleY = powerRatio >= 1.0
         ? (1.0 + (powerRatio - 1.0) * 0.25).clamp(1.0, 1.12)
         : (1.0 + (powerRatio - 1.0) * 0.50).clamp(0.35, 1.0);
-    final powerScaleZ = (1.0 + (powerRatio - 1.0) * 0.55).clamp(0.25, 1.40);
+    final powerScaleZ = (1.0 + (powerRatio - 1.0) * 0.45).clamp(0.25, 1.20);
 
     final vy = ref.y * powerScaleY;
     final vz = ref.z * powerScaleZ;
