@@ -3,25 +3,7 @@ import 'package:flutter/material.dart';
 import '../../audio/audio_engine.dart';
 import '../../basketball_game.dart';
 
-Widget _buildFlankAvatarContent(String avatar, {double size = 34.0}) {
-  if (avatar.startsWith('assets/') ||
-      avatar.endsWith('.png') ||
-      avatar.endsWith('.jpg') ||
-      avatar.endsWith('.jpeg') ||
-      avatar.endsWith('.webp')) {
-    return ClipOval(
-      child: Image.asset(
-        avatar,
-        width: size,
-        height: size,
-        fit: BoxFit.cover,
-        errorBuilder: (_, _, _) =>
-            Text('🏀', style: TextStyle(fontSize: size * 0.5)),
-      ),
-    );
-  }
-  return Text(avatar, style: TextStyle(fontSize: size * 0.5));
-}
+import '../common/app_avatar.dart';
 
 /// Flanking circular player avatar with illuminated badge and "You" label.
 class ScoreboardPlayerAvatar extends StatelessWidget {
@@ -34,38 +16,25 @@ class ScoreboardPlayerAvatar extends StatelessWidget {
     super.key,
     this.isActive = true,
     this.label = 'You',
-    this.avatar = 'assets/avatars/dunk_heads (1).webp',
+    this.avatar = AppAvatar.defaultAvatar,
     this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final content = Column(
+    return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          width: 36.0,
-          height: 36.0,
-          decoration: BoxDecoration(
-            color: Colors.transparent,
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: isActive
-                  ? const Color(0xFF86EFAC)
-                  : Colors.white.withValues(alpha: 0.8),
-              width: isActive ? 2.2 : 1.5,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: isActive
-                    ? const Color(0x6622C55E)
-                    : const Color(0x33000000),
-                blurRadius: isActive ? 10.0 : 6.0,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Center(child: _buildFlankAvatarContent(avatar, size: 34.0)),
+        AppAvatar(
+          avatar: avatar,
+          size: 36.0,
+          borderColor: isActive
+              ? const Color(0xFF86EFAC)
+              : Colors.white.withValues(alpha: 0.8),
+          borderWidth: isActive ? 2.2 : 1.5,
+          showGlow: isActive,
+          glowColor: const Color(0xFF22C55E),
+          onTap: onTap,
         ),
         const SizedBox(height: 2.0),
         Text(
@@ -79,11 +48,6 @@ class ScoreboardPlayerAvatar extends StatelessWidget {
         ),
       ],
     );
-
-    if (onTap != null) {
-      return GestureDetector(onTap: onTap, child: content);
-    }
-    return content;
   }
 }
 
@@ -105,29 +69,15 @@ class ScoreboardOpponentAvatar extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          width: 36.0,
-          height: 36.0,
-          decoration: BoxDecoration(
-            color: Colors.transparent,
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: isActive
-                  ? const Color(0xFF38BDF8)
-                  : Colors.white.withValues(alpha: 0.8),
-              width: isActive ? 2.2 : 1.5,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: isActive
-                    ? const Color(0x6638BDF8)
-                    : const Color(0x33000000),
-                blurRadius: isActive ? 10.0 : 6.0,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Center(child: _buildFlankAvatarContent(avatar, size: 34.0)),
+        AppAvatar(
+          avatar: avatar,
+          size: 36.0,
+          borderColor: isActive
+              ? const Color(0xFF38BDF8)
+              : Colors.white.withValues(alpha: 0.8),
+          borderWidth: isActive ? 2.2 : 1.5,
+          showGlow: isActive,
+          glowColor: const Color(0xFF38BDF8),
         ),
         const SizedBox(height: 2.0),
         Text(
