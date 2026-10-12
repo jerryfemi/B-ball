@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'common/app_button.dart';
+import 'common/app_colors.dart';
 import 'common/app_modal_dialog.dart';
 
 /// Displays the collegiate "HOW TO PLAY" rules dialog.
@@ -53,27 +55,11 @@ class GameRulesDialog extends StatelessWidget {
                   desc: 'Sink 3+ in a row to earn +1 extra bonus point per consecutive basket!',
                 ),
                 const SizedBox(height: 22.0),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF22C55E),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14.0),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14.0),
-                      ),
-                    ),
-                    child: const Text(
-                      'GOT IT',
-                      style: TextStyle(
-                        fontSize: 14.0,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.2,
-                      ),
-                    ),
-                  ),
+                AppPrimaryButton(
+                  label: 'GOT IT',
+                  backgroundColor: AppColors.accentEmerald,
+                  foregroundColor: Colors.white,
+                  onPressed: () => Navigator.of(context).pop(),
                 ),
               ],
             ),
