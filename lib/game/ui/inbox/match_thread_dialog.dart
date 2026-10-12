@@ -96,6 +96,7 @@ class MatchThreadDialog extends HookConsumerWidget {
     }
 
     final match = ref.watch(singleMatchProvider(initialMatch.id)).value ?? initialMatch;
+        final matchChat = ref.watch(matchChatProvider(match.id)).value ?? match.chat;
         final myPlayer =
             match.myPlayer(myUid) ??
             CloudPlayer(
@@ -228,7 +229,7 @@ class MatchThreadDialog extends HookConsumerWidget {
                 // Chat banter list
                 Expanded(
                   child: ChatBubbleList(
-                    messages: match.chat,
+                    messages: matchChat,
                     myUid: myUid,
                     controller: scrollController,
                     padding: EdgeInsets.zero,
