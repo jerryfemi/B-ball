@@ -1,20 +1,23 @@
 import 'package:flutter/material.dart';
 
+import '../basketball_game.dart';
 import 'common/app_button.dart';
 import 'common/app_colors.dart';
 import 'common/app_modal_dialog.dart';
 
 /// Displays the collegiate "HOW TO PLAY" rules dialog.
-Future<void> showGameRulesDialog(BuildContext context) {
+Future<void> showGameRulesDialog(BuildContext context, {BasketballGame? game}) {
   return AppModalDialog.show<void>(
     context: context,
-    builder: (context) => const GameRulesDialog(),
+    builder: (context) => GameRulesDialog(game: game),
   );
 }
 
-/// Collegiate rules modal explaining flicks, buzzer beater clock, and scoring bonuses.
+/// Collegiate rules modal explaining HUD controls, flicks, clock, and scoring bonuses.
 class GameRulesDialog extends StatelessWidget {
-  const GameRulesDialog({super.key});
+  final BasketballGame? game;
+
+  const GameRulesDialog({super.key, this.game});
 
   @override
   Widget build(BuildContext context) {
@@ -33,6 +36,36 @@ class GameRulesDialog extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  const _SectionHeader(title: 'HUD & GAME CONTROLS'),
+                  const SizedBox(height: 8.0),
+                  const _RuleRow(
+                    icon: '👤',
+                    title: 'Your Avatar (Top-Left)',
+                    desc:
+                        'Tap your avatar anytime to view friend invites, check H2H stats, and host 1v1 matches.',
+                  ),
+                  const SizedBox(height: 10.0),
+                  const _RuleRow(
+                    icon: '⚡',
+                    title: 'Bouncing Avatar (Turn Alert)',
+                    desc:
+                        'Your avatar pulses rhythmically when it is your turn to shoot, or when you receive a match invite.',
+                  ),
+                  const SizedBox(height: 10.0),
+                  const _RuleRow(
+                    icon: '💬',
+                    title: 'Opponent Avatar & Chat',
+                    desc:
+                        'Tap the opponent avatar during 1v1 online matches to send trash-talk reactions and live banter.',
+                  ),
+                  const SizedBox(height: 10.0),
+                  const _RuleRow(
+                    icon: '⏸️',
+                    title: 'Pause & Sound Controls',
+                    desc:
+                        'Tap pause to adjust SFX/music volume, mute, or restart your solo round.',
+                  ),
+                  const SizedBox(height: 16.0),
                   const _SectionHeader(title: 'SHOOTING & SCORING'),
                   const SizedBox(height: 8.0),
                   const _RuleRow(
@@ -96,7 +129,40 @@ class GameRulesDialog extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 18.0),
+          const SizedBox(height: 14.0),
+          if (game != null) ...[
+            OutlinedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                game!.isTourActiveNotifier.value = true;
+              },
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Color(0x6638BDF8), width: 1.0),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12.0),
+                ),
+                backgroundColor: const Color(0x180284C7),
+                padding: const EdgeInsets.symmetric(vertical: 12.0),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.tour_rounded, size: 16.0, color: Color(0xFF38BDF8)),
+                  SizedBox(width: 8.0),
+                  Text(
+                    'REPLAY CONTROLS TOUR',
+                    style: TextStyle(
+                      color: Color(0xFF38BDF8),
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8.0),
+          ],
           AppPrimaryButton(
             label: 'GOT IT',
             backgroundColor: AppColors.accentEmerald,
