@@ -71,47 +71,27 @@ void main() {
     // Raised leather ridge directly adjacent to the recessed seam
     float seamRidge = smoothstep(lineThickness * 1.45, lineThickness, distToSeam) * (1.0 - seamMask) * 0.22;
     
-    // --- 2. Microscopic Pebbled Leather Texture (Dimpled Bumps) ---
-    // Frequency tuned for authentic basketball pebble density
-    vec3 pebbleP = spherePos * 54.0;
-    vec3 f = fract(pebbleP) - 0.5;
-    float distToPebbleCenter = length(f);
-    
-    // Smooth hemispherical pebble dome
-    float pebbleBump = clamp(1.0 - distToPebbleCenter * 2.15, 0.0, 1.0);
-    pebbleBump = pebbleBump * pebbleBump * (3.0 - 2.0 * pebbleBump); // Smooth cubic S-curve
-    
-    // Suppress pebbles inside the rubber seam channel
-    pebbleBump *= (1.0 - seamMask);
-    
-    // --- 3. Normal Vector Perturbation (Bump Mapping) ---
-    // Perturb the normal with pebble dome gradients so it catches highlights individually
-    vec3 bumpOffset = vec3(f.x, f.y, 0.0) * pebbleBump * 0.38;
-    
-    // Recess the seam into the sphere surface
-    if (seamMask > 0.01) {
-        bumpOffset -= normal * seamMask * 0.15;
-    }
-    
-    vec3 perturbedNormal = normalize(normal + bumpOffset);
-    
-    // --- 4. Authentic Composite Leather Color Grading ---
+    // --- 2. Authentic Composite Leather Color Grading ---
     // Deep Wilson / Spalding composite orange palette
-    vec3 leatherDark = vec3(0.70, 0.27, 0.03);  // Deep burnt sienna between pebbles
-    vec3 leatherMid  = vec3(0.86, 0.38, 0.07);  // Warm composite orange body
-    vec3 leatherPeak = vec3(0.96, 0.47, 0.11);  // Slightly worn pebble highlight tops
+    vec3 leatherDark = vec3(0.70, 0.27, 0.03);  // Deep burnt sienna
+    vec3 leatherMid  = vec3(0.88, 0.40, 0.08);  // Warm composite orange body
+    vec3 leatherPeak = vec3(0.96, 0.48, 0.12);  // Highlight tops
     
-    vec3 leatherColor = mix(leatherDark, leatherMid, pebbleBump);
-    leatherColor = mix(leatherColor, leatherPeak, pow(pebbleBump, 2.5));
-    // Add subtle raised ridge brightness
+    // Smooth leather tonal falloff based on sphere curvature and seam proximity
+    vec3 leatherColor = mix(leatherMid, leatherPeak, normal.z * 0.35);
     leatherColor += vec3(0.06, 0.03, 0.01) * seamRidge;
     
     // Matte charcoal black rubber seam with subtle edge gradient
     vec3 rubberSeamColor = vec3(0.12, 0.12, 0.12);
-    
     vec3 baseColor = mix(leatherColor, rubberSeamColor, seamMask);
     
-    // --- 5. Volumetric Arena Lighting & Dual-Lobe Specular ---
+    // --- 3. Recessed Seam Normal (subtle groove shading) ---
+    vec3 perturbedNormal = normal;
+    if (seamMask > 0.05) {
+        perturbedNormal = normalize(normal - spherePos * seamMask * 0.2);
+    }
+    
+    // --- 4. Volumetric Arena Lighting & Dual Specular ---
     // Overhead arena floodlight: top-left and slightly in front
     vec3 lightDir = normalize(vec3(-0.25, 0.92, 0.65));
     float diff = max(dot(perturbedNormal, lightDir), 0.0);
@@ -123,18 +103,18 @@ void main() {
     // Ambient + Diffuse illumination
     vec3 litColor = baseColor * (0.34 + 0.66 * diff + bounceDiff);
     
-    // Specular reflections
+    // Specular reflections: Fast power-of-4 and power-of-16 calculations
     vec3 viewDir = vec3(0.0, 0.0, 1.0);
     vec3 reflectDir = reflect(-lightDir, perturbedNormal);
     float specDot = max(dot(viewDir, reflectDir), 0.0);
+    float spec2 = specDot * specDot;
+    float spec4 = spec2 * spec2;
+    float spec16 = spec4 * spec4;
     
-    // A. Broad soft matte sheen (characteristic of composite microfiber leather)
-    float broadSheen = pow(specDot, 10.0) * 0.09 * (1.0 - seamMask);
+    // Soft sheen + focused highlight
+    float sheen = (spec4 * 0.08 + spec16 * 0.14) * (1.0 - seamMask);
     
-    // B. Sharp micro-glint highlights on individual pebble tops
-    float pebbleGlint = pow(specDot, 36.0) * pebbleBump * 0.24;
-    
-    vec3 finalColor = litColor + vec3(broadSheen + pebbleGlint);
+    vec3 finalColor = litColor + vec3(sheen);
     
     // Smooth anti-aliased edge
     float alpha = smoothstep(1.0, 0.985, radius);
