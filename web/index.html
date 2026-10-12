@@ -18,21 +18,212 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="description" content="Real-time 3D physics arcade basketball game with head-to-head 1v1 showdowns, ranked streaks, and multiplayer rooms.">
+  <meta name="theme-color" content="#0A0E1A">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="b_ball">
-  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="B-Ball">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
 
   <!-- Favicon -->
-  <link rel="icon" type="image/png" href="favicon.png"/>
+  <link rel="icon" type="image/png" sizes="64x64" href="favicon.png"/>
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png"/>
 
-  <title>b_ball</title>
+  <title>B-Ball • 3D Arcade Basketball</title>
   <link rel="manifest" href="manifest.json">
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      background-color: #0A0E1A;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      touch-action: none;
+      -webkit-user-select: none;
+      user-select: none;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    /* PWA Arcade Splash Screen */
+    #splash-screen {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      background: radial-gradient(circle at 50% 40%, #151D33 0%, #0A0E1A 75%, #05070D 100%);
+      z-index: 999999;
+      opacity: 1;
+      transition: opacity 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+      pointer-events: auto;
+    }
+
+    #splash-screen.fade-out {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .splash-brand {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 26px;
+    }
+
+    .app-icon-badge {
+      width: 76px;
+      height: 76px;
+      border-radius: 20px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65), 0 0 24px rgba(0, 255, 204, 0.25);
+      border: 1.5px solid rgba(0, 255, 204, 0.4);
+      margin-bottom: 12px;
+      animation: pulseGlow 2s infinite ease-in-out;
+    }
+
+    .brand-title {
+      color: #FFFFFF;
+      font-weight: 900;
+      letter-spacing: 4px;
+      font-size: 1.25rem;
+      margin: 0;
+      text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8);
+    }
+
+    .brand-sub {
+      color: #00FFCC;
+      font-weight: 800;
+      letter-spacing: 2px;
+      font-size: 0.68rem;
+      margin-top: 4px;
+      text-transform: uppercase;
+      opacity: 0.9;
+    }
+
+    /* Bouncing Basketball Animation */
+    .bounce-stage {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      height: 90px;
+      justify-content: flex-end;
+    }
+
+    .ball {
+      width: 44px;
+      height: 44px;
+      background: radial-gradient(circle at 35% 32%, #FF7733 0%, #E65100 60%, #9C27B0 140%);
+      border-radius: 50%;
+      animation: bounce 0.58s infinite alternate ease-in;
+      box-shadow: inset -3px -3px 8px rgba(0, 0, 0, 0.6), 0 4px 14px rgba(255, 119, 51, 0.45);
+      position: relative;
+    }
+
+    /* Subtle basketball seam line */
+    .ball::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      background: rgba(0, 0, 0, 0.35);
+      transform: translateY(-50%);
+    }
+
+    .shadow {
+      width: 38px;
+      height: 9px;
+      background: rgba(0, 0, 0, 0.65);
+      border-radius: 50%;
+      animation: scaleShadow 0.58s infinite alternate ease-in;
+      margin-top: 8px;
+      filter: blur(1.5px);
+    }
+
+    @keyframes bounce {
+      0% {
+        transform: translateY(-55px) scale(1, 1);
+      }
+      90% {
+        transform: translateY(0) scale(1, 1);
+      }
+      100% {
+        transform: translateY(2px) scale(1.12, 0.88);
+      }
+    }
+
+    @keyframes scaleShadow {
+      0% {
+        transform: scale(0.35);
+        opacity: 0.2;
+      }
+      100% {
+        transform: scale(1.1);
+        opacity: 0.7;
+      }
+    }
+
+    @keyframes pulseGlow {
+      0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65), 0 0 20px rgba(0, 255, 204, 0.25);
+      }
+      50% {
+        transform: scale(1.025);
+        box-shadow: 0 14px 36px rgba(0, 0, 0, 0.75), 0 0 32px rgba(0, 255, 204, 0.45);
+      }
+    }
+  </style>
 </head>
 <body>
+  <!-- Seamless PWA Arcade Splash Screen -->
+  <div id="splash-screen">
+    <div class="splash-brand">
+      <img class="app-icon-badge" src="icons/Icon-180.png" alt="B-Ball Logo" />
+      <h1 class="brand-title">B-BALL</h1>
+      <span class="brand-sub">3D ARCADE HOOPS</span>
+    </div>
+
+    <div class="bounce-stage">
+      <div class="ball"></div>
+      <div class="shadow"></div>
+    </div>
+  </div>
+
+  <script>
+    // Smoothly dismiss splash screen when Flutter renders its very first frame
+    window.addEventListener('flutter-first-frame', function () {
+      const splash = document.getElementById('splash-screen');
+      if (splash) {
+        splash.classList.add('fade-out');
+        setTimeout(() => splash.remove(), 480);
+      }
+    });
+
+    // Fallback safety timer: ensure splash never stays stuck if first-frame event is delayed
+    window.addEventListener('load', function () {
+      setTimeout(function () {
+        const splash = document.getElementById('splash-screen');
+        if (splash && !splash.classList.contains('fade-out')) {
+          splash.classList.add('fade-out');
+          setTimeout(() => splash.remove(), 480);
+        }
+      }, 7000);
+    });
+  </script>
+
   <!--
     You can customize the "flutter_bootstrap.js" script.
     This is useful to provide a custom configuration to the Flutter loader
