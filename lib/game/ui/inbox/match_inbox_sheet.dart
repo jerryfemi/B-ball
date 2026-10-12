@@ -7,6 +7,7 @@ import '../../../services/firestore_match_service.dart';
 import 'join_match_dialog.dart';
 import 'match_inbox_card.dart';
 import 'match_thread_dialog.dart';
+import '../common/app_avatar.dart';
 import '../social/edit_gamer_tag_dialog.dart';
 import '../social/friends_hub_sheet.dart';
 
@@ -48,26 +49,6 @@ class MatchInboxSheet extends StatefulWidget {
 
 class _MatchInboxSheetState extends State<MatchInboxSheet> {
   int _selectedTab = 0; // 0: Live Matches, 1: Trophy History
-
-  Widget _buildAvatarView(String avatar, {double size = 20}) {
-    if (avatar.startsWith('assets/') ||
-        avatar.endsWith('.png') ||
-        avatar.endsWith('.jpg') ||
-        avatar.endsWith('.jpeg') ||
-        avatar.endsWith('.webp')) {
-      return ClipOval(
-        child: Image.asset(
-          avatar,
-          width: size,
-          height: size,
-          fit: BoxFit.cover,
-          errorBuilder: (_, _, _) =>
-              Text('🏀', style: TextStyle(fontSize: size * 0.85)),
-        ),
-      );
-    }
-    return Text(avatar, style: TextStyle(fontSize: size));
-  }
 
   void _showEditProfileDialog(BuildContext context, UserProfile current) {
     final nameCtrl = TextEditingController(text: current.displayName);
@@ -117,36 +98,14 @@ class _MatchInboxSheetState extends State<MatchInboxSheet> {
                 ),
                 const SizedBox(height: 14),
 
-                // Selected Avatar Live Preview Circle (No background color fill)
+                // Selected Avatar Live Preview Circle
                 Center(
-                  child: Container(
-                    width: 72,
-                    height: 72,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: const Color(0xFF00FFCC),
-                        width: 2.5,
-                      ),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Color(0x5500FFCC),
-                          blurRadius: 14,
-                          spreadRadius: 1,
-                        ),
-                      ],
-                    ),
-                    child: ClipOval(
-                      child: Image.asset(
-                        selectedAvatar,
-                        width: 72,
-                        height: 72,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => const Center(
-                          child: Text('🏀', style: TextStyle(fontSize: 32)),
-                        ),
-                      ),
-                    ),
+                  child: AppAvatar(
+                    avatar: selectedAvatar,
+                    size: 72,
+                    borderColor: const Color(0xFF00FFCC),
+                    borderWidth: 2.5,
+                    showGlow: true,
                   ),
                 ),
                 const SizedBox(height: 14),
@@ -182,7 +141,7 @@ class _MatchInboxSheetState extends State<MatchInboxSheet> {
                 ),
                 const SizedBox(height: 10),
 
-                // 15 Dunk Head Real Image Avatars - Circles with NO background color
+                // 15 Dunk Head Real Image Avatars using AppAvatar
                 Wrap(
                   alignment: WrapAlignment.center,
                   spacing: 10,
@@ -195,38 +154,14 @@ class _MatchInboxSheetState extends State<MatchInboxSheet> {
                         setDialogState(() => selectedAvatar = assetPath);
                       },
                       customBorder: const CircleBorder(),
-                      child: Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: isSel
-                                ? const Color(0xFF00FFCC)
-                                : Colors.white24,
-                            width: isSel ? 2.5 : 1.2,
-                          ),
-                          boxShadow: isSel
-                              ? const [
-                                  BoxShadow(
-                                    color: Color(0x6600FFCC),
-                                    blurRadius: 8.0,
-                                    spreadRadius: 1.0,
-                                  ),
-                                ]
-                              : null,
-                        ),
-                        child: ClipOval(
-                          child: Image.asset(
-                            assetPath,
-                            width: 44,
-                            height: 44,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) => const Center(
-                              child: Text('🏀', style: TextStyle(fontSize: 20)),
-                            ),
-                          ),
-                        ),
+                      child: AppAvatar(
+                        avatar: assetPath,
+                        size: 44,
+                        borderColor: isSel
+                            ? const Color(0xFF00FFCC)
+                            : Colors.white24,
+                        borderWidth: isSel ? 2.5 : 1.2,
+                        showGlow: isSel,
                       ),
                     );
                   }).toList(),
@@ -311,28 +246,14 @@ class _MatchInboxSheetState extends State<MatchInboxSheet> {
                         borderRadius: BorderRadius.circular(14),
                         child: Row(
                           children: [
-                            Container(
-                              width: 38,
-                              height: 38,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: const Color(0xFF38BDF8),
-                                  width: 1.8,
-                                ),
-                                boxShadow: const [
-                                  BoxShadow(
-                                    color: Color(0x3338BDF8),
-                                    blurRadius: 8,
-                                    offset: Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                              child: _buildAvatarView(
-                                myProfile?.avatarEmoji ??
-                                    'assets/avatars/dunk_heads (1).webp',
-                                size: 38,
-                              ),
+                            AppAvatar(
+                              avatar: myProfile?.avatarEmoji ??
+                                  AppAvatar.defaultAvatar,
+                              size: 38,
+                              borderColor: const Color(0xFF38BDF8),
+                              borderWidth: 1.8,
+                              showGlow: true,
+                              glowColor: const Color(0xFF38BDF8),
                             ),
                             const SizedBox(width: 12),
                             Column(
