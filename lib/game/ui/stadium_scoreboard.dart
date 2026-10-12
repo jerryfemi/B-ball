@@ -172,8 +172,8 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
               : matchSession.activePlayerIndex)
         : 0;
 
-    final p1Active = shootingPlayerIndex == 0;
-    final p2Active = shootingPlayerIndex == 1;
+    final p1Active = is1v1 && shootingPlayerIndex == 0;
+    final p2Active = is1v1 && shootingPlayerIndex == 1;
 
     final String myAvatar =
         userProfile?.avatarEmoji ?? PlayerDescriptor.defaultAvatar;
