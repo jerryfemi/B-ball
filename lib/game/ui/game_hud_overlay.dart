@@ -15,6 +15,7 @@ import 'pause_overlay.dart';
 import 'replay_hud_overlay.dart';
 import 'inbox/match_inbox_sheet.dart';
 import 'stadium_scoreboard.dart';
+import 'tour/onboarding_tour_overlay.dart';
 
 /// Top-level Game HUD Overlay mounted via Flame's [GameWidget.overlayBuilderMap].
 class GameHudOverlay extends StatelessWidget {
@@ -27,7 +28,7 @@ class GameHudOverlay extends StatelessWidget {
     if (wasPlaying) {
       game.pauseGame(manual: true);
     }
-    await showGameRulesDialog(context);
+    await showGameRulesDialog(context, game: game);
     if (wasPlaying && game.isPaused) {
       game.resumeGame();
     }
@@ -152,6 +153,17 @@ class GameHudOverlay extends StatelessWidget {
           builder: (context, state, _) {
             if (state == GameModeState.replay) {
               return ReplayHudOverlay(game: game);
+            }
+            return const SizedBox.shrink();
+          },
+        ),
+
+        // 6. First-Launch / Replay Onboarding Tour Overlay
+        ValueListenableBuilder<bool>(
+          valueListenable: game.isTourActiveNotifier,
+          builder: (context, isTourActive, _) {
+            if (isTourActive) {
+              return OnboardingTourOverlay(game: game);
             }
             return const SizedBox.shrink();
           },
