@@ -168,6 +168,7 @@ class FirestoreMatchService {
       player2: player2,
       totalRounds: config.totalRounds,
       roundDurationSeconds: config.roundDurationSeconds,
+      difficulty: config.difficulty,
       currentRound: 1,
       // If Player 1 already shot, active turn awaits Player 2 upon joining/challenge
       activeTurnPlayerUid: hasCompletedFirstTurn
@@ -469,6 +470,43 @@ class FirestoreMatchService {
       list.removeWhere((m) => m.id == clean);
       return false;
     });
+  }
+
+  /// Leaves or dismisses a match from the current player's inbox.
+  /// Removes the player's UID from `playerIds` and marks the match as abandoned if not completed.
+  Future<void> leaveOrDismissMatch({
+    required String matchId,
+    required String myUid,
+  }) async {
+    final clean = matchId.trim().toUpperCase();
+    try {
+      final doc = await _matchesRef.doc(clean).get();
+      if (!doc.exists) return;
+      final data = doc.data();
+      final currentStatus = data?['status'] as String?;
+      final isAlreadyDone = currentStatus == MatchStatus.completed.key ||
+          currentStatus == MatchStatus.abandoned.key;
+
+      if (isAlreadyDone) {
+        // Just remove user from playerIds so it disappears from their inbox stream
+        await _matchesRef.doc(clean).update({
+          'playerIds': FieldValue.arrayRemove([myUid]),
+          'updatedAt': DateTime.now().millisecondsSinceEpoch,
+        });
+      } else {
+        // Mark abandoned and remove user
+        await _matchesRef.doc(clean).update({
+          'playerIds': FieldValue.arrayRemove([myUid]),
+          'status': MatchStatus.abandoned.key,
+          'updatedAt': DateTime.now().millisecondsSinceEpoch,
+        });
+      }
+      _cachedUserMatches.forEach((key, list) {
+        list.removeWhere((m) => m.id == clean);
+      });
+    } catch (e) {
+      debugPrint('[FirestoreMatchService] Error leaving/dismissing match $clean: $e');
+    }
   }
 
   final Map<String, List<CloudMatch>> _cachedUserMatches = {};
