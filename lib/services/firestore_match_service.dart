@@ -388,6 +388,17 @@ class FirestoreMatchService {
     return CloudMatch.fromFirestore(doc);
   }
 
+  /// Evaporates (deletes) a match room document from Firestore to free up cloud storage
+  /// and reduce unnecessary listener/read load once a match is completed and dismissed.
+  Future<void> deleteMatch(String matchId) async {
+    final clean = matchId.trim().toUpperCase();
+    await _matchesRef.doc(clean).delete();
+    _cachedUserMatches.removeWhere((key, list) {
+      list.removeWhere((m) => m.id == clean);
+      return false;
+    });
+  }
+
   final Map<String, List<CloudMatch>> _cachedUserMatches = {};
 
   /// Retrieves the most recent memory-cached matches for instant zero-latency UI rendering.
