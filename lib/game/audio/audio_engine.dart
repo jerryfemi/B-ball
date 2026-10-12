@@ -21,6 +21,20 @@ class AudioEngine {
   static bool get isMuted => isMutedNotifier.value;
   static set isMuted(bool value) => isMutedNotifier.value = value;
 
+  /// Volume scale for sound effects (0.0 to 1.0).
+  static final ValueNotifier<double> sfxVolumeNotifier =
+      ValueNotifier<double>(0.85);
+  static double get sfxVolume => sfxVolumeNotifier.value;
+  static set sfxVolume(double value) =>
+      sfxVolumeNotifier.value = value.clamp(0.0, 1.0);
+
+  /// Volume scale for background music (0.0 to 1.0).
+  static final ValueNotifier<double> musicVolumeNotifier =
+      ValueNotifier<double>(0.65);
+  static double get musicVolume => musicVolumeNotifier.value;
+  static set musicVolume(double value) =>
+      musicVolumeNotifier.value = value.clamp(0.0, 1.0);
+
   /// Toggles mute state and notifies all reactive UI listeners.
   static void toggleMute() {
     isMutedNotifier.value = !isMutedNotifier.value;
@@ -147,9 +161,10 @@ class AudioEngine {
   /// Plays from a pre-allocated pooled player with error handling.
   /// Reuses existing [AudioPlayer] instances and catches both sync and async failures.
   static void _safePoolPlay(AudioPool? pool, double volume) {
-    if (pool == null) return;
+    if (pool == null || isMuted) return;
     try {
-      final effectiveVolume = (volume * masterVolume).clamp(0.0, 1.0);
+      final effectiveVolume = (volume * masterVolume * sfxVolume).clamp(0.0, 1.0);
+      if (effectiveVolume <= 0.001) return;
       unawaited(
         pool.start(volume: effectiveVolume).then((_) => null, onError: (e) {
           debugPrint('[AudioEngine] Pool playback error: $e');
