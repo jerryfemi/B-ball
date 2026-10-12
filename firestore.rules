@@ -21,6 +21,13 @@ service cloud.firestore {
       match /friends/{friendId} {
         allow read, write: if isUser(userId);
       }
+
+      match /invites/{inviteId} {
+        // Any authenticated player can send or update a friend invite where inviteId is their own UID
+        allow create, update: if isAuthenticated() && request.auth.uid == inviteId;
+        // The recipient can read, accept, or decline/delete the invite
+        allow read, write: if isUser(userId);
+      }
     }
 
     // Direct Friend Conversations
