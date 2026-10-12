@@ -105,6 +105,8 @@ class RoundTelemetry {
     required this.shots,
   });
 
+  int get swishCount => shots.where((s) => s.isSwish).length;
+
   Map<String, dynamic> toJson() => {
     'score': roundScore,
     'made': madeShots,

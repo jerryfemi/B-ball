@@ -1,8 +1,12 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flame/components.dart';
 import 'package:flame_forge2d/flame_forge2d.dart';
 import 'package:flutter/material.dart';
 
+import '../models/cloud_match.dart';
+import '../services/auth_service.dart';
+import '../services/firestore_match_service.dart';
 import 'audio/audio_engine.dart';
 import 'components/background.dart';
 import 'components/backboard_visual.dart';
@@ -268,7 +272,7 @@ class BasketballGame extends Forge2DGame {
     onScoreEvent?.call(event);
 
     final session = matchSessionNotifier.value;
-    if (session != null) {
+    if (session != null && session.phase != MatchTurnPhase.waitingForOpponentTurn) {
       if (session.activePlayerIndex == 0) {
         player1MatchScoreNotifier.value =
             session.player1.scoreUpToRound(session.currentRoundIndex) + score;
@@ -422,7 +426,26 @@ class BasketballGame extends Forge2DGame {
     player1MatchScoreNotifier.value = session.player1.totalScore;
     player2MatchScoreNotifier.value = session.player2.totalScore;
 
-    if (session.isFinalRound && session.activePlayerIndex == 1) {
+    if (session.mode == MatchGameMode.onlineCloud1v1 &&
+        session.cloudMatchId != null &&
+        lastRoundTelemetry != null) {
+      final user = AuthService.instance.currentUser;
+      if (user != null) {
+        unawaited(FirestoreMatchService.instance.submitTurn(
+          matchId: session.cloudMatchId!,
+          shooterUid: user.uid,
+          roundIndex: session.currentRoundNumber,
+          telemetry: lastRoundTelemetry!,
+        ));
+      }
+    }
+
+    final isBothFinished = session.isFinalRound &&
+        (session.mode == MatchGameMode.onlineCloud1v1
+            ? session.player2.roundScores.length >= session.totalRounds
+            : session.activePlayerIndex == 1);
+
+    if (isBothFinished) {
       // Both players have completed all rounds! Direct to Winner Podium!
       session.phase = MatchTurnPhase.matchComplete;
     } else {
@@ -604,6 +627,23 @@ class BasketballGame extends Forge2DGame {
     _prepareTurn();
   }
 
+  /// Initiates or resumes an online asynchronous 1v1 match from a synced [CloudMatch].
+  void startCloudMatch(CloudMatch match, String myUid) {
+    final session = MatchSession.fromCloudMatch(match, myUid);
+    currentMatchConfig = session.config;
+    currentRoundDurationSeconds = match.roundDurationSeconds;
+    matchSessionNotifier.value = session;
+
+    player1MatchScoreNotifier.value = session.player1.totalScore;
+    player2MatchScoreNotifier.value = session.player2.totalScore;
+
+    if (session.phase == MatchTurnPhase.watchingOpponentReplay) {
+      startOpponentReplay();
+    } else {
+      startMatchTurn();
+    }
+  }
+
   void startMatchTurn() {
     final session = matchSessionNotifier.value;
     if (session == null) return;
@@ -683,6 +723,34 @@ class BasketballGame extends Forge2DGame {
     }
 
     _prepareTurn();
+  }
+
+  /// Returns player to court while keeping active 1v1 match session and scoreboard intact.
+  void stayInMatchCourt() {
+    final session = matchSessionNotifier.value;
+    if (session != null) {
+      session.phase = MatchTurnPhase.waitingForOpponentTurn;
+      matchSessionNotifier.notify();
+      player1MatchScoreNotifier.value = session.player1.totalScore;
+      player2MatchScoreNotifier.value = session.player2.totalScore;
+    }
+    score = 0;
+    currentStreak = 0;
+    scoreNotifier.value = 0;
+    streakNotifier.value = 0;
+    timeRemainingNotifier.value = 0;
+    gameStateNotifier.value = GameModeState.playing;
+    resumeGame();
+
+    final existingBalls = world.children.whereType<Basketball>().toList();
+    for (final b in existingBalls) {
+      b.removeFromParent();
+    }
+    final existingGhosts = world.children.whereType<GhostBasketball>().toList();
+    for (final g in existingGhosts) {
+      g.removeFromParent();
+    }
+    _spawnReadyBall(animate: true);
   }
 
   void exitToSoloMode() {

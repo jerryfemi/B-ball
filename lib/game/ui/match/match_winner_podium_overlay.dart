@@ -1,8 +1,11 @@
 import 'dart:ui';
+
 import 'package:flutter/material.dart';
 
+import '../../../services/firestore_match_service.dart';
 import '../../basketball_game.dart';
 import '../../match/match_session.dart';
+import '../common/app_avatar.dart';
 import 'match_setup_dialog.dart';
 
 /// Grand celebration podium overlay shown upon match conclusion.
@@ -24,6 +27,18 @@ class MatchWinnerPodiumOverlay extends StatelessWidget {
     required this.session,
   });
 
+  Future<void> _handleCloseOrDismiss(BuildContext context) async {
+    final matchId = session.cloudMatchId;
+    if (matchId != null) {
+      try {
+        await FirestoreMatchService.instance.deleteMatch(matchId);
+      } catch (e) {
+        debugPrint('Error evaporating match: $e');
+      }
+    }
+    game.exitToSoloMode();
+  }
+
   @override
   Widget build(BuildContext context) {
     final winner = session.overallWinner;
@@ -36,7 +51,9 @@ class MatchWinnerPodiumOverlay extends StatelessWidget {
 
     final String winnerDeclaration = isTie
         ? 'MATCH TIED!'
-        : (winner != null ? '${winner.name.toUpperCase()} WINS!' : 'MATCH TIED!');
+        : (winner != null
+              ? '${winner.name.toUpperCase()} WINS!'
+              : 'MATCH TIED!');
 
     final screenHeight = MediaQuery.of(context).size.height;
 
@@ -60,10 +77,7 @@ class MatchWinnerPodiumOverlay extends StatelessWidget {
                 gradient: const LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [
-                    Color(0xF20F172A),
-                    Color(0xFA090D16),
-                  ],
+                  colors: [Color(0xF20F172A), Color(0xFA090D16)],
                 ),
                 borderRadius: BorderRadius.circular(28.0),
                 border: Border.all(
@@ -82,24 +96,44 @@ class MatchWinnerPodiumOverlay extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // 1. Trophy Graphic & Declaration
-                    Container(
-                      width: 58.0,
-                      height: 58.0,
-                      decoration: BoxDecoration(
-                        color: bannerColor.withValues(alpha: 0.15),
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: bannerColor.withValues(alpha: 0.50),
-                          width: 1.5,
+                    // 1. Trophy Graphic, Declaration & Close Button
+                    Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Center(
+                          child: Container(
+                            width: 58.0,
+                            height: 58.0,
+                            decoration: BoxDecoration(
+                              color: bannerColor.withValues(alpha: 0.15),
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: bannerColor.withValues(alpha: 0.50),
+                                width: 1.5,
+                              ),
+                            ),
+                            child: Center(
+                              child: Text(
+                                isTie ? '🤝' : '🏆',
+                                style: const TextStyle(fontSize: 28.0),
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
-                      child: Center(
-                        child: Text(
-                          isTie ? '🤝' : '🏆',
-                          style: const TextStyle(fontSize: 28.0),
+                        Positioned(
+                          right: 0,
+                          top: 0,
+                          child: IconButton(
+                            icon: const Icon(
+                              Icons.close_rounded,
+                              color: Colors.white60,
+                              size: 22,
+                            ),
+                            tooltip: 'Close Match',
+                            onPressed: () => _handleCloseOrDismiss(context),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
                     const SizedBox(height: 10.0),
                     Text(
@@ -251,106 +285,155 @@ class MatchWinnerPodiumOverlay extends StatelessWidget {
                     const SizedBox(height: 18.0),
 
                     // 5. Action Buttons
-                    // Primary Action: REMATCH with identical parameters
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () => game.startPassAndPlayMatch(
-                          config: session.config,
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF22C55E),
-                          foregroundColor: Colors.white,
-                          elevation: 6.0,
-                          shadowColor:
-                              const Color(0xFF22C55E).withValues(alpha: 0.5),
-                          padding: const EdgeInsets.symmetric(vertical: 14.0),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16.0),
-                          ),
-                        ),
-                        child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.replay_rounded, size: 20.0),
-                            SizedBox(width: 8.0),
-                            Text(
-                              'REMATCH',
-                              style: TextStyle(
-                                fontSize: 15.0,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 1.2,
-                              ),
+                    if (session.cloudMatchId != null) ...[
+                      // Online Cloud Match: Close & Evaporate Room
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () => _handleCloseOrDismiss(context),
+                          icon: const Icon(Icons.close_rounded, size: 18),
+                          label: const Text(
+                            'CLOSE ROOM & DISMISS MATCH',
+                            style: TextStyle(
+                              fontSize: 13.0,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.8,
                             ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8.0),
-
-                    // Secondary Action: MATCH SETTINGS
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton(
-                        onPressed: () async {
-                          final newConfig = await MatchSetupDialog.show(
-                            context,
-                            initialConfig: session.config,
-                          );
-                          if (newConfig != null) {
-                            game.startPassAndPlayMatch(config: newConfig);
-                          }
-                        },
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF38BDF8),
-                          side: const BorderSide(
-                            color: Color(0x6638BDF8),
-                            width: 1.0,
                           ),
-                          backgroundColor: const Color(0x120284C7),
-                          padding: const EdgeInsets.symmetric(vertical: 12.0),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16.0),
-                          ),
-                        ),
-                        child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.tune_rounded, size: 18.0),
-                            SizedBox(width: 8.0),
-                            Text(
-                              'MATCH SETTINGS',
-                              style: TextStyle(
-                                fontSize: 13.0,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 1.0,
-                              ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFEF4444),
+                            foregroundColor: Colors.white,
+                            elevation: 6.0,
+                            shadowColor: const Color(0xFFEF4444)
+                                .withValues(alpha: 0.4),
+                            padding: const EdgeInsets.symmetric(vertical: 14.0),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16.0),
                             ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8.0),
-
-                    // Tertiary Action: PRACTICE SOLO
-                    SizedBox(
-                      width: double.infinity,
-                      child: TextButton(
-                        onPressed: () => game.exitToSoloMode(),
-                        style: TextButton.styleFrom(
-                          foregroundColor: const Color(0xFF94A3B8),
-                          padding: const EdgeInsets.symmetric(vertical: 10.0),
-                        ),
-                        child: const Text(
-                          'PRACTICE SOLO',
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.8,
                           ),
                         ),
                       ),
-                    ),
+                      const SizedBox(height: 8.0),
+                      SizedBox(
+                        width: double.infinity,
+                        child: TextButton(
+                          onPressed: () => game.exitToSoloMode(),
+                          style: TextButton.styleFrom(
+                            foregroundColor: const Color(0xFF94A3B8),
+                            padding: const EdgeInsets.symmetric(vertical: 10.0),
+                          ),
+                          child: const Text(
+                            'PRACTICE SOLO',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ] else ...[
+                      // Local Pass & Play: REMATCH with identical parameters
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () => game.startPassAndPlayMatch(
+                            config: session.config,
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF22C55E),
+                            foregroundColor: Colors.white,
+                            elevation: 6.0,
+                            shadowColor: const Color(0xFF22C55E)
+                                .withValues(alpha: 0.5),
+                            padding: const EdgeInsets.symmetric(vertical: 14.0),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16.0),
+                            ),
+                          ),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.replay_rounded, size: 20.0),
+                              SizedBox(width: 8.0),
+                              Text(
+                                'REMATCH',
+                                style: TextStyle(
+                                  fontSize: 15.0,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 1.2,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8.0),
+
+                      // Secondary Action: MATCH SETTINGS
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton(
+                          onPressed: () async {
+                            final newConfig = await MatchSetupDialog.show(
+                              context,
+                              initialConfig: session.config,
+                            );
+                            if (newConfig != null) {
+                              game.startPassAndPlayMatch(config: newConfig);
+                            }
+                          },
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF38BDF8),
+                            side: const BorderSide(
+                              color: Color(0x6638BDF8),
+                              width: 1.0,
+                            ),
+                            backgroundColor: const Color(0x120284C7),
+                            padding: const EdgeInsets.symmetric(vertical: 12.0),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16.0),
+                            ),
+                          ),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.tune_rounded, size: 18.0),
+                              SizedBox(width: 8.0),
+                              Text(
+                                'MATCH SETTINGS',
+                                style: TextStyle(
+                                  fontSize: 13.0,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 1.0,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8.0),
+
+                      // Tertiary Action: PRACTICE SOLO
+                      SizedBox(
+                        width: double.infinity,
+                        child: TextButton(
+                          onPressed: () => game.exitToSoloMode(),
+                          style: TextButton.styleFrom(
+                            foregroundColor: const Color(0xFF94A3B8),
+                            padding: const EdgeInsets.symmetric(vertical: 10.0),
+                          ),
+                          child: const Text(
+                            'PRACTICE SOLO',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -360,6 +443,7 @@ class MatchWinnerPodiumOverlay extends StatelessWidget {
       ),
     );
   }
+
 
   Widget _buildAggregateColumn({
     required String name,
@@ -374,7 +458,7 @@ class MatchWinnerPodiumOverlay extends StatelessWidget {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(avatar, style: const TextStyle(fontSize: 14.0)),
+            AppAvatar(avatar: avatar, size: 16.0),
             const SizedBox(width: 4.0),
             Text(
               name.toUpperCase(),
@@ -427,7 +511,9 @@ class MatchWinnerPodiumOverlay extends StatelessWidget {
                   shape: BoxShape.circle,
                   color: p1WonRound
                       ? const Color(0xFF22C55E)
-                      : (p2WonRound ? const Color(0xFF38BDF8) : const Color(0xFFF59E0B)),
+                      : (p2WonRound
+                            ? const Color(0xFF38BDF8)
+                            : const Color(0xFFF59E0B)),
                 ),
               ),
               const SizedBox(width: 6.0),
@@ -451,8 +537,7 @@ class MatchWinnerPodiumOverlay extends StatelessWidget {
                       ? const Color(0xFF4ADE80)
                       : const Color(0xFF94A3B8),
                   fontSize: 13.0,
-                  fontWeight:
-                      p1WonRound ? FontWeight.w900 : FontWeight.w700,
+                  fontWeight: p1WonRound ? FontWeight.w900 : FontWeight.w700,
                 ),
               ),
               const Text(
@@ -466,8 +551,7 @@ class MatchWinnerPodiumOverlay extends StatelessWidget {
                       ? const Color(0xFF38BDF8)
                       : const Color(0xFF94A3B8),
                   fontSize: 13.0,
-                  fontWeight:
-                      p2WonRound ? FontWeight.w900 : FontWeight.w700,
+                  fontWeight: p2WonRound ? FontWeight.w900 : FontWeight.w700,
                 ),
               ),
             ],
@@ -486,10 +570,7 @@ class MatchWinnerPodiumOverlay extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0x10FFFFFF),
         borderRadius: BorderRadius.circular(14.0),
-        border: Border.all(
-          color: const Color(0x14FFFFFF),
-          width: 1.0,
-        ),
+        border: Border.all(color: const Color(0x14FFFFFF), width: 1.0),
       ),
       child: Column(
         children: [
@@ -545,7 +626,9 @@ class MatchWinnerPodiumOverlay extends StatelessWidget {
             p1Value,
             textAlign: TextAlign.left,
             style: TextStyle(
-              color: p1Higher ? const Color(0xFF4ADE80) : const Color(0xFFCBD5E1),
+              color: p1Higher
+                  ? const Color(0xFF4ADE80)
+                  : const Color(0xFFCBD5E1),
               fontSize: 11.5,
               fontWeight: p1Higher ? FontWeight.w900 : FontWeight.w600,
             ),
@@ -566,7 +649,9 @@ class MatchWinnerPodiumOverlay extends StatelessWidget {
             p2Value,
             textAlign: TextAlign.right,
             style: TextStyle(
-              color: p2Higher ? const Color(0xFF38BDF8) : const Color(0xFFCBD5E1),
+              color: p2Higher
+                  ? const Color(0xFF38BDF8)
+                  : const Color(0xFFCBD5E1),
               fontSize: 11.5,
               fontWeight: p2Higher ? FontWeight.w900 : FontWeight.w600,
             ),

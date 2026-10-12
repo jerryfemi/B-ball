@@ -35,14 +35,20 @@ class ScoreboardBay extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          label,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 10.5,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 1.2,
-            height: 1.0,
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 58.0),
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 10.5,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.0,
+              height: 1.0,
+            ),
           ),
         ),
         const SizedBox(height: 3.5),
