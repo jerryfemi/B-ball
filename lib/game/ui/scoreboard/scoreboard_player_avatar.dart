@@ -1,17 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-import '../../../models/cloud_match.dart';
-import '../../../models/friend_profile.dart';
-import '../../../services/auth_service.dart';
-import '../../../services/firestore_match_service.dart';
-import '../../../services/friends_service.dart';
+import '../../../providers/app_providers.dart';
 import '../common/app_avatar.dart';
 
 /// Flanking circular player avatar with illuminated badge, "You" label,
 /// and live reactive inbox/turns notification pip.
-class ScoreboardPlayerAvatar extends HookWidget {
+class ScoreboardPlayerAvatar extends HookConsumerWidget {
   final bool isActive;
   final String label;
   final String avatar;
@@ -28,73 +25,15 @@ class ScoreboardPlayerAvatar extends HookWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<UserProfile?>(
-      valueListenable: AuthService.instance.currentUserNotifier,
-      builder: (context, user, _) {
-        if (user == null || user.uid.isEmpty) {
-          return _PulsingPlayerAvatar(
-            alertsCount: 0,
-            avatar: avatar,
-            label: label,
-            isActive: isActive,
-            onTap: onTap,
-          );
-        }
+  Widget build(BuildContext context, WidgetRef ref) {
+    final alertsCount = ref.watch(userAlertsCountProvider(activeMatchId));
 
-        final matchesStream = useMemoized(
-          () => FirestoreMatchService.instance.streamUserMatches(user.uid),
-          [user.uid],
-        );
-
-        final invitesStream = useMemoized(
-          () => FriendsService.instance.streamIncomingInvites(user.uid),
-          [user.uid],
-        );
-
-        return StreamBuilder<List<FriendInvite>>(
-          stream: invitesStream,
-          initialData: const <FriendInvite>[],
-          builder: (context, invitesSnapshot) {
-            final invitesCount = (invitesSnapshot.data ?? []).length;
-
-            return StreamBuilder<List<CloudMatch>>(
-              stream: matchesStream,
-              initialData: const <CloudMatch>[],
-              builder: (context, snapshot) {
-                final matches = snapshot.data ?? [];
-                final activeId = activeMatchId;
-                final turnsWaiting = matches
-                    .where(
-                      (m) =>
-                          m.isMyTurn(user.uid) &&
-                          m.status != MatchStatus.completed &&
-                          (activeId == null || m.id != activeId),
-                    )
-                    .length;
-
-                // Also count unread chat messages from background matches
-                final chatAlerts = matches.where((m) {
-                  if (activeId != null && m.id == activeId) return false;
-                  if (m.chat.isEmpty) return false;
-                  final lastMsg = m.chat.last;
-                  return lastMsg.senderUid != user.uid;
-                }).length;
-
-                final totalAlerts = turnsWaiting + invitesCount + chatAlerts;
-
-                return _PulsingPlayerAvatar(
-                  alertsCount: totalAlerts,
-                  avatar: avatar,
-                  label: label,
-                  isActive: isActive,
-                  onTap: onTap,
-                );
-              },
-            );
-          },
-        );
-      },
+    return _PulsingPlayerAvatar(
+      alertsCount: alertsCount,
+      avatar: avatar,
+      label: label,
+      isActive: isActive,
+      onTap: onTap,
     );
   }
 }
