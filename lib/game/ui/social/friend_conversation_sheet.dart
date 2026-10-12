@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -50,7 +51,8 @@ class FriendConversationSheet extends StatefulWidget {
   }
 
   @override
-  State<FriendConversationSheet> createState() => _FriendConversationSheetState();
+  State<FriendConversationSheet> createState() =>
+      _FriendConversationSheetState();
 }
 
 class _FriendConversationSheetState extends State<FriendConversationSheet> {
@@ -133,8 +135,13 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
     final config = await MatchSetupDialog.show(context);
     if (config == null || !mounted) return;
 
-    final profile = AuthService.instance.currentUser ??
-        UserProfile(uid: widget.myUid, displayName: 'Player', avatarEmoji: '🏀');
+    final profile =
+        AuthService.instance.currentUser ??
+        UserProfile(
+          uid: widget.myUid,
+          displayName: 'Player',
+          avatarEmoji: '🏀',
+        );
 
     final newMatch = await FirestoreMatchService.instance.createMatch(
       config: config,
@@ -253,7 +260,10 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: const Color(0xFF334155)),
             ),
-            child: Text(widget.friend.avatarEmoji, style: const TextStyle(fontSize: 20)),
+            child: Text(
+              widget.friend.avatarEmoji,
+              style: const TextStyle(fontSize: 20),
+            ),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -280,7 +290,11 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.close_rounded, color: Colors.white54, size: 22),
+            icon: const Icon(
+              Icons.close_rounded,
+              color: Colors.white54,
+              size: 22,
+            ),
             onPressed: () => Navigator.of(context).pop(),
           ),
         ],
@@ -300,7 +314,11 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
         ),
         child: Row(
           children: [
-            const Icon(Icons.sports_basketball_rounded, color: Color(0xFFF59E0B), size: 24),
+            const Icon(
+              Icons.sports_basketball_rounded,
+              color: Color(0xFFF59E0B),
+              size: 24,
+            ),
             const SizedBox(width: 10),
             const Expanded(
               child: Column(
@@ -327,8 +345,13 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF38BDF8),
                 foregroundColor: const Color(0xFF0F172A),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
               child: const Text(
                 '🏀 CHALLENGE',
@@ -374,7 +397,10 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
               ),
               Text(
                 'Room: ${match.joinCode}',
-                style: const TextStyle(color: Color(0xFF64748B), fontSize: 10.5),
+                style: const TextStyle(
+                  color: Color(0xFF64748B),
+                  fontSize: 10.5,
+                ),
               ),
             ],
           ),
@@ -392,7 +418,10 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
                         fontSize: 14,
                       ),
                     ),
-                    const Text('  vs  ', style: TextStyle(color: Color(0xFF64748B), fontSize: 12)),
+                    const Text(
+                      '  vs  ',
+                      style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
+                    ),
                     Text(
                       '${widget.friend.displayName}: $oppScore',
                       style: const TextStyle(
@@ -413,10 +442,18 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFF59E0B),
                     foregroundColor: const Color(0xFF0F172A),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
-                  child: const Text('PODIUM 🏆', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900)),
+                  child: const Text(
+                    'PODIUM 🏆',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900),
+                  ),
                 )
               else if (isMyTurn)
                 ElevatedButton(
@@ -427,17 +464,28 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF38BDF8),
                     foregroundColor: const Color(0xFF0F172A),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
                   child: const Text(
                     '⚡ SHOOT TURN',
-                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900),
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                 )
               else
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFF1E2638),
                     borderRadius: BorderRadius.circular(8),
@@ -445,7 +493,11 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
                   ),
                   child: const Text(
                     '⏳ Their Turn',
-                    style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.w700),
+                    style: TextStyle(
+                      color: Color(0xFF94A3B8),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
             ],
@@ -492,7 +544,9 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
               ),
             ),
             child: Column(
-              crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              crossAxisAlignment: isMe
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
               children: [
                 Text(
                   msg.text,
@@ -518,10 +572,15 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
         itemBuilder: (ctx, i) {
           final text = _quickBanter[i];
           return ActionChip(
-            label: Text(text, style: const TextStyle(fontSize: 11, color: Colors.white)),
+            label: Text(
+              text,
+              style: const TextStyle(fontSize: 11, color: Colors.white),
+            ),
             backgroundColor: const Color(0xFF1E2638),
             side: const BorderSide(color: Color(0xFF334155)),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
             onPressed: () => _sendText(text),
           );
         },
@@ -540,18 +599,27 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
               style: const TextStyle(color: Colors.white, fontSize: 13),
               decoration: InputDecoration(
                 hintText: 'Type message...',
-                hintStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                hintStyle: const TextStyle(
+                  color: Color(0xFF64748B),
+                  fontSize: 13,
+                ),
                 filled: true,
                 fillColor: const Color(0xFF1E2638),
                 isDense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
                   borderSide: const BorderSide(color: Color(0xFF334155)),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
-                  borderSide: const BorderSide(color: Color(0xFF38BDF8), width: 1.5),
+                  borderSide: const BorderSide(
+                    color: Color(0xFF38BDF8),
+                    width: 1.5,
+                  ),
                 ),
               ),
               onSubmitted: _sendText,
@@ -559,7 +627,11 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
           ),
           const SizedBox(width: 8),
           IconButton(
-            icon: const Icon(Icons.send_rounded, color: Color(0xFF38BDF8), size: 20),
+            icon: const Icon(
+              Icons.send_rounded,
+              color: Color(0xFF38BDF8),
+              size: 20,
+            ),
             onPressed: () => _sendText(_msgController.text),
           ),
         ],
