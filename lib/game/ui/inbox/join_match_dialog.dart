@@ -3,14 +3,14 @@ import 'package:flutter/services.dart';
 import '../../../models/cloud_match.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/firestore_match_service.dart';
+import '../common/app_modal_dialog.dart';
 
 /// Modal dialog for entering a 6-character arcade code to join a remote match.
 class JoinMatchDialog extends StatefulWidget {
   const JoinMatchDialog({super.key});
 
-  /// Displays the dialog and returns the joined [CloudMatch], or null if cancelled.
   static Future<CloudMatch?> show(BuildContext context) {
-    return showDialog<CloudMatch>(
+    return AppModalDialog.show<CloudMatch>(
       context: context,
       builder: (ctx) => const JoinMatchDialog(),
     );
@@ -78,59 +78,16 @@ class _JoinMatchDialogState extends State<JoinMatchDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: const Color(0xFF131826),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(24),
-        side: const BorderSide(color: Color(0xFF2E3954), width: 1.5),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 26),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1E293B),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Text('🎯', style: TextStyle(fontSize: 20)),
-                ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'JOIN MATCH',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1.5,
-                        ),
-                      ),
-                      SizedBox(height: 2),
-                      Text(
-                        'Enter 6-digit game code',
-                        style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white54, size: 20),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-
-            // Code input field
+    return AppModalDialog(
+      icon: '🎯',
+      title: 'JOIN MATCH',
+      subtitle: 'Enter 6-digit game code',
+      showCloseButton: true,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Code input field
             TextField(
               controller: _controller,
               autofocus: true,
@@ -202,7 +159,6 @@ class _JoinMatchDialogState extends State<JoinMatchDialog> {
             ),
           ],
         ),
-      ),
-    );
+      );
   }
 }
