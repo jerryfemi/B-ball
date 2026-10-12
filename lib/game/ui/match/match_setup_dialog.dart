@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../../services/auth_service.dart';
 import '../../match/match_config.dart';
+import '../common/app_button.dart';
 import '../common/app_modal_dialog.dart';
 
 /// Streamlined Arcade 1v1 Challenge Creator modal in muted luxury obsidian palette.
@@ -265,34 +266,11 @@ class _MatchSetupDialogState extends State<MatchSetupDialog> {
                       const SizedBox(height: 22.0),
 
                       // Primary Start Challenge Button
-                      SizedBox(
-                        height: 48.0,
-                        child: ElevatedButton(
-                          onPressed: _onStartPressed,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF38BDF8),
-                            foregroundColor: const Color(0xFF0F172A),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14.0),
-                            ),
-                            elevation: 4,
-                          ),
-                          child: const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                'START 1V1 MATCH',
-                                style: TextStyle(
-                                  fontSize: 13.5,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: 1.0,
-                                ),
-                              ),
-                              SizedBox(width: 8.0),
-                              Icon(Icons.arrow_forward_rounded, size: 18.0),
-                            ],
-                          ),
-                        ),
+                      AppPrimaryButton(
+                        label: 'START 1V1 MATCH',
+                        backgroundColor: const Color(0xFF38BDF8),
+                        iconData: Icons.arrow_forward_rounded,
+                        onPressed: _onStartPressed,
                       ),
                     ],
                   ),
