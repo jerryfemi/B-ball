@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../models/cloud_match.dart';
+import '../common/app_avatar.dart';
 
 /// Punchy Arcade Head-to-Head Versus Match Card.
 ///
@@ -22,26 +23,6 @@ class MatchInboxCard extends StatelessWidget {
     required this.onPlayTurn,
     this.onViewPodium,
   });
-
-  Widget _buildAvatarView(String avatar, {double size = 22}) {
-    if (avatar.startsWith('assets/') ||
-        avatar.endsWith('.png') ||
-        avatar.endsWith('.jpg') ||
-        avatar.endsWith('.jpeg') ||
-        avatar.endsWith('.webp')) {
-      return ClipOval(
-        child: Image.asset(
-          avatar,
-          width: size,
-          height: size,
-          fit: BoxFit.cover,
-          errorBuilder: (_, _, _) =>
-              Text('🏀', style: TextStyle(fontSize: size * 0.85)),
-        ),
-      );
-    }
-    return Text(avatar, style: TextStyle(fontSize: size));
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -133,10 +114,10 @@ class MatchInboxCard extends StatelessWidget {
                     Expanded(
                       child: Row(
                         children: [
-                          _buildAvatarView(
-                            myPlayer?.avatarEmoji ??
-                                'assets/avatars/dunk_heads (1).webp',
-                            size: 22,
+                          AppAvatar(
+                            avatar: myPlayer?.avatarEmoji ??
+                                AppAvatar.defaultAvatar,
+                            size: 24,
                           ),
                           const SizedBox(width: 8),
                           Expanded(
@@ -233,7 +214,7 @@ class MatchInboxCard extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: 8),
-                          _buildAvatarView(opponentAvatar, size: 22),
+                          AppAvatar(avatar: opponentAvatar, size: 24),
                         ],
                       ),
                     ),
