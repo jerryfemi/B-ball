@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../../models/cloud_match.dart';
+import '../../../providers/app_providers.dart';
 import '../../../services/auth_service.dart';
-import '../../../services/firestore_match_service.dart';
 import 'join_match_dialog.dart';
 import 'match_inbox_card.dart';
 import 'match_thread_dialog.dart';
@@ -13,7 +14,7 @@ import '../common/app_modal_sheet.dart';
 import '../social/friends_hub_sheet.dart';
 
 /// The central 1v1 Match Hub bottom sheet modal.
-class MatchInboxSheet extends HookWidget {
+class MatchInboxSheet extends HookConsumerWidget {
   final ValueChanged<CloudMatch> onPlayMatch;
   final VoidCallback onCreateMatch;
   final ValueChanged<CloudMatch>? onViewPodium;
@@ -43,7 +44,7 @@ class MatchInboxSheet extends HookWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final selectedTab = useState(0); // 0: Live Matches, 1: Trophy History
 
     void showEditProfileDialog(BuildContext ctx, UserProfile current) {
@@ -201,12 +202,12 @@ class MatchInboxSheet extends HookWidget {
       );
     }
 
-    return ValueListenableBuilder<UserProfile?>(
-      valueListenable: AuthService.instance.currentUserNotifier,
-      builder: (context, myProfile, _) {
-        final myUid = myProfile?.uid ?? '';
+    final myProfile = ref.watch(currentUserProfileProvider).value;
+    final myUid = myProfile?.uid ?? '';
+    final matchesAsync = ref.watch(userMatchesProvider);
+    final allMatches = matchesAsync.value ?? const <CloudMatch>[];
 
-        return AppModalSheet(
+    return AppModalSheet(
           heightFactor: 0.85,
           header: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -411,13 +412,9 @@ class MatchInboxSheet extends HookWidget {
 
                 // Matches Stream Feed
                 Expanded(
-                  child: StreamBuilder<List<CloudMatch>>(
-                    stream: FirestoreMatchService.instance.streamUserMatches(
-                      myUid,
-                    ),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting &&
-                          !snapshot.hasData) {
+                  child: Builder(
+                    builder: (context) {
+                      if (matchesAsync.isLoading && !matchesAsync.hasValue) {
                         return const Center(
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
@@ -425,8 +422,6 @@ class MatchInboxSheet extends HookWidget {
                           ),
                         );
                       }
-
-                      final allMatches = snapshot.data ?? [];
                       final liveMatches = allMatches
                           .where((m) => m.status != MatchStatus.completed)
                           .toList();
@@ -497,8 +492,6 @@ class MatchInboxSheet extends HookWidget {
               ],
             ),
         );
-      },
-    );
   }
 
   Widget _buildTabPill(
