@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../firebase_options.dart';
+import '../models/player_descriptor.dart';
 import 'friends_service.dart';
 
 /// Exception thrown when an online feature is attempted without valid Firebase authentication.
@@ -19,12 +20,19 @@ class AuthRequiredException implements Exception {
 }
 
 /// Lightweight profile representation for the local player.
-class UserProfile {
+class UserProfile implements PlayerDescriptor {
   final String uid;
+  @override
   final String displayName;
   final String avatarEmoji;
   final bool isAnonymous;
   final bool isFirebaseVerified;
+
+  @override
+  String get id => uid;
+
+  @override
+  String get avatar => avatarEmoji;
 
   const UserProfile({
     required this.uid,
@@ -62,7 +70,7 @@ class UserProfile {
     uid: json['uid'] as String,
     displayName: json['displayName'] as String? ?? 'Player',
     avatarEmoji:
-        json['avatarEmoji'] as String? ?? 'assets/avatars/dunk_heads (1).webp',
+        json['avatarEmoji'] as String? ?? PlayerDescriptor.defaultAvatar,
     isAnonymous: json['isAnonymous'] as bool? ?? true,
     isFirebaseVerified: json['isFirebaseVerified'] as bool? ?? false,
   );
