@@ -295,11 +295,6 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     final double effectiveOpacity = (baseOpacity * fadeOut).clamp(0.0, 1.0);
     if (effectiveOpacity <= 0.01) return;
 
-    canvas.saveLayer(
-      null,
-      Paint()..color = Color.fromRGBO(255, 255, 255, effectiveOpacity),
-    );
-
     // 1. Continuous Hardwood Floor Drop Shadow
     // Shadow is calculated at (physics.pos.x, 0.0, physics.pos.z) on the court floor
     final bool onCourtFloor =
@@ -377,12 +372,18 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
         final boardZScale = camera3D.scaleAtDepth(BallPhysics3D.backboardZ);
         final boardVisualRadius = radius * boardZScale * 1.38;
         final shadowSpread = 1.0 + (1.0 - boardProximity) * 0.30;
-        final blurMeters =
-            (0.03 + (1.0 - boardProximity) * 0.10).clamp(0.02, 0.16);
 
         final boardShadowPaint = Paint()
-          ..color = Color.fromRGBO(0, 0, 0, boardShadowAlpha)
-          ..maskFilter = MaskFilter.blur(BlurStyle.normal, blurMeters);
+          ..shader = ui.Gradient.radial(
+            boardShadowOffset,
+            boardVisualRadius * 0.95 * shadowSpread,
+            [
+              Color.fromRGBO(0, 0, 0, boardShadowAlpha),
+              Color.fromRGBO(0, 0, 0, boardShadowAlpha * 0.35),
+              const Color(0x00000000),
+            ],
+            const [0.0, 0.55, 1.0],
+          );
 
         final boardShadowRect = Rect.fromCenter(
           center: boardShadowOffset,
@@ -433,14 +434,18 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
         final wallZScale = camera3D.scaleAtDepth(BallPhysics3D.wallZ);
         final wallVisualRadius = radius * wallZScale * 1.38;
         final shadowSpread = 1.0 + (1.0 - wallProximity) * 0.35;
-        final blurMeters = (0.04 + (1.0 - wallProximity) * 0.14).clamp(
-          0.03,
-          0.22,
-        );
 
         final wallShadowPaint = Paint()
-          ..color = Color.fromRGBO(0, 0, 0, wallShadowAlpha)
-          ..maskFilter = MaskFilter.blur(BlurStyle.normal, blurMeters);
+          ..shader = ui.Gradient.radial(
+            wallShadowOffset,
+            wallVisualRadius * 1.0 * shadowSpread,
+            [
+              Color.fromRGBO(0, 0, 0, wallShadowAlpha),
+              Color.fromRGBO(0, 0, 0, wallShadowAlpha * 0.35),
+              const Color(0x00000000),
+            ],
+            const [0.0, 0.55, 1.0],
+          );
 
         final wallShadowRect = Rect.fromCenter(
           center: wallShadowOffset,
@@ -498,7 +503,6 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     }
 
     canvas.restore();
-    canvas.restore(); // Restore opacity saveLayer
   }
 
   @override
