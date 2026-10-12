@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -41,33 +42,46 @@ class FriendsService {
         'updatedAt': DateTime.now().millisecondsSinceEpoch,
       }, SetOptions(merge: true));
     } catch (e) {
-      debugPrint('[FriendsService] Notice: could not publish public profile: $e');
+      debugPrint(
+        '[FriendsService] Notice: could not publish public profile: $e',
+      );
     }
   }
 
   /// Streams real-time list of friends, backed by Firestore user doc and local reactive notifier.
   Stream<List<FriendProfile>> streamFriends(String myUid) {
-    if (myUid.isEmpty) return friendsNotifier.value.isNotEmpty ? Stream.value(friendsNotifier.value) : Stream.value(const []);
+    if (myUid.isEmpty) {
+      return friendsNotifier.value.isNotEmpty
+          ? Stream.value(friendsNotifier.value)
+          : Stream.value(const []);
+    }
 
-    return _usersRef.doc(myUid).snapshots().map((doc) {
-      if (doc.exists && doc.data() != null) {
-        final data = doc.data()!;
-        final rawFriends = data['friends'] as List<dynamic>?;
-        if (rawFriends != null) {
-          final list = rawFriends
-              .map((e) => FriendProfile.fromMap(e as Map<String, dynamic>))
-              .toList();
-          list.sort((a, b) => b.lastActiveTimestamp.compareTo(a.lastActiveTimestamp));
-          friendsNotifier.value = list;
-          unawaited(_cacheFriendsLocally(list));
-          return list;
-        }
-      }
-      return friendsNotifier.value;
-    }).handleError((error) {
-      debugPrint('[FriendsService] Fallback to local friends list: $error');
-      return friendsNotifier.value;
-    });
+    return _usersRef
+        .doc(myUid)
+        .snapshots()
+        .map((doc) {
+          if (doc.exists && doc.data() != null) {
+            final data = doc.data()!;
+            final rawFriends = data['friends'] as List<dynamic>?;
+            if (rawFriends != null) {
+              final list = rawFriends
+                  .map((e) => FriendProfile.fromMap(e as Map<String, dynamic>))
+                  .toList();
+              list.sort(
+                (a, b) =>
+                    b.lastActiveTimestamp.compareTo(a.lastActiveTimestamp),
+              );
+              friendsNotifier.value = list;
+              unawaited(_cacheFriendsLocally(list));
+              return list;
+            }
+          }
+          return friendsNotifier.value;
+        })
+        .handleError((error) {
+          debugPrint('[FriendsService] Fallback to local friends list: $error');
+          return friendsNotifier.value;
+        });
   }
 
   /// Adds a friend to the user's social network with instant local reactivity.
@@ -100,17 +114,20 @@ class FriendsService {
 
       // Also try subcollection write as secondary store
       try {
-        await _usersRef.doc(myUid).collection('friends').doc(friend.uid).set(
-          updatedFriend.toMap(),
-          SetOptions(merge: true),
-        );
+        await _usersRef
+            .doc(myUid)
+            .collection('friends')
+            .doc(friend.uid)
+            .set(updatedFriend.toMap(), SetOptions(merge: true));
       } catch (_) {}
     }
   }
 
   /// Removes a friend from the user's friend list.
   Future<void> removeFriend(String myUid, String friendUid) async {
-    final updatedList = friendsNotifier.value.where((f) => f.uid != friendUid).toList();
+    final updatedList = friendsNotifier.value
+        .where((f) => f.uid != friendUid)
+        .toList();
     friendsNotifier.value = updatedList;
     await _cacheFriendsLocally(updatedList);
 
@@ -153,7 +170,10 @@ class FriendsService {
   }
 
   /// Searches for potential friends by username or player tag.
-  Future<List<FriendProfile>> searchUsers(String query, String excludeMyUid) async {
+  Future<List<FriendProfile>> searchUsers(
+    String query,
+    String excludeMyUid,
+  ) async {
     final clean = query.trim().toLowerCase();
     if (clean.length < 2) return const [];
 
@@ -179,22 +199,120 @@ class FriendsService {
           .limit(8)
           .get();
 
-      return querySnapshot.docs
-          .where((doc) => doc.id != excludeMyUid)
-          .map((doc) {
-            final data = doc.data();
-            return FriendProfile(
-              uid: doc.id,
-              displayName: data['displayName'] as String? ?? 'Player',
-              avatarEmoji: data['avatarEmoji'] as String? ?? '🏀',
-              addedAt: DateTime.now().millisecondsSinceEpoch,
-            );
-          })
-          .toList();
+      return querySnapshot.docs.where((doc) => doc.id != excludeMyUid).map((
+        doc,
+      ) {
+        final data = doc.data();
+        return FriendProfile(
+          uid: doc.id,
+          displayName: data['displayName'] as String? ?? 'Player',
+          avatarEmoji: data['avatarEmoji'] as String? ?? '🏀',
+          addedAt: DateTime.now().millisecondsSinceEpoch,
+        );
+      }).toList();
     } catch (e) {
       debugPrint('[FriendsService] Search users error: $e');
       return const [];
     }
+  }
+
+  /// Sends a friend invite from the current player to [targetUid].
+  Future<void> sendFriendInvite({
+    required String targetUid,
+    required UserProfile myProfile,
+  }) async {
+    final invite = FriendInvite(
+      senderUid: myProfile.uid,
+      senderName: myProfile.displayName,
+      senderAvatar: myProfile.avatarEmoji,
+      status: 'pending',
+      timestamp: DateTime.now().millisecondsSinceEpoch,
+    );
+    await _usersRef
+        .doc(targetUid)
+        .collection('invites')
+        .doc(myProfile.uid)
+        .set(invite.toMap());
+  }
+
+  /// Streams incoming friend invites for the current player.
+  /// Automatically finalizes reciprocal acceptances if encountered.
+  Stream<List<FriendInvite>> streamIncomingInvites(String myUid) {
+    if (myUid.isEmpty) return Stream.value(const []);
+    return _usersRef
+        .doc(myUid)
+        .collection('invites')
+        .snapshots()
+        .map((snap) {
+          final list = <FriendInvite>[];
+          for (final doc in snap.docs) {
+            final inv = FriendInvite.fromMap(doc.data(), doc.id);
+            if (inv.status == 'accepted') {
+              // Reciprocal confirmation from other player: add them to my friends list
+              final friend = FriendProfile(
+                uid: inv.senderUid,
+                displayName: inv.senderName,
+                avatarEmoji: inv.senderAvatar,
+                addedAt: DateTime.now().millisecondsSinceEpoch,
+              );
+              unawaited(addFriend(myUid, friend));
+              unawaited(doc.reference.delete().catchError((_) {}));
+            } else {
+              list.add(inv);
+            }
+          }
+          return list;
+        })
+        .handleError((e) {
+          debugPrint('[FriendsService] Stream invites notice: $e');
+          return const <FriendInvite>[];
+        });
+  }
+
+  /// Accepts an incoming friend invite, adds them to my friends list,
+  /// notifies the sender so they also reciprocate, and deletes the invite.
+  Future<void> acceptFriendInvite(String myUid, FriendInvite invite) async {
+    final myProfile = AuthService.instance.currentUser;
+    final friend = FriendProfile(
+      uid: invite.senderUid,
+      displayName: invite.senderName,
+      avatarEmoji: invite.senderAvatar,
+      addedAt: DateTime.now().millisecondsSinceEpoch,
+    );
+    await addFriend(myUid, friend);
+    try {
+      await _usersRef
+          .doc(myUid)
+          .collection('invites')
+          .doc(invite.senderUid)
+          .delete();
+    } catch (_) {}
+
+    if (myProfile != null) {
+      try {
+        final reciprocate = FriendInvite(
+          senderUid: myUid,
+          senderName: myProfile.displayName,
+          senderAvatar: myProfile.avatarEmoji,
+          status: 'accepted',
+          timestamp: DateTime.now().millisecondsSinceEpoch,
+        );
+        await _usersRef
+            .doc(invite.senderUid)
+            .collection('invites')
+            .doc(myUid)
+            .set(reciprocate.toMap());
+      } catch (e) {
+        debugPrint('[FriendsService] Reciprocate friend acceptance notice: $e');
+      }
+    }
+  }
+
+  /// Declines and discards an incoming friend invite.
+  Future<void> declineFriendInvite(String myUid, String senderUid) async {
+    try {
+      await _usersRef.doc(myUid).collection('invites').doc(senderUid).delete();
+    } catch (_) {}
   }
 
   Future<void> _cacheFriendsLocally(List<FriendProfile> friends) async {
@@ -244,7 +362,7 @@ class FriendsService {
     try {
       await _usersRef.doc(fromUid).set({
         'outbox': FieldValue.arrayUnion([
-          {...msgMap, 'toUid': toUid}
+          {...msgMap, 'toUid': toUid},
         ]),
         'updatedAt': DateTime.now().millisecondsSinceEpoch,
       }, SetOptions(merge: true));
@@ -284,19 +402,25 @@ class FriendsService {
       onListen: () {
         // 1. Conversations collection stream
         try {
-          subConv = _firestore.collection('conversations').doc(convId).snapshots().listen((doc) {
-            if (doc.exists && doc.data() != null) {
-              final rawChat = doc.data()!['chat'] as List<dynamic>?;
-              if (rawChat != null) {
-                convMessages.clear();
-                for (final e in rawChat) {
-                  final m = CloudChatMessage.fromMap(e as Map<String, dynamic>);
-                  convMessages[m.id] = m;
+          subConv = _firestore
+              .collection('conversations')
+              .doc(convId)
+              .snapshots()
+              .listen((doc) {
+                if (doc.exists && doc.data() != null) {
+                  final rawChat = doc.data()!['chat'] as List<dynamic>?;
+                  if (rawChat != null) {
+                    convMessages.clear();
+                    for (final e in rawChat) {
+                      final m = CloudChatMessage.fromMap(
+                        e as Map<String, dynamic>,
+                      );
+                      convMessages[m.id] = m;
+                    }
+                    emitMerged();
+                  }
                 }
-                emitMerged();
-              }
-            }
-          }, onError: (_) {});
+              }, onError: (_) {});
         } catch (_) {}
 
         // 2. User outbox streams (guaranteed permitted by live rules)
