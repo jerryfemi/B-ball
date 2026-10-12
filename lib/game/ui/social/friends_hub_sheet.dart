@@ -9,6 +9,7 @@ import '../../../services/friends_service.dart';
 import 'add_friend_dialog.dart';
 import 'edit_gamer_tag_dialog.dart';
 import 'friend_conversation_sheet.dart';
+import '../common/app_avatar.dart';
 
 /// Dedicated Friends Management sheet for launching 1v1 challenges and banter chat.
 class FriendsHubSheet extends StatefulWidget {
@@ -46,26 +47,6 @@ class FriendsHubSheet extends StatefulWidget {
 }
 
 class _FriendsHubSheetState extends State<FriendsHubSheet> {
-  Widget _buildAvatarView(String avatar, {double size = 20}) {
-    if (avatar.startsWith('assets/') ||
-        avatar.endsWith('.png') ||
-        avatar.endsWith('.jpg') ||
-        avatar.endsWith('.jpeg') ||
-        avatar.endsWith('.webp')) {
-      return ClipOval(
-        child: Image.asset(
-          avatar,
-          width: size,
-          height: size,
-          fit: BoxFit.cover,
-          errorBuilder: (_, _, _) =>
-              Text('🏀', style: TextStyle(fontSize: size * 0.85)),
-        ),
-      );
-    }
-    return Text(avatar, style: TextStyle(fontSize: size));
-  }
-
   void _openAddFriend(Set<String> existingUids) {
     HapticFeedback.lightImpact();
     AddFriendDialog.show(context, existingFriendUids: existingUids);
@@ -425,14 +406,11 @@ class _FriendsHubSheetState extends State<FriendsHubSheet> {
       ),
       child: Row(
         children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: const Color(0xFF38BDF8), width: 1.5),
-            ),
-            child: _buildAvatarView(invite.senderAvatar, size: 36),
+          AppAvatar(
+            avatar: invite.senderAvatar,
+            size: 36,
+            borderColor: const Color(0xFF38BDF8),
+            borderWidth: 1.5,
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -541,14 +519,11 @@ class _FriendsHubSheetState extends State<FriendsHubSheet> {
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
         onTap: () => _openConversation(friend, myUid, match),
-        leading: Container(
-          width: 38,
-          height: 38,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: const Color(0xFF38BDF8), width: 1.5),
-          ),
-          child: _buildAvatarView(friend.avatarEmoji, size: 38),
+        leading: AppAvatar(
+          avatar: friend.avatarEmoji,
+          size: 38,
+          borderColor: const Color(0xFF38BDF8),
+          borderWidth: 1.5,
         ),
         title: Text(
           friend.displayName,
@@ -687,7 +662,7 @@ class _FriendsHubSheetState extends State<FriendsHubSheet> {
                 ),
                 child: Row(
                   children: [
-                    _buildAvatarView(user.avatarEmoji, size: 20),
+                    AppAvatar(avatar: user.avatarEmoji, size: 20),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Column(
