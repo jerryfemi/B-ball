@@ -5,6 +5,8 @@ import '../../../models/cloud_match.dart';
 import '../../../services/firestore_match_service.dart';
 import '../common/app_avatar.dart';
 import '../common/app_modal_sheet.dart';
+import '../common/chat/chat_bubble_list.dart';
+import '../common/chat/chat_input_bar.dart';
 
 /// Modal sheet showing the live game conversation thread, round score breakdown, and banter chat.
 class MatchThreadDialog extends StatefulWidget {
@@ -239,102 +241,23 @@ class _MatchThreadDialogState extends State<MatchThreadDialog> {
 
                 // Chat banter list
                 Expanded(
-                  child: match.chat.isEmpty
-                      ? const Center(
-                          child: Text(
-                            'No banter yet. Send a reaction below! 🎯',
-                            style: TextStyle(
-                              color: Color(0xFF64748B),
-                              fontSize: 13,
-                            ),
-                          ),
-                        )
-                      : ListView.builder(
-                          controller: _scrollController,
-                          itemCount: match.chat.length,
-                          itemBuilder: (ctx, i) {
-                            final msg = match.chat[i];
-                            final isMe = msg.senderUid == widget.myUid;
-                            return _buildChatBubble(msg, isMe);
-                          },
-                        ),
-                ),
-
-                // Quick banter chips
-                SizedBox(
-                  height: 34,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: _quickBanter.length,
-                    separatorBuilder: (context, index) =>
-                        const SizedBox(width: 8),
-                    itemBuilder: (ctx, i) {
-                      final text = _quickBanter[i];
-                      return ActionChip(
-                        label: Text(
-                          text,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Colors.white,
-                          ),
-                        ),
-                        backgroundColor: const Color(0xFF1E2638),
-                        side: const BorderSide(color: Color(0xFF334155)),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        onPressed: () => _sendText(match.id, myPlayer, text),
-                      );
-                    },
+                  child: ChatBubbleList(
+                    messages: match.chat,
+                    myUid: widget.myUid,
+                    controller: _scrollController,
+                    padding: EdgeInsets.zero,
                   ),
                 ),
                 const SizedBox(height: 8),
 
-                // Text Input Field
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _msgController,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                        ),
-                        decoration: InputDecoration(
-                          hintText: 'Type banter message...',
-                          hintStyle: const TextStyle(
-                            color: Color(0xFF64748B),
-                            fontSize: 13,
-                          ),
-                          filled: true,
-                          fillColor: const Color(0xFF1E2638),
-                          isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 10,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: const BorderSide(
-                              color: Color(0xFF334155),
-                            ),
-                          ),
-                        ),
-                        onSubmitted: (val) =>
-                            _sendText(match.id, myPlayer, val),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      icon: const Icon(
-                        Icons.send_rounded,
-                        color: Color(0xFF00FFCC),
-                        size: 20,
-                      ),
-                      onPressed: () =>
-                          _sendText(match.id, myPlayer, _msgController.text),
-                    ),
-                  ],
+                // Quick banter & text input bar
+                ChatInputBar(
+                  controller: _msgController,
+                  quickBanter: _quickBanter,
+                  onSend: (text) => _sendText(match.id, myPlayer, text),
+                  hintText: 'Type banter message...',
+                  accentColor: const Color(0xFF00FFCC),
+                  padding: EdgeInsets.zero,
                 ),
 
                 // Primary Bottom Action Bar (shown when completed or when it is my turn)
@@ -445,36 +368,5 @@ class _MatchThreadDialogState extends State<MatchThreadDialog> {
     );
   }
 
-  Widget _buildChatBubble(CloudChatMessage msg, bool isMe) {
-    return Align(
-      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        constraints: const BoxConstraints(maxWidth: 260),
-        decoration: BoxDecoration(
-          color: isMe ? const Color(0xFF2563EB) : const Color(0xFF1E293B),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            AppAvatar(avatar: msg.senderAvatar, size: 14),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                msg.text,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
+
