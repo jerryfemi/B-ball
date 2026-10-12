@@ -3,22 +3,44 @@ import 'package:flutter/material.dart';
 import '../../audio/audio_engine.dart';
 import '../../basketball_game.dart';
 
+Widget _buildFlankAvatarContent(String avatar) {
+  if (avatar.startsWith('assets/') ||
+      avatar.endsWith('.png') ||
+      avatar.endsWith('.jpg') ||
+      avatar.endsWith('.jpeg') ||
+      avatar.endsWith('.webp')) {
+    return ClipOval(
+      child: Image.asset(
+        avatar,
+        width: 30.0,
+        height: 30.0,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) =>
+            const Text('🏀', style: TextStyle(fontSize: 18.0)),
+      ),
+    );
+  }
+  return Text(avatar, style: const TextStyle(fontSize: 18.0));
+}
+
 /// Flanking circular player avatar with vibrant green badge and "You" label.
 class ScoreboardPlayerAvatar extends StatelessWidget {
   final bool isActive;
   final String label;
   final String avatar;
+  final VoidCallback? onTap;
 
   const ScoreboardPlayerAvatar({
     super.key,
     this.isActive = true,
     this.label = 'You',
     this.avatar = '🏀',
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    final content = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
@@ -43,12 +65,7 @@ class ScoreboardPlayerAvatar extends StatelessWidget {
               ),
             ],
           ),
-          child: Center(
-            child: Text(
-              avatar,
-              style: const TextStyle(fontSize: 18.0),
-            ),
-          ),
+          child: Center(child: _buildFlankAvatarContent(avatar)),
         ),
         const SizedBox(height: 2.0),
         Text(
@@ -57,13 +74,16 @@ class ScoreboardPlayerAvatar extends StatelessWidget {
             color: isActive ? const Color(0xFF86EFAC) : const Color(0xFF4ADE80),
             fontSize: 10.0,
             fontWeight: FontWeight.w900,
-            shadows: const [
-              Shadow(color: Colors.black, blurRadius: 4.0),
-            ],
+            shadows: const [Shadow(color: Colors.black, blurRadius: 4.0)],
           ),
         ),
       ],
     );
+
+    if (onTap != null) {
+      return GestureDetector(onTap: onTap, child: content);
+    }
+    return content;
   }
 }
 
@@ -107,12 +127,7 @@ class ScoreboardOpponentAvatar extends StatelessWidget {
               ),
             ],
           ),
-          child: Center(
-            child: Text(
-              avatar,
-              style: const TextStyle(fontSize: 18.0),
-            ),
-          ),
+          child: Center(child: _buildFlankAvatarContent(avatar)),
         ),
         const SizedBox(height: 2.0),
         Text(
@@ -121,9 +136,7 @@ class ScoreboardOpponentAvatar extends StatelessWidget {
             color: isActive ? const Color(0xFF7DD3FC) : const Color(0xFF38BDF8),
             fontSize: 10.0,
             fontWeight: FontWeight.w900,
-            shadows: const [
-              Shadow(color: Colors.black, blurRadius: 4.0),
-            ],
+            shadows: const [Shadow(color: Colors.black, blurRadius: 4.0)],
           ),
         ),
       ],
@@ -150,10 +163,7 @@ class ScoreboardHelpBadge extends StatelessWidget {
           decoration: BoxDecoration(
             color: const Color(0xDDFFFFFF),
             shape: BoxShape.circle,
-            border: Border.all(
-              color: const Color(0x66FFFFFF),
-              width: 1.0,
-            ),
+            border: Border.all(color: const Color(0x66FFFFFF), width: 1.0),
             boxShadow: const [
               BoxShadow(
                 color: Color(0x33000000),
@@ -216,9 +226,7 @@ class ScoreboardMuteBadge extends StatelessWidget {
               ),
               child: Center(
                 child: Icon(
-                  isMuted
-                      ? Icons.volume_off_rounded
-                      : Icons.volume_up_rounded,
+                  isMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
                   size: 18.0,
                   color: isMuted
                       ? const Color(0xFFFF6B6B)

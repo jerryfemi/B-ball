@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../services/auth_service.dart';
 import '../basketball_game.dart';
 import '../match/match_session.dart';
 import 'scoreboard/hot_streak_pill.dart';
@@ -57,37 +58,39 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
     );
     _scoreScaleAnimation = TweenSequence<double>([
       TweenSequenceItem(
-        tween: Tween<double>(begin: 1.0, end: 1.25)
-            .chain(CurveTween(curve: Curves.easeOutBack)),
+        tween: Tween<double>(
+          begin: 1.0,
+          end: 1.25,
+        ).chain(CurveTween(curve: Curves.easeOutBack)),
         weight: 40,
       ),
       TweenSequenceItem(
-        tween: Tween<double>(begin: 1.25, end: 1.0)
-            .chain(CurveTween(curve: Curves.easeInOut)),
+        tween: Tween<double>(
+          begin: 1.25,
+          end: 1.0,
+        ).chain(CurveTween(curve: Curves.easeInOut)),
         weight: 60,
       ),
     ]).animate(_popController);
 
     // 2. Urgent clock pulse when time <= 10s
-    _urgentClockController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 500),
-    )..addStatusListener((status) {
-        if (status == AnimationStatus.completed) {
-          _urgentClockController.reverse();
-        } else if (status == AnimationStatus.dismissed) {
-          if (widget.game.timeRemainingNotifier.value <= 10 &&
-              widget.game.timeRemainingNotifier.value > 0) {
-            _urgentClockController.forward();
+    _urgentClockController =
+        AnimationController(
+          vsync: this,
+          duration: const Duration(milliseconds: 500),
+        )..addStatusListener((status) {
+          if (status == AnimationStatus.completed) {
+            _urgentClockController.reverse();
+          } else if (status == AnimationStatus.dismissed) {
+            if (widget.game.timeRemainingNotifier.value <= 10 &&
+                widget.game.timeRemainingNotifier.value > 0) {
+              _urgentClockController.forward();
+            }
           }
-        }
-      });
+        });
 
     _urgentGlowAnimation = Tween<double>(begin: 1.0, end: 1.15).animate(
-      CurvedAnimation(
-        parent: _urgentClockController,
-        curve: Curves.easeInOut,
-      ),
+      CurvedAnimation(parent: _urgentClockController, curve: Curves.easeInOut),
     );
 
     widget.game.scoreNotifier.addListener(_onScoreChanged);
@@ -139,15 +142,24 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<MatchSession?>(
-      valueListenable: widget.game.matchSessionNotifier,
-      builder: (context, matchSession, _) {
-        return _buildLayout(context, matchSession);
+    return ValueListenableBuilder<UserProfile?>(
+      valueListenable: AuthService.instance.currentUserNotifier,
+      builder: (context, userProfile, _) {
+        return ValueListenableBuilder<MatchSession?>(
+          valueListenable: widget.game.matchSessionNotifier,
+          builder: (context, matchSession, _) {
+            return _buildLayout(context, matchSession, userProfile);
+          },
+        );
       },
     );
   }
 
-  Widget _buildLayout(BuildContext context, MatchSession? matchSession) {
+  Widget _buildLayout(
+    BuildContext context,
+    MatchSession? matchSession,
+    UserProfile? userProfile,
+  ) {
     final is1v1 = matchSession != null;
     final isWatchingReplay =
         is1v1 && matchSession.phase == MatchTurnPhase.watchingOpponentReplay;
@@ -156,12 +168,24 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
     // When shooting live, highlight the active shooter.
     final int shootingPlayerIndex = is1v1
         ? (isWatchingReplay
-            ? (matchSession.activePlayerIndex == 0 ? 1 : 0)
-            : matchSession.activePlayerIndex)
+              ? (matchSession.activePlayerIndex == 0 ? 1 : 0)
+              : matchSession.activePlayerIndex)
         : 0;
 
     final p1Active = shootingPlayerIndex == 0;
     final p2Active = shootingPlayerIndex == 1;
+
+    final String myAvatar = userProfile?.avatarEmoji ?? '🏀';
+    final String myLabel = userProfile?.displayName ?? 'You';
+
+    final String p1Avatar = is1v1
+        ? (matchSession.player1.id == 'you' ||
+                  matchSession.player1.id == userProfile?.uid
+              ? myAvatar
+              : matchSession.player1.avatar)
+        : myAvatar;
+
+    final String p1Label = is1v1 ? matchSession.player1.name : myLabel;
 
     return SafeArea(
       bottom: false,
@@ -178,8 +202,9 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
                 children: [
                   ScoreboardPlayerAvatar(
                     isActive: p1Active,
-                    label: is1v1 ? matchSession.player1.name : 'You',
-                    avatar: is1v1 ? matchSession.player1.avatar : '🏀',
+                    label: p1Label,
+                    avatar: p1Avatar,
+                    onTap: widget.onInboxTapped,
                   ),
                   const SizedBox(width: 5.0),
                   ScoreboardPauseBadge(game: widget.game),
@@ -214,16 +239,16 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
     );
   }
 
-  Widget _buildTrapezoidalConsole(MatchSession? matchSession, int shootingPlayerIndex) {
+  Widget _buildTrapezoidalConsole(
+    MatchSession? matchSession,
+    int shootingPlayerIndex,
+  ) {
     final is1v1 = matchSession != null;
 
     return CustomPaint(
       painter: const TrapezoidScoreboardPainter(),
       child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: 16.0,
-          vertical: 6.0,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
         constraints: const BoxConstraints(
           minWidth: 260.0,
           maxWidth: 330.0,
