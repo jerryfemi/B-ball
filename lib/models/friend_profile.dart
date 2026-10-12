@@ -1,6 +1,9 @@
+import 'player_descriptor.dart';
+
 /// Lightweight profile representation of an in-game friend.
-class FriendProfile {
+class FriendProfile implements PlayerDescriptor {
   final String uid;
+  @override
   final String displayName;
   final String avatarEmoji;
   final int addedAt;
@@ -8,6 +11,12 @@ class FriendProfile {
   final String? activeMatchId;
   final int h2hWins;
   final int h2hLosses;
+
+  @override
+  String get id => uid;
+
+  @override
+  String get avatar => avatarEmoji;
 
   const FriendProfile({
     required this.uid,
@@ -57,7 +66,7 @@ class FriendProfile {
     uid: map['uid'] as String? ?? '',
     displayName: map['displayName'] as String? ?? 'Friend',
     avatarEmoji:
-        map['avatarEmoji'] as String? ?? 'assets/avatars/dunk_heads (1).webp',
+        map['avatarEmoji'] as String? ?? PlayerDescriptor.defaultAvatar,
     addedAt: (map['addedAt'] as num?)?.toInt() ?? 0,
     lastActiveTimestamp: (map['lastActiveTimestamp'] as num?)?.toInt() ?? 0,
     activeMatchId: map['activeMatchId'] as String?,
@@ -96,7 +105,7 @@ class FriendInvite {
         senderName: (map['senderName'] as String?) ?? 'Player',
         senderAvatar:
             (map['senderAvatar'] as String?) ??
-            'assets/avatars/dunk_heads (1).webp',
+            PlayerDescriptor.defaultAvatar,
         status: (map['status'] as String?) ?? 'pending',
         timestamp: (map['timestamp'] as num?)?.toInt() ?? 0,
       );
