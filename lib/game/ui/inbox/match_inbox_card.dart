@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import '../../../models/cloud_match.dart';
 
 /// Punchy Arcade Head-to-Head Versus Match Card.
@@ -21,6 +22,26 @@ class MatchInboxCard extends StatelessWidget {
     required this.onPlayTurn,
     this.onViewPodium,
   });
+
+  Widget _buildAvatarView(String avatar, {double size = 22}) {
+    if (avatar.startsWith('assets/') ||
+        avatar.endsWith('.png') ||
+        avatar.endsWith('.jpg') ||
+        avatar.endsWith('.jpeg') ||
+        avatar.endsWith('.webp')) {
+      return ClipOval(
+        child: Image.asset(
+          avatar,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) =>
+              Text('🏀', style: TextStyle(fontSize: size * 0.85)),
+        ),
+      );
+    }
+    return Text(avatar, style: TextStyle(fontSize: size));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -78,7 +99,10 @@ class MatchInboxCard extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFF1E2638),
                         borderRadius: BorderRadius.circular(8),
@@ -109,7 +133,10 @@ class MatchInboxCard extends StatelessWidget {
                     Expanded(
                       child: Row(
                         children: [
-                          Text(myPlayer?.avatarEmoji ?? '🏀', style: const TextStyle(fontSize: 22)),
+                          _buildAvatarView(
+                            myPlayer?.avatarEmoji ?? '🏀',
+                            size: 22,
+                          ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Column(
@@ -170,7 +197,9 @@ class MatchInboxCard extends StatelessWidget {
                           Text(
                             isWaitingOpponent ? '--' : '$opponentScore',
                             style: TextStyle(
-                              color: isWaitingOpponent ? const Color(0xFF64748B) : Colors.white,
+                              color: isWaitingOpponent
+                                  ? const Color(0xFF64748B)
+                                  : Colors.white,
                               fontSize: 20,
                               fontWeight: FontWeight.w900,
                             ),
@@ -203,7 +232,7 @@ class MatchInboxCard extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: 8),
-                          Text(opponentAvatar, style: const TextStyle(fontSize: 22)),
+                          _buildAvatarView(opponentAvatar, size: 22),
                         ],
                       ),
                     ),
@@ -214,14 +243,21 @@ class MatchInboxCard extends StatelessWidget {
                 if (latestChat != null) ...[
                   const SizedBox(height: 10),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFF0C101A),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.chat_bubble_outline, size: 11, color: Color(0xFF64748B)),
+                        const Icon(
+                          Icons.chat_bubble_outline,
+                          size: 11,
+                          color: Color(0xFF64748B),
+                        ),
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
@@ -254,7 +290,9 @@ class MatchInboxCard extends StatelessWidget {
                         backgroundColor: const Color(0xFF00FFCC),
                         foregroundColor: const Color(0xFF0F172A),
                         padding: EdgeInsets.zero,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                         elevation: 4,
                       ),
                       child: const Row(
@@ -264,7 +302,11 @@ class MatchInboxCard extends StatelessWidget {
                           SizedBox(width: 6),
                           Text(
                             'SHOOT TURN ➔',
-                            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12, letterSpacing: 1.0),
+                            style: TextStyle(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 12,
+                              letterSpacing: 1.0,
+                            ),
                           ),
                         ],
                       ),
@@ -277,11 +319,19 @@ class MatchInboxCard extends StatelessWidget {
                     child: OutlinedButton.icon(
                       onPressed: onViewPodium,
                       icon: const Icon(Icons.emoji_events_outlined, size: 14),
-                      label: const Text('VIEW PODIUM', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+                      label: const Text(
+                        'VIEW PODIUM',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.amber,
                         side: const BorderSide(color: Color(0xFF475569)),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                       ),
                     ),
                   ),
@@ -294,7 +344,11 @@ class MatchInboxCard extends StatelessWidget {
     );
   }
 
-  Widget _buildStatusPill(bool isMyTurn, bool isCompleted, bool isWaitingOpponent) {
+  Widget _buildStatusPill(
+    bool isMyTurn,
+    bool isCompleted,
+    bool isWaitingOpponent,
+  ) {
     if (isCompleted) {
       final won = match.winnerUid == myUid;
       final tie = match.outcome == MatchOutcome.tie;
@@ -304,18 +358,22 @@ class MatchInboxCard extends StatelessWidget {
           color: tie
               ? Colors.amber.withValues(alpha: 0.15)
               : won
-                  ? const Color(0xFF22C55E).withValues(alpha: 0.15)
-                  : const Color(0xFFEF4444).withValues(alpha: 0.15),
+              ? const Color(0xFF22C55E).withValues(alpha: 0.15)
+              : const Color(0xFFEF4444).withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Text(
-          tie ? 'TIED 🤝' : won ? 'WON 👑' : 'LOST 💥',
+          tie
+              ? 'TIED 🤝'
+              : won
+              ? 'WON 👑'
+              : 'LOST 💥',
           style: TextStyle(
             color: tie
                 ? Colors.amber
                 : won
-                    ? const Color(0xFF22C55E)
-                    : const Color(0xFFEF4444),
+                ? const Color(0xFF22C55E)
+                : const Color(0xFFEF4444),
             fontSize: 10,
             fontWeight: FontWeight.w900,
           ),
@@ -332,7 +390,11 @@ class MatchInboxCard extends StatelessWidget {
         ),
         child: const Text(
           'WAITING FOR OPPONENT',
-          style: TextStyle(color: Colors.amber, fontSize: 9.5, fontWeight: FontWeight.w800),
+          style: TextStyle(
+            color: Colors.amber,
+            fontSize: 9.5,
+            fontWeight: FontWeight.w800,
+          ),
         ),
       );
     }
@@ -347,7 +409,11 @@ class MatchInboxCard extends StatelessWidget {
         ),
         child: const Text(
           'YOUR TURN ⚡',
-          style: TextStyle(color: Color(0xFF00FFCC), fontSize: 9.5, fontWeight: FontWeight.w900),
+          style: TextStyle(
+            color: Color(0xFF00FFCC),
+            fontSize: 9.5,
+            fontWeight: FontWeight.w900,
+          ),
         ),
       );
     }
@@ -360,7 +426,11 @@ class MatchInboxCard extends StatelessWidget {
       ),
       child: const Text(
         'THEIR TURN ⏳',
-        style: TextStyle(color: Color(0xFF94A3B8), fontSize: 9.5, fontWeight: FontWeight.w700),
+        style: TextStyle(
+          color: Color(0xFF94A3B8),
+          fontSize: 9.5,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
