@@ -1,3 +1,4 @@
+import '../../models/friend_profile.dart';
 import '../../models/player_descriptor.dart';
 
 /// Immutable configuration parameters for a 1v1 turn-based match.
@@ -20,6 +21,12 @@ class MatchConfig {
   /// Emoji avatar for Player 2 (defaults to '🎯').
   final String player2Avatar;
 
+  /// Optional specific opponent UID when challenging a friend directly.
+  final String? player2Uid;
+
+  /// Optional FriendProfile reference when challenging a friend directly.
+  final FriendProfile? opponentFriend;
+
   const MatchConfig({
     this.totalRounds = 2,
     this.roundDurationSeconds = 60,
@@ -27,6 +34,8 @@ class MatchConfig {
     this.player2Name = 'Them',
     this.player1Avatar = PlayerDescriptor.defaultAvatar,
     this.player2Avatar = 'assets/avatars/dunk_heads (2).webp',
+    this.player2Uid,
+    this.opponentFriend,
   });
 
   MatchConfig copyWith({
@@ -36,6 +45,8 @@ class MatchConfig {
     String? player2Name,
     String? player1Avatar,
     String? player2Avatar,
+    String? player2Uid,
+    FriendProfile? opponentFriend,
   }) {
     return MatchConfig(
       totalRounds: totalRounds ?? this.totalRounds,
@@ -44,6 +55,8 @@ class MatchConfig {
       player2Name: player2Name ?? this.player2Name,
       player1Avatar: player1Avatar ?? this.player1Avatar,
       player2Avatar: player2Avatar ?? this.player2Avatar,
+      player2Uid: player2Uid ?? this.player2Uid,
+      opponentFriend: opponentFriend ?? this.opponentFriend,
     );
   }
 }
