@@ -148,3 +148,12 @@ final directChatProvider = StreamProvider.autoDispose.family<
     friendUid: arg.friendUid,
   );
 });
+
+/// Streams real-time match chat from the lightweight messages subcollection.
+/// Decoupled from match document telemetry to prevent re-downloading shot data.
+final matchChatProvider = StreamProvider.autoDispose.family<
+    List<CloudChatMessage>, String>((ref, matchId) {
+  if (matchId.isEmpty) return Stream.value(const <CloudChatMessage>[]);
+  final matchService = ref.watch(matchServiceProvider);
+  return matchService.streamMatchChat(matchId);
+});
