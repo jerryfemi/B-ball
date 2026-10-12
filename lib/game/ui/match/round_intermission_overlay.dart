@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../basketball_game.dart';
 import '../../match/match_session.dart';
+import '../common/app_avatar.dart';
 import '../inbox/share_turn_sheet.dart';
 
 /// Clean, non-intrusive Round Over recap modal.
@@ -297,25 +298,6 @@ class RoundIntermissionOverlay extends StatelessWidget {
     );
   }
 
-  Widget _buildAvatarWidget(String avatar, {double size = 16.0}) {
-    if (avatar.startsWith('assets/') ||
-        avatar.endsWith('.png') ||
-        avatar.endsWith('.jpg') ||
-        avatar.endsWith('.jpeg') ||
-        avatar.endsWith('.webp')) {
-      return ClipOval(
-        child: Image.asset(
-          avatar,
-          width: size,
-          height: size,
-          fit: BoxFit.cover,
-          errorBuilder: (_, _, _) =>
-              Text('🏀', style: TextStyle(fontSize: size * 0.85)),
-        ),
-      );
-    }
-    return Text(avatar, style: TextStyle(fontSize: size));
-  }
 
   Widget _buildPlayerTally({
     required String name,
@@ -330,7 +312,7 @@ class RoundIntermissionOverlay extends StatelessWidget {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _buildAvatarWidget(avatar, size: 16.0),
+            AppAvatar(avatar: avatar, size: 16.0),
             const SizedBox(width: 4.0),
             Text(
               name,
