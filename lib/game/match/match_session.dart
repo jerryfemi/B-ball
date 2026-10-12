@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/cloud_match.dart';
+import '../../models/player_descriptor.dart';
 import '../telemetry/shot_telemetry.dart';
 import 'match_config.dart';
 
@@ -25,18 +26,23 @@ enum MatchTurnPhase {
 }
 
 /// State and recorded history for an individual match participant.
-class PlayerMatchState {
+class PlayerMatchState implements PlayerDescriptor {
+  @override
   final String id;
   final String name;
+  @override
   final String avatar;
   final Color accentColor;
   final List<int> roundScores;
   final List<RoundTelemetry> roundTelemetries;
 
+  @override
+  String get displayName => name;
+
   PlayerMatchState({
     required this.id,
     required this.name,
-    this.avatar = 'assets/avatars/dunk_heads (1).webp',
+    this.avatar = PlayerDescriptor.defaultAvatar,
     required this.accentColor,
     List<int>? roundScores,
     List<RoundTelemetry>? roundTelemetries,
@@ -124,7 +130,7 @@ class MatchSession {
                  ? config!.player1Name
                  : 'You',
              avatar:
-                 config?.player1Avatar ?? 'assets/avatars/dunk_heads (1).webp',
+                 config?.player1Avatar ?? PlayerDescriptor.defaultAvatar,
              accentColor: const Color(0xFF22C55E),
            ),
        player2 =
@@ -148,7 +154,7 @@ class MatchSession {
               const CloudPlayer(
                 uid: '',
                 displayName: 'You',
-                avatarEmoji: 'assets/avatars/dunk_heads (1).webp',
+                avatarEmoji: PlayerDescriptor.defaultAvatar,
                 roundScores: [],
               ));
     final oppPlayer = isP1
