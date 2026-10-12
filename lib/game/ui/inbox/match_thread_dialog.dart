@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 
 import '../../../models/cloud_match.dart';
 import '../../../models/player_descriptor.dart';
@@ -10,7 +11,7 @@ import '../common/chat/chat_bubble_list.dart';
 import '../common/chat/chat_input_bar.dart';
 
 /// Modal sheet showing the live game conversation thread, round score breakdown, and banter chat.
-class MatchThreadDialog extends StatefulWidget {
+class MatchThreadDialog extends HookWidget {
   final CloudMatch initialMatch;
   final String myUid;
   final VoidCallback onPlayTurn;
@@ -23,6 +24,15 @@ class MatchThreadDialog extends StatefulWidget {
     required this.onPlayTurn,
     this.onViewPodium,
   });
+
+  static const List<String> _quickBanter = [
+    '🧱 Brick!',
+    '🎯 Swish!',
+    '🔥 On fire!',
+    '🥶 Ice cold!',
+    '🍀 Lucky bounce!',
+    '👑 Rematch?',
+  ];
 
   static Future<void> show(
     BuildContext context, {
@@ -43,84 +53,63 @@ class MatchThreadDialog extends StatefulWidget {
   }
 
   @override
-  State<MatchThreadDialog> createState() => _MatchThreadDialogState();
-}
-
-class _MatchThreadDialogState extends State<MatchThreadDialog> {
-  final TextEditingController _msgController = TextEditingController();
-  final ScrollController _scrollController = ScrollController();
-
-  static const List<String> _quickBanter = [
-    '🧱 Brick!',
-    '🎯 Swish!',
-    '🔥 On fire!',
-    '🥶 Ice cold!',
-    '🍀 Lucky bounce!',
-    '👑 Rematch?',
-  ];
-
-  @override
-  void dispose() {
-    _msgController.dispose();
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _sendText(
-    String matchId,
-    CloudPlayer myPlayer,
-    String text,
-  ) async {
-    final clean = text.trim();
-    if (clean.isEmpty) return;
-
-    final now = DateTime.now().millisecondsSinceEpoch;
-    final msg = CloudChatMessage(
-      id: '${now}_${widget.myUid}',
-      senderUid: widget.myUid,
-      senderName: myPlayer.displayName,
-      senderAvatar: myPlayer.avatarEmoji,
-      text: clean,
-      timestamp: now,
-    );
-
-    _msgController.clear();
-    HapticFeedback.lightImpact();
-    await FirestoreMatchService.instance.sendChatMessage(
-      matchId: matchId,
-      message: msg,
-    );
-
-    Future.delayed(const Duration(milliseconds: 150), () {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-        );
-      }
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
+    final msgController = useTextEditingController();
+    final scrollController = useScrollController();
+
+    Future<void> sendText(
+      String matchId,
+      CloudPlayer myPlayer,
+      String text,
+    ) async {
+      final clean = text.trim();
+      if (clean.isEmpty) return;
+
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final msg = CloudChatMessage(
+        id: '${now}_$myUid',
+        senderUid: myUid,
+        senderName: myPlayer.displayName,
+        senderAvatar: myPlayer.avatarEmoji,
+        text: clean,
+        timestamp: now,
+      );
+
+      msgController.clear();
+      HapticFeedback.lightImpact();
+      await FirestoreMatchService.instance.sendChatMessage(
+        matchId: matchId,
+        message: msg,
+      );
+
+      Future.delayed(const Duration(milliseconds: 150), () {
+        if (scrollController.hasClients) {
+          scrollController.animateTo(
+            scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+    }
+
     return StreamBuilder<CloudMatch?>(
       stream: FirestoreMatchService.instance.streamMatch(
-        widget.initialMatch.id,
+        initialMatch.id,
       ),
-      initialData: widget.initialMatch,
+      initialData: initialMatch,
       builder: (context, snapshot) {
-        final match = snapshot.data ?? widget.initialMatch;
+        final match = snapshot.data ?? initialMatch;
         final myPlayer =
-            match.myPlayer(widget.myUid) ??
+            match.myPlayer(myUid) ??
             CloudPlayer(
-              uid: widget.myUid,
+              uid: myUid,
               displayName: 'You',
               avatarEmoji: PlayerDescriptor.defaultAvatar,
               roundScores: const [],
             );
-        final opponent = match.opponentPlayer(widget.myUid);
-        final isMyTurn = match.isMyTurn(widget.myUid);
+        final opponent = match.opponentPlayer(myUid);
+        final isMyTurn = match.isMyTurn(myUid);
         final isCompleted = match.status == MatchStatus.completed;
 
         return AppModalSheet(
@@ -244,8 +233,8 @@ class _MatchThreadDialogState extends State<MatchThreadDialog> {
                 Expanded(
                   child: ChatBubbleList(
                     messages: match.chat,
-                    myUid: widget.myUid,
-                    controller: _scrollController,
+                    myUid: myUid,
+                    controller: scrollController,
                     padding: EdgeInsets.zero,
                   ),
                 ),
@@ -253,9 +242,9 @@ class _MatchThreadDialogState extends State<MatchThreadDialog> {
 
                 // Quick banter & text input bar
                 ChatInputBar(
-                  controller: _msgController,
+                  controller: msgController,
                   quickBanter: _quickBanter,
-                  onSend: (text) => _sendText(match.id, myPlayer, text),
+                  onSend: (text) => sendText(match.id, myPlayer, text),
                   hintText: 'Type banter message...',
                   accentColor: const Color(0xFF00FFCC),
                   padding: EdgeInsets.zero,
@@ -267,7 +256,7 @@ class _MatchThreadDialogState extends State<MatchThreadDialog> {
                   ElevatedButton.icon(
                     onPressed: () {
                       Navigator.of(context).pop();
-                      widget.onViewPodium?.call();
+                      onViewPodium?.call();
                     },
                     icon: const Icon(Icons.emoji_events, size: 18),
                     label: const Text('VIEW WINNER PODIUM 🏆'),
@@ -285,7 +274,7 @@ class _MatchThreadDialogState extends State<MatchThreadDialog> {
                   ElevatedButton.icon(
                     onPressed: () {
                       Navigator.of(context).pop();
-                      widget.onPlayTurn();
+                      onPlayTurn();
                     },
                     icon: const Icon(Icons.sports_basketball, size: 18),
                     label: Text('PLAY ROUND ${match.currentRound} NOW'),
@@ -368,6 +357,5 @@ class _MatchThreadDialogState extends State<MatchThreadDialog> {
       ],
     );
   }
-
 }
 
