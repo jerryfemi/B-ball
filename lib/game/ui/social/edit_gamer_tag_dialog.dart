@@ -2,15 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../services/auth_service.dart';
+import '../common/app_modal_dialog.dart';
 
 /// Modal dialog allowing the player to customize or randomize their unique Gamer Tag.
 class EditGamerTagDialog extends StatefulWidget {
   const EditGamerTagDialog({super.key});
 
   static Future<void> show(BuildContext context) {
-    return showDialog<void>(
+    return AppModalDialog.show<void>(
       context: context,
-      barrierColor: Colors.black.withValues(alpha: 0.75),
       builder: (ctx) => const EditGamerTagDialog(),
     );
   }
@@ -81,73 +81,19 @@ class _EditGamerTagDialogState extends State<EditGamerTagDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Material(
-        color: Colors.transparent,
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 360),
-          margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-          padding: const EdgeInsets.all(22),
-          decoration: BoxDecoration(
-            color: const Color(0xFF131826),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: const Color(0xFF2E3954), width: 1.5),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.6),
-                blurRadius: 28,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Header
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1E2638),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: const Color(0xFF334155)),
-                    ),
-                    child: const Icon(
-                      Icons.badge_rounded,
-                      color: Color(0xFF38BDF8),
-                      size: 22,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'EDIT GAMER TAG',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 15,
-                            letterSpacing: 0.8,
-                          ),
-                        ),
-                        SizedBox(height: 2),
-                        Text(
-                          'Your public 1v1 player tag & name',
-                          style: TextStyle(
-                            color: Color(0xFF94A3B8),
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 18),
+    return AppModalDialog(
+      maxWidth: 360,
+      iconWidget: const Icon(
+        Icons.badge_rounded,
+        color: Color(0xFF38BDF8),
+        size: 22,
+      ),
+      title: 'EDIT GAMER TAG',
+      subtitle: 'Your public 1v1 player tag & name',
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
 
               // Text Field with Randomize Suffix
               TextField(
@@ -256,8 +202,6 @@ class _EditGamerTagDialogState extends State<EditGamerTagDialog> {
               ),
             ],
           ),
-        ),
-      ),
-    );
+        );
   }
 }
