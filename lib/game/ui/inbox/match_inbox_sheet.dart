@@ -8,6 +8,7 @@ import 'join_match_dialog.dart';
 import 'match_inbox_card.dart';
 import 'match_thread_dialog.dart';
 import '../common/app_avatar.dart';
+import '../common/app_modal_sheet.dart';
 import '../social/edit_gamer_tag_dialog.dart';
 import '../social/friends_hub_sheet.dart';
 
@@ -31,10 +32,8 @@ class MatchInboxSheet extends StatefulWidget {
     required VoidCallback onCreateMatch,
     ValueChanged<CloudMatch>? onViewPodium,
   }) {
-    return showModalBottomSheet(
+    return AppModalSheet.show<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       builder: (ctx) => MatchInboxSheet(
         onPlayMatch: onPlayMatch,
         onCreateMatch: onCreateMatch,
@@ -211,112 +210,92 @@ class _MatchInboxSheetState extends State<MatchInboxSheet> {
       builder: (context, myProfile, _) {
         final myUid = myProfile?.uid ?? '';
 
-        return Container(
-          height: MediaQuery.of(context).size.height * 0.85,
-          decoration: const BoxDecoration(
-            color: Color(0xFF0F1420),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-            border: Border(
-              top: BorderSide(color: Color(0xFF26324A), width: 1.5),
-            ),
-          ),
-          child: SafeArea(
-            child: Column(
+        return AppModalSheet(
+          heightFactor: 0.85,
+          header: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
               children: [
-                const SizedBox(height: 12),
-                Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.white24,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const SizedBox(height: 14),
-
-                // Top Header: Profile Pill + Close button
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                InkWell(
+                  onTap: myProfile != null
+                      ? () => _showEditProfileDialog(context, myProfile)
+                      : null,
+                  borderRadius: BorderRadius.circular(14),
                   child: Row(
                     children: [
-                      InkWell(
-                        onTap: myProfile != null
-                            ? () => _showEditProfileDialog(context, myProfile)
-                            : null,
-                        borderRadius: BorderRadius.circular(14),
-                        child: Row(
-                          children: [
-                            AppAvatar(
-                              avatar: myProfile?.avatarEmoji ??
-                                  AppAvatar.defaultAvatar,
-                              size: 38,
-                              borderColor: const Color(0xFF38BDF8),
-                              borderWidth: 1.8,
-                              showGlow: true,
-                              glowColor: const Color(0xFF38BDF8),
-                            ),
-                            const SizedBox(width: 12),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'MATCH INBOX',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: 0.8,
-                                  ),
-                                ),
-                                InkWell(
-                                  borderRadius: BorderRadius.circular(6),
-                                  onTap: () {
-                                    HapticFeedback.lightImpact();
-                                    EditGamerTagDialog.show(context);
-                                  },
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 2,
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Text(
-                                          myProfile?.displayName ?? 'Baller',
-                                          style: const TextStyle(
-                                            color: Color(0xFF94A3B8),
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 4),
-                                        const Icon(
-                                          Icons.edit_rounded,
-                                          size: 12,
-                                          color: Color(0xFF38BDF8),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
+                      AppAvatar(
+                        avatar: myProfile?.avatarEmoji ??
+                            AppAvatar.defaultAvatar,
+                        size: 38,
+                        borderColor: const Color(0xFF38BDF8),
+                        borderWidth: 1.8,
+                        showGlow: true,
+                        glowColor: const Color(0xFF38BDF8),
                       ),
-                      const Spacer(),
-                      IconButton(
-                        icon: const Icon(
-                          Icons.close_rounded,
-                          color: Colors.white54,
-                          size: 22,
-                        ),
-                        onPressed: () => Navigator.of(context).pop(),
+                      const SizedBox(width: 12),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'MATCH INBOX',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                          InkWell(
+                            borderRadius: BorderRadius.circular(6),
+                            onTap: () {
+                              HapticFeedback.lightImpact();
+                              EditGamerTagDialog.show(context);
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 2,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    myProfile?.displayName ?? 'Baller',
+                                    style: const TextStyle(
+                                      color: Color(0xFF94A3B8),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  const Icon(
+                                    Icons.edit_rounded,
+                                    size: 12,
+                                    color: Color(0xFF38BDF8),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 14),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(
+                    Icons.close_rounded,
+                    color: Colors.white54,
+                    size: 22,
+                  ),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ],
+            ),
+          ),
+          child: Column(
+            children: [
+              const SizedBox(height: 14),
 
                 // Quick Actions: "+ CREATE MATCH", "JOIN MATCH", and "FRIENDS"
                 Padding(
@@ -531,7 +510,6 @@ class _MatchInboxSheetState extends State<MatchInboxSheet> {
                 ),
               ],
             ),
-          ),
         );
       },
     );
