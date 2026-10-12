@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../audio/audio_engine.dart';
 import '../../basketball_game.dart';
 
-Widget _buildFlankAvatarContent(String avatar) {
+Widget _buildFlankAvatarContent(String avatar, {double size = 34.0}) {
   if (avatar.startsWith('assets/') ||
       avatar.endsWith('.png') ||
       avatar.endsWith('.jpg') ||
@@ -12,18 +12,18 @@ Widget _buildFlankAvatarContent(String avatar) {
     return ClipOval(
       child: Image.asset(
         avatar,
-        width: 30.0,
-        height: 30.0,
+        width: size,
+        height: size,
         fit: BoxFit.cover,
         errorBuilder: (_, _, _) =>
-            const Text('🏀', style: TextStyle(fontSize: 18.0)),
+            Text('🏀', style: TextStyle(fontSize: size * 0.5)),
       ),
     );
   }
-  return Text(avatar, style: const TextStyle(fontSize: 18.0));
+  return Text(avatar, style: TextStyle(fontSize: size * 0.5));
 }
 
-/// Flanking circular player avatar with vibrant green badge and "You" label.
+/// Flanking circular player avatar with illuminated badge and "You" label.
 class ScoreboardPlayerAvatar extends StatelessWidget {
   final bool isActive;
   final String label;
@@ -34,7 +34,7 @@ class ScoreboardPlayerAvatar extends StatelessWidget {
     super.key,
     this.isActive = true,
     this.label = 'You',
-    this.avatar = '🏀',
+    this.avatar = 'assets/avatars/dunk_heads (1).webp',
     this.onTap,
   });
 
@@ -47,7 +47,7 @@ class ScoreboardPlayerAvatar extends StatelessWidget {
           width: 36.0,
           height: 36.0,
           decoration: BoxDecoration(
-            color: const Color(0xFF22C55E),
+            color: Colors.transparent,
             shape: BoxShape.circle,
             border: Border.all(
               color: isActive
@@ -65,7 +65,7 @@ class ScoreboardPlayerAvatar extends StatelessWidget {
               ),
             ],
           ),
-          child: Center(child: _buildFlankAvatarContent(avatar)),
+          child: Center(child: _buildFlankAvatarContent(avatar, size: 34.0)),
         ),
         const SizedBox(height: 2.0),
         Text(
@@ -87,7 +87,7 @@ class ScoreboardPlayerAvatar extends StatelessWidget {
   }
 }
 
-/// Flanking circular opponent avatar with vibrant cyan badge and "Them" label.
+/// Flanking circular opponent avatar with illuminated badge and "Them" label.
 class ScoreboardOpponentAvatar extends StatelessWidget {
   final bool isActive;
   final String label;
@@ -97,7 +97,7 @@ class ScoreboardOpponentAvatar extends StatelessWidget {
     super.key,
     this.isActive = false,
     this.label = 'Them',
-    this.avatar = '🎯',
+    this.avatar = 'assets/avatars/dunk_heads (2).webp',
   });
 
   @override
@@ -109,7 +109,7 @@ class ScoreboardOpponentAvatar extends StatelessWidget {
           width: 36.0,
           height: 36.0,
           decoration: BoxDecoration(
-            color: const Color(0xFF0284C7),
+            color: Colors.transparent,
             shape: BoxShape.circle,
             border: Border.all(
               color: isActive
@@ -127,7 +127,7 @@ class ScoreboardOpponentAvatar extends StatelessWidget {
               ),
             ],
           ),
-          child: Center(child: _buildFlankAvatarContent(avatar)),
+          child: Center(child: _buildFlankAvatarContent(avatar, size: 34.0)),
         ),
         const SizedBox(height: 2.0),
         Text(

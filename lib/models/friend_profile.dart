@@ -56,7 +56,8 @@ class FriendProfile {
   factory FriendProfile.fromMap(Map<String, dynamic> map) => FriendProfile(
     uid: map['uid'] as String? ?? '',
     displayName: map['displayName'] as String? ?? 'Friend',
-    avatarEmoji: map['avatarEmoji'] as String? ?? '🏀',
+    avatarEmoji:
+        map['avatarEmoji'] as String? ?? 'assets/avatars/dunk_heads (1).webp',
     addedAt: (map['addedAt'] as num?)?.toInt() ?? 0,
     lastActiveTimestamp: (map['lastActiveTimestamp'] as num?)?.toInt() ?? 0,
     activeMatchId: map['activeMatchId'] as String?,
@@ -93,7 +94,9 @@ class FriendInvite {
       FriendInvite(
         senderUid: (map['senderUid'] as String?) ?? docId,
         senderName: (map['senderName'] as String?) ?? 'Player',
-        senderAvatar: (map['senderAvatar'] as String?) ?? '🏀',
+        senderAvatar:
+            (map['senderAvatar'] as String?) ??
+            'assets/avatars/dunk_heads (1).webp',
         status: (map['status'] as String?) ?? 'pending',
         timestamp: (map['timestamp'] as num?)?.toInt() ?? 0,
       );

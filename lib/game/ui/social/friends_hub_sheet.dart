@@ -426,12 +426,13 @@ class _FriendsHubSheetState extends State<FriendsHubSheet> {
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(8),
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(
-              color: const Color(0xFF1E2638),
-              borderRadius: BorderRadius.circular(12),
+              shape: BoxShape.circle,
+              border: Border.all(color: const Color(0xFF38BDF8), width: 1.5),
             ),
-            child: _buildAvatarView(invite.senderAvatar, size: 20),
+            child: _buildAvatarView(invite.senderAvatar, size: 36),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -541,12 +542,13 @@ class _FriendsHubSheetState extends State<FriendsHubSheet> {
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
         onTap: () => _openConversation(friend, myUid, match),
         leading: Container(
-          padding: const EdgeInsets.all(8),
+          width: 38,
+          height: 38,
           decoration: BoxDecoration(
-            color: const Color(0xFF1E2638),
-            borderRadius: BorderRadius.circular(12),
+            shape: BoxShape.circle,
+            border: Border.all(color: const Color(0xFF38BDF8), width: 1.5),
           ),
-          child: _buildAvatarView(friend.avatarEmoji, size: 22),
+          child: _buildAvatarView(friend.avatarEmoji, size: 38),
         ),
         title: Text(
           friend.displayName,

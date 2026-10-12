@@ -61,7 +61,8 @@ class UserProfile {
   factory UserProfile.fromJson(Map<String, dynamic> json) => UserProfile(
     uid: json['uid'] as String,
     displayName: json['displayName'] as String? ?? 'Player',
-    avatarEmoji: json['avatarEmoji'] as String? ?? '🏀',
+    avatarEmoji:
+        json['avatarEmoji'] as String? ?? 'assets/avatars/dunk_heads (1).webp',
     isAnonymous: json['isAnonymous'] as bool? ?? true,
     isFirebaseVerified: json['isFirebaseVerified'] as bool? ?? false,
   );
@@ -76,6 +77,30 @@ class AuthService {
   static const String _prefKeyUid = 'bball_local_guest_uid';
   static const String _prefKeyName = 'bball_player_name';
   static const String _prefKeyAvatar = 'bball_player_avatar';
+
+  /// Real avatar assets available in the game
+  static const List<String> avatarImageOptions = [
+    'assets/avatars/dunk_heads (1).webp',
+    'assets/avatars/dunk_heads (2).webp',
+    'assets/avatars/dunk_heads (3).webp',
+    'assets/avatars/dunk_heads (4).webp',
+    'assets/avatars/dunk_heads (5).webp',
+    'assets/avatars/dunk_heads (6).webp',
+    'assets/avatars/dunk_heads (7).webp',
+    'assets/avatars/dunk_heads (8).webp',
+    'assets/avatars/dunk_heads (9).webp',
+    'assets/avatars/dunk_heads (10).webp',
+    'assets/avatars/dunk_heads (11).webp',
+    'assets/avatars/dunk_heads (12).webp',
+    'assets/avatars/dunk_heads (13).webp',
+    'assets/avatars/dunk_heads (14).webp',
+    'assets/avatars/dunk_heads (15).webp',
+  ];
+
+  static String getRandomAvatar() {
+    final rand = Random();
+    return avatarImageOptions[rand.nextInt(avatarImageOptions.length)];
+  }
 
   final ValueNotifier<UserProfile?> currentUserNotifier =
       ValueNotifier<UserProfile?>(null);
@@ -123,7 +148,14 @@ class AuthService {
     } else {
       savedName = rawName;
     }
-    String savedAvatar = prefs.getString(_prefKeyAvatar) ?? '🏀';
+    final rawAvatar = prefs.getString(_prefKeyAvatar);
+    String savedAvatar;
+    if (rawAvatar == null || !rawAvatar.startsWith('assets/')) {
+      savedAvatar = getRandomAvatar();
+      await prefs.setString(_prefKeyAvatar, savedAvatar);
+    } else {
+      savedAvatar = rawAvatar;
+    }
     String? localGuestUid = prefs.getString(_prefKeyUid);
 
     // 1. Ensure Firebase Core is ready

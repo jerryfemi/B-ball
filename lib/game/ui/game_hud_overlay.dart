@@ -19,10 +19,7 @@ import 'stadium_scoreboard.dart';
 class GameHudOverlay extends StatelessWidget {
   final BasketballGame game;
 
-  const GameHudOverlay({
-    super.key,
-    required this.game,
-  });
+  const GameHudOverlay({super.key, required this.game});
 
   Future<void> _handleHelpTapped(BuildContext context) async {
     final wasPlaying = game.gameStateNotifier.value == GameModeState.playing;
@@ -53,11 +50,12 @@ class GameHudOverlay extends StatelessWidget {
         );
         if (config != null) {
           final user = await AuthService.instance.ensureAuthenticated();
-          final profile = AuthService.instance.currentUser ??
+          final profile =
+              AuthService.instance.currentUser ??
               UserProfile(
                 uid: user.uid,
                 displayName: user.displayName ?? 'Player',
-                avatarEmoji: '🏀',
+                avatarEmoji: 'assets/avatars/dunk_heads (1).webp',
               );
           final newMatch = await FirestoreMatchService.instance.createMatch(
             config: config,

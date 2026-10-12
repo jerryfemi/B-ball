@@ -1,4 +1,5 @@
 import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -9,10 +10,7 @@ import '../../match/match_config.dart';
 class MatchSetupDialog extends StatefulWidget {
   final MatchConfig initialConfig;
 
-  const MatchSetupDialog({
-    super.key,
-    this.initialConfig = const MatchConfig(),
-  });
+  const MatchSetupDialog({super.key, this.initialConfig = const MatchConfig()});
 
   static Future<MatchConfig?> show(
     BuildContext context, {
@@ -47,7 +45,8 @@ class _MatchSetupDialogState extends State<MatchSetupDialog> {
     HapticFeedback.mediumImpact();
     final profile = AuthService.instance.currentUser;
     final myName = profile?.displayName ?? 'Player';
-    final myAvatar = profile?.avatarEmoji ?? '🏀';
+    final myAvatar =
+        profile?.avatarEmoji ?? 'assets/avatars/dunk_heads (1).webp';
 
     final config = MatchConfig(
       totalRounds: _selectedRounds,
@@ -65,7 +64,8 @@ class _MatchSetupDialogState extends State<MatchSetupDialog> {
   Widget build(BuildContext context) {
     final profile = AuthService.instance.currentUser;
     final myName = profile?.displayName ?? 'Player';
-    final myAvatar = profile?.avatarEmoji ?? '🏀';
+    final myAvatar =
+        profile?.avatarEmoji ?? 'assets/avatars/dunk_heads (1).webp';
 
     return Center(
       child: SingleChildScrollView(
@@ -140,7 +140,10 @@ class _MatchSetupDialogState extends State<MatchSetupDialog> {
                             ),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.close_rounded, color: Colors.white54),
+                            icon: const Icon(
+                              Icons.close_rounded,
+                              color: Colors.white54,
+                            ),
                             onPressed: () => Navigator.of(context).pop(),
                           ),
                         ],
@@ -149,7 +152,10 @@ class _MatchSetupDialogState extends State<MatchSetupDialog> {
 
                       // Player identity capsule
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 10.0),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14.0,
+                          vertical: 10.0,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xFF1E2638),
                           borderRadius: BorderRadius.circular(14.0),
@@ -157,7 +163,10 @@ class _MatchSetupDialogState extends State<MatchSetupDialog> {
                         ),
                         child: Row(
                           children: [
-                            Text(myAvatar, style: const TextStyle(fontSize: 20.0)),
+                            Text(
+                              myAvatar,
+                              style: const TextStyle(fontSize: 20.0),
+                            ),
                             const SizedBox(width: 10.0),
                             Expanded(
                               child: Column(
@@ -212,7 +221,9 @@ class _MatchSetupDialogState extends State<MatchSetupDialog> {
                           final isSelected = _selectedRounds == rounds;
                           return Expanded(
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4.0,
+                              ),
                               child: InkWell(
                                 onTap: () {
                                   HapticFeedback.selectionClick();
@@ -220,7 +231,9 @@ class _MatchSetupDialogState extends State<MatchSetupDialog> {
                                 },
                                 borderRadius: BorderRadius.circular(12.0),
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(vertical: 10.0),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 10.0,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: isSelected
                                         ? const Color(0xFF2563EB)
@@ -237,9 +250,13 @@ class _MatchSetupDialogState extends State<MatchSetupDialog> {
                                     child: Text(
                                       '$rounds Rounds',
                                       style: TextStyle(
-                                        color: isSelected ? Colors.white : const Color(0xFFCBD5E1),
+                                        color: isSelected
+                                            ? Colors.white
+                                            : const Color(0xFFCBD5E1),
                                         fontSize: 12.0,
-                                        fontWeight: isSelected ? FontWeight.w900 : FontWeight.w600,
+                                        fontWeight: isSelected
+                                            ? FontWeight.w900
+                                            : FontWeight.w600,
                                       ),
                                     ),
                                   ),
@@ -267,7 +284,9 @@ class _MatchSetupDialogState extends State<MatchSetupDialog> {
                           final isSelected = _selectedDuration == dur;
                           return Expanded(
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4.0,
+                              ),
                               child: InkWell(
                                 onTap: () {
                                   HapticFeedback.selectionClick();
@@ -275,7 +294,9 @@ class _MatchSetupDialogState extends State<MatchSetupDialog> {
                                 },
                                 borderRadius: BorderRadius.circular(12.0),
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(vertical: 10.0),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 10.0,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: isSelected
                                         ? const Color(0xFF1E293B)
@@ -290,11 +311,17 @@ class _MatchSetupDialogState extends State<MatchSetupDialog> {
                                   ),
                                   child: Center(
                                     child: Text(
-                                      dur == 30 ? '30s Blitz ⚡' : '60s Standard ⏱',
+                                      dur == 30
+                                          ? '30s Blitz ⚡'
+                                          : '60s Standard ⏱',
                                       style: TextStyle(
-                                        color: isSelected ? const Color(0xFF38BDF8) : const Color(0xFFCBD5E1),
+                                        color: isSelected
+                                            ? const Color(0xFF38BDF8)
+                                            : const Color(0xFFCBD5E1),
                                         fontSize: 12.0,
-                                        fontWeight: isSelected ? FontWeight.w900 : FontWeight.w600,
+                                        fontWeight: isSelected
+                                            ? FontWeight.w900
+                                            : FontWeight.w600,
                                       ),
                                     ),
                                   ),

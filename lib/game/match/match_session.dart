@@ -7,11 +7,7 @@ import 'match_config.dart';
 export 'match_config.dart';
 
 /// Game modes supported by the basketball engine.
-enum MatchGameMode {
-  solo,
-  passAndPlay1v1,
-  onlineCloud1v1,
-}
+enum MatchGameMode { solo, passAndPlay1v1, onlineCloud1v1 }
 
 /// Phases within a turn-based 1v1 match cycle.
 enum MatchTurnPhase {
@@ -40,12 +36,12 @@ class PlayerMatchState {
   PlayerMatchState({
     required this.id,
     required this.name,
-    this.avatar = '🏀',
+    this.avatar = 'assets/avatars/dunk_heads (1).webp',
     required this.accentColor,
     List<int>? roundScores,
     List<RoundTelemetry>? roundTelemetries,
-  })  : roundScores = roundScores ?? [],
-        roundTelemetries = roundTelemetries ?? [];
+  }) : roundScores = roundScores ?? [],
+       roundTelemetries = roundTelemetries ?? [];
 
   int get totalScore => roundScores.fold(0, (acc, s) => acc + s);
 
@@ -64,22 +60,24 @@ class PlayerMatchState {
 
   /// Total clean swishes scored across all played rounds.
   int get totalSwishes => roundTelemetries.fold(
-      0, (acc, t) => acc + t.shots.where((s) => s.isSwish).length);
+    0,
+    (acc, t) => acc + t.shots.where((s) => s.isSwish).length,
+  );
 
   /// Longest consecutive shot streak achieved during any round in the match.
   int get bestStreakAcrossMatch => roundTelemetries.fold(0, (acc, t) {
-        int streak = 0;
-        int maxS = 0;
-        for (final s in t.shots) {
-          if (s.isMake) {
-            streak++;
-            if (streak > maxS) maxS = streak;
-          } else {
-            streak = 0;
-          }
-        }
-        return maxS > acc ? maxS : acc;
-      });
+    int streak = 0;
+    int maxS = 0;
+    for (final s in t.shots) {
+      if (s.isMake) {
+        streak++;
+        if (streak > maxS) maxS = streak;
+      } else {
+        streak = 0;
+      }
+    }
+    return maxS > acc ? maxS : acc;
+  });
 
   /// Returns aggregate score accumulated strictly before [roundIndex].
   int scoreUpToRound(int roundIndex) {
@@ -116,39 +114,56 @@ class MatchSession {
     PlayerMatchState? player1,
     PlayerMatchState? player2,
     this.phase = MatchTurnPhase.playingTurn,
-  })  : config = config ?? const MatchConfig(),
-        totalRounds = totalRounds ?? (config?.totalRounds ?? 2),
-        player1 = player1 ??
-            PlayerMatchState(
-              id: 'p1',
-              name: (config?.player1Name.isNotEmpty ?? false)
-                  ? config!.player1Name
-                  : 'You',
-              avatar: config?.player1Avatar ?? '🏀',
-              accentColor: const Color(0xFF22C55E),
-            ),
-        player2 = player2 ??
-            PlayerMatchState(
-              id: 'p2',
-              name: (config?.player2Name.isNotEmpty ?? false)
-                  ? config!.player2Name
-                  : 'Them',
-              avatar: config?.player2Avatar ?? '🎯',
-              accentColor: const Color(0xFF38BDF8),
-            );
+  }) : config = config ?? const MatchConfig(),
+       totalRounds = totalRounds ?? (config?.totalRounds ?? 2),
+       player1 =
+           player1 ??
+           PlayerMatchState(
+             id: 'p1',
+             name: (config?.player1Name.isNotEmpty ?? false)
+                 ? config!.player1Name
+                 : 'You',
+             avatar:
+                 config?.player1Avatar ?? 'assets/avatars/dunk_heads (1).webp',
+             accentColor: const Color(0xFF22C55E),
+           ),
+       player2 =
+           player2 ??
+           PlayerMatchState(
+             id: 'p2',
+             name: (config?.player2Name.isNotEmpty ?? false)
+                 ? config!.player2Name
+                 : 'Them',
+             avatar:
+                 config?.player2Avatar ?? 'assets/avatars/dunk_heads (2).webp',
+             accentColor: const Color(0xFF38BDF8),
+           );
 
   /// Constructs an active [MatchSession] from a synced [CloudMatch].
   factory MatchSession.fromCloudMatch(CloudMatch cloudMatch, String myUid) {
     final isP1 = cloudMatch.player1.uid == myUid;
     final myPlayer = isP1
         ? cloudMatch.player1
-        : (cloudMatch.player2 ?? const CloudPlayer(uid: '', displayName: 'You', avatarEmoji: '🏀', roundScores: []));
+        : (cloudMatch.player2 ??
+              const CloudPlayer(
+                uid: '',
+                displayName: 'You',
+                avatarEmoji: 'assets/avatars/dunk_heads (1).webp',
+                roundScores: [],
+              ));
     final oppPlayer = isP1
-        ? (cloudMatch.player2 ?? const CloudPlayer(uid: '', displayName: 'Opponent', avatarEmoji: '⏳', roundScores: []))
+        ? (cloudMatch.player2 ??
+              const CloudPlayer(
+                uid: '',
+                displayName: 'Opponent',
+                avatarEmoji: 'assets/avatars/dunk_heads (2).webp',
+                roundScores: [],
+              ))
         : cloudMatch.player1;
 
     final hasOpponentTelemetry =
-        cloudMatch.latestTelemetry != null && cloudMatch.latestTelemetryShooterUid != myUid;
+        cloudMatch.latestTelemetry != null &&
+        cloudMatch.latestTelemetryShooterUid != myUid;
 
     final p1State = PlayerMatchState(
       id: 'you',
@@ -164,14 +179,19 @@ class MatchSession {
       avatar: oppPlayer.avatarEmoji,
       accentColor: const Color(0xFF38BDF8),
       roundScores: [...oppPlayer.roundScores],
-      roundTelemetries: hasOpponentTelemetry ? [cloudMatch.latestTelemetry!] : [],
+      roundTelemetries: hasOpponentTelemetry
+          ? [cloudMatch.latestTelemetry!]
+          : [],
     );
 
     return MatchSession(
       mode: MatchGameMode.onlineCloud1v1,
       cloudMatchId: cloudMatch.id,
       totalRounds: cloudMatch.totalRounds,
-      currentRoundIndex: (cloudMatch.currentRound - 1).clamp(0, cloudMatch.totalRounds - 1),
+      currentRoundIndex: (cloudMatch.currentRound - 1).clamp(
+        0,
+        cloudMatch.totalRounds - 1,
+      ),
       activePlayerIndex: 0,
       phase: hasOpponentTelemetry
           ? MatchTurnPhase.watchingOpponentReplay
@@ -207,4 +227,3 @@ class MatchSession {
 
   bool get isTie => player1.totalScore == player2.totalScore;
 }
-

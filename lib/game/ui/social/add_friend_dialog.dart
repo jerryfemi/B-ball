@@ -143,7 +143,8 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
   Widget build(BuildContext context) {
     final myUser = AuthService.instance.currentUser;
     final myName = myUser?.displayName ?? 'Player';
-    final myAvatar = myUser?.avatarEmoji ?? '🏀';
+    final myAvatar =
+        myUser?.avatarEmoji ?? 'assets/avatars/dunk_heads (1).webp';
 
     return Center(
       child: Material(

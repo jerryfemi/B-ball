@@ -71,8 +71,10 @@ class _MatchInboxSheetState extends State<MatchInboxSheet> {
 
   void _showEditProfileDialog(BuildContext context, UserProfile current) {
     final nameCtrl = TextEditingController(text: current.displayName);
-    String selectedEmoji = current.avatarEmoji;
-    final emojiOptions = ['🏀', '🔥', '⚡', '👑', '🐺', '🎯', '🚀', '💎', '🦁'];
+    final avatarOptions = AuthService.avatarImageOptions;
+    String selectedAvatar = current.avatarEmoji.startsWith('assets/')
+        ? current.avatarEmoji
+        : avatarOptions.first;
 
     showDialog(
       context: context,
@@ -80,25 +82,75 @@ class _MatchInboxSheetState extends State<MatchInboxSheet> {
         builder: (context, setDialogState) => Dialog(
           backgroundColor: const Color(0xFF131826),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-            side: const BorderSide(color: Color(0xFF2E3954)),
+            borderRadius: BorderRadius.circular(24),
+            side: const BorderSide(color: Color(0xFF2E3954), width: 1.5),
           ),
-          child: Padding(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.all(20),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text(
-                  'EDIT YOUR PROFILE',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 16,
-                    letterSpacing: 1.0,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'EDIT YOUR PROFILE',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 16,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: Colors.white60,
+                        size: 20,
+                      ),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+
+                // Selected Avatar Live Preview Circle (No background color fill)
+                Center(
+                  child: Container(
+                    width: 72,
+                    height: 72,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: const Color(0xFF00FFCC),
+                        width: 2.5,
+                      ),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x5500FFCC),
+                          blurRadius: 14,
+                          spreadRadius: 1,
+                        ),
+                      ],
+                    ),
+                    child: ClipOval(
+                      child: Image.asset(
+                        selectedAvatar,
+                        width: 72,
+                        height: 72,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => const Center(
+                          child: Text('🏀', style: TextStyle(fontSize: 32)),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 14),
+
                 TextField(
                   controller: nameCtrl,
                   maxLength: 16,
@@ -117,51 +169,77 @@ class _MatchInboxSheetState extends State<MatchInboxSheet> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 16),
+
                 const Text(
                   'CHOOSE AVATAR',
                   style: TextStyle(
                     color: Color(0xFF94A3B8),
                     fontSize: 11,
                     fontWeight: FontWeight.w800,
+                    letterSpacing: 0.8,
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
+
+                // 15 Dunk Head Real Image Avatars - Circles with NO background color
                 Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: emojiOptions.map((e) {
-                    final isSel = selectedEmoji == e;
+                  alignment: WrapAlignment.center,
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: avatarOptions.map((assetPath) {
+                    final isSel = selectedAvatar == assetPath;
                     return InkWell(
-                      onTap: () => setDialogState(() => selectedEmoji = e),
-                      borderRadius: BorderRadius.circular(10),
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        setDialogState(() => selectedAvatar = assetPath);
+                      },
+                      customBorder: const CircleBorder(),
                       child: Container(
-                        padding: const EdgeInsets.all(8),
+                        width: 44,
+                        height: 44,
                         decoration: BoxDecoration(
-                          color: isSel
-                              ? const Color(0xFF00FFCC).withValues(alpha: 0.2)
-                              : const Color(0xFF1E2638),
-                          borderRadius: BorderRadius.circular(10),
+                          shape: BoxShape.circle,
                           border: Border.all(
                             color: isSel
                                 ? const Color(0xFF00FFCC)
-                                : const Color(0xFF334155),
-                            width: isSel ? 1.6 : 1.0,
+                                : Colors.white24,
+                            width: isSel ? 2.5 : 1.2,
+                          ),
+                          boxShadow: isSel
+                              ? const [
+                                  BoxShadow(
+                                    color: Color(0x6600FFCC),
+                                    blurRadius: 8.0,
+                                    spreadRadius: 1.0,
+                                  ),
+                                ]
+                              : null,
+                        ),
+                        child: ClipOval(
+                          child: Image.asset(
+                            assetPath,
+                            width: 44,
+                            height: 44,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) => const Center(
+                              child: Text('🏀', style: TextStyle(fontSize: 20)),
+                            ),
                           ),
                         ),
-                        child: _buildAvatarView(e, size: 22),
                       ),
                     );
                   }).toList(),
                 ),
                 const SizedBox(height: 18),
+
                 ElevatedButton(
                   onPressed: () async {
                     final cleanName = nameCtrl.text.trim();
                     if (cleanName.isNotEmpty) {
                       await AuthService.instance.updateProfile(
                         displayName: cleanName,
-                        avatarEmoji: selectedEmoji,
+                        avatarEmoji: selectedAvatar,
                       );
                       setState(() {});
                       if (context.mounted) Navigator.of(context).pop();
@@ -170,14 +248,17 @@ class _MatchInboxSheetState extends State<MatchInboxSheet> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF00FFCC),
                     foregroundColor: const Color(0xFF0F172A),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    padding: const EdgeInsets.symmetric(vertical: 13),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
                   child: const Text(
                     'SAVE PROFILE',
-                    style: TextStyle(fontWeight: FontWeight.w900),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.8,
+                    ),
                   ),
                 ),
               ],
@@ -231,17 +312,26 @@ class _MatchInboxSheetState extends State<MatchInboxSheet> {
                         child: Row(
                           children: [
                             Container(
-                              padding: const EdgeInsets.all(8),
+                              width: 38,
+                              height: 38,
                               decoration: BoxDecoration(
-                                color: const Color(0xFF1E2638),
-                                borderRadius: BorderRadius.circular(12),
+                                shape: BoxShape.circle,
                                 border: Border.all(
-                                  color: const Color(0xFF334155),
+                                  color: const Color(0xFF38BDF8),
+                                  width: 1.8,
                                 ),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Color(0x3338BDF8),
+                                    blurRadius: 8,
+                                    offset: Offset(0, 2),
+                                  ),
+                                ],
                               ),
                               child: _buildAvatarView(
-                                myProfile?.avatarEmoji ?? '🏀',
-                                size: 22,
+                                myProfile?.avatarEmoji ??
+                                    'assets/avatars/dunk_heads (1).webp',
+                                size: 38,
                               ),
                             ),
                             const SizedBox(width: 12),

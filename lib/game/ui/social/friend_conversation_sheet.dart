@@ -108,7 +108,7 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
 
     final user = AuthService.instance.currentUser;
     final myName = user?.displayName ?? 'You';
-    final myAvatar = user?.avatarEmoji ?? '🏀';
+    final myAvatar = user?.avatarEmoji ?? 'assets/avatars/dunk_heads (1).webp';
     final now = DateTime.now().millisecondsSinceEpoch;
 
     final msg = CloudChatMessage(
@@ -160,7 +160,7 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
         UserProfile(
           uid: widget.myUid,
           displayName: 'Player',
-          avatarEmoji: '🏀',
+          avatarEmoji: 'assets/avatars/dunk_heads (1).webp',
         );
 
     final newMatch = await FirestoreMatchService.instance.createMatch(
@@ -274,13 +274,13 @@ class _FriendConversationSheetState extends State<FriendConversationSheet> {
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(7),
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(
-              color: const Color(0xFF1E2638),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFF334155)),
+              shape: BoxShape.circle,
+              border: Border.all(color: const Color(0xFF38BDF8), width: 1.5),
             ),
-            child: _buildAvatarView(widget.friend.avatarEmoji, size: 22),
+            child: _buildAvatarView(widget.friend.avatarEmoji, size: 36),
           ),
           const SizedBox(width: 10),
           Expanded(

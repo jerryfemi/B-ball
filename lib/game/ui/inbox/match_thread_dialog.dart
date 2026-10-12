@@ -133,7 +133,7 @@ class _MatchThreadDialogState extends State<MatchThreadDialog> {
             CloudPlayer(
               uid: widget.myUid,
               displayName: 'You',
-              avatarEmoji: '🏀',
+              avatarEmoji: 'assets/avatars/dunk_heads (1).webp',
               roundScores: const [],
             );
         final opponent = match.opponentPlayer(widget.myUid);
@@ -179,14 +179,19 @@ class _MatchThreadDialogState extends State<MatchThreadDialog> {
                     ),
                     const SizedBox(width: 12),
                     Container(
-                      padding: const EdgeInsets.all(8),
+                      width: 36,
+                      height: 36,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF26324A),
-                        borderRadius: BorderRadius.circular(12),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: const Color(0xFF38BDF8),
+                          width: 1.5,
+                        ),
                       ),
                       child: _buildAvatarView(
-                        opponent?.avatarEmoji ?? '⏳',
-                        size: 20,
+                        opponent?.avatarEmoji ??
+                            'assets/avatars/dunk_heads (2).webp',
+                        size: 36,
                       ),
                     ),
                     const SizedBox(width: 10),

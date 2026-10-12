@@ -175,7 +175,8 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
     final p1Active = shootingPlayerIndex == 0;
     final p2Active = shootingPlayerIndex == 1;
 
-    final String myAvatar = userProfile?.avatarEmoji ?? '🏀';
+    final String myAvatar =
+        userProfile?.avatarEmoji ?? 'assets/avatars/dunk_heads (1).webp';
     final String myLabel = userProfile?.displayName ?? 'You';
 
     final String p1Avatar = is1v1

@@ -134,7 +134,8 @@ class MatchInboxCard extends StatelessWidget {
                       child: Row(
                         children: [
                           _buildAvatarView(
-                            myPlayer?.avatarEmoji ?? '🏀',
+                            myPlayer?.avatarEmoji ??
+                                'assets/avatars/dunk_heads (1).webp',
                             size: 22,
                           ),
                           const SizedBox(width: 8),

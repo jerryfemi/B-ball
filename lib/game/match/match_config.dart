@@ -23,8 +23,8 @@ class MatchConfig {
     this.roundDurationSeconds = 60,
     this.player1Name = 'You',
     this.player2Name = 'Them',
-    this.player1Avatar = '🏀',
-    this.player2Avatar = '🎯',
+    this.player1Avatar = 'assets/avatars/dunk_heads (1).webp',
+    this.player2Avatar = 'assets/avatars/dunk_heads (2).webp',
   });
 
   MatchConfig copyWith({

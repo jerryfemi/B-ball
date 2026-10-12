@@ -186,7 +186,9 @@ class FriendsService {
           FriendProfile(
             uid: uidDoc.id,
             displayName: data['displayName'] as String? ?? 'Player',
-            avatarEmoji: data['avatarEmoji'] as String? ?? '🏀',
+            avatarEmoji:
+                data['avatarEmoji'] as String? ??
+                'assets/avatars/dunk_heads (1).webp',
             addedAt: DateTime.now().millisecondsSinceEpoch,
           ),
         ];
@@ -206,7 +208,9 @@ class FriendsService {
         return FriendProfile(
           uid: doc.id,
           displayName: data['displayName'] as String? ?? 'Player',
-          avatarEmoji: data['avatarEmoji'] as String? ?? '🏀',
+          avatarEmoji:
+              data['avatarEmoji'] as String? ??
+              'assets/avatars/dunk_heads (1).webp',
           addedAt: DateTime.now().millisecondsSinceEpoch,
         );
       }).toList();
