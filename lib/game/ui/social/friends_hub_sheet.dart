@@ -7,6 +7,7 @@ import '../../../services/auth_service.dart';
 import '../../../services/firestore_match_service.dart';
 import '../../../services/friends_service.dart';
 import 'add_friend_dialog.dart';
+import 'edit_gamer_tag_dialog.dart';
 import 'friend_conversation_sheet.dart';
 
 /// Dedicated Friends Management sheet for launching 1v1 challenges and banter chat.
@@ -71,173 +72,432 @@ class _FriendsHubSheetState extends State<FriendsHubSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final user = AuthService.instance.currentUser;
-    final myUid = user?.uid ?? '';
+    return ValueListenableBuilder<UserProfile?>(
+      valueListenable: AuthService.instance.currentUserNotifier,
+      builder: (context, user, _) {
+        final myUid = user?.uid ?? '';
 
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.85,
-      decoration: const BoxDecoration(
-        color: Color(0xFF0F172A),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-        border: Border(top: BorderSide(color: Color(0xFF2E3954), width: 1.5)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: StreamBuilder<List<FriendProfile>>(
-          stream: FriendsService.instance.streamFriends(myUid),
-          builder: (context, friendsSnap) {
-            final friends = friendsSnap.data ?? [];
-            final friendUids = friends.map((f) => f.uid).toSet();
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.85,
+          decoration: const BoxDecoration(
+            color: Color(0xFF0F172A),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+            border: Border(
+              top: BorderSide(color: Color(0xFF2E3954), width: 1.5),
+            ),
+          ),
+          child: SafeArea(
+            top: false,
+            child: StreamBuilder<List<FriendInvite>>(
+              stream: FriendsService.instance.streamIncomingInvites(myUid),
+              initialData: const <FriendInvite>[],
+              builder: (context, invitesSnap) {
+                final invites = invitesSnap.data ?? [];
 
-            return Column(
-              children: [
-                // Pull bar
-                Center(
-                  child: Container(
-                    margin: const EdgeInsets.only(top: 10, bottom: 8),
-                    width: 36,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.white24,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
+                return StreamBuilder<List<FriendProfile>>(
+                  stream: FriendsService.instance.streamFriends(myUid),
+                  builder: (context, friendsSnap) {
+                    final friends = friendsSnap.data ?? [];
+                    final friendUids = friends.map((f) => f.uid).toSet();
 
-                // Dedicated Friends Header
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  child: Row(
-                    children: [
-                      IconButton(
-                        icon: const Icon(
-                          Icons.arrow_back_ios_new_rounded,
-                          color: Colors.white70,
-                          size: 20,
-                        ),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                        onPressed: () => Navigator.of(context).pop(),
-                      ),
-                      const SizedBox(width: 12),
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF1E2638),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Text('👥', style: TextStyle(fontSize: 20)),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'FRIENDS',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w900,
-                                fontSize: 16,
-                                letterSpacing: 0.8,
-                              ),
+                    return Column(
+                      children: [
+                        // Pull bar
+                        Center(
+                          child: Container(
+                            margin: const EdgeInsets.only(top: 10, bottom: 8),
+                            width: 36,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: Colors.white24,
+                              borderRadius: BorderRadius.circular(2),
                             ),
-                            Text(
-                              'Playing as ${user?.displayName ?? "Player"}',
-                              style: const TextStyle(
-                                color: Color(0xFF94A3B8),
-                                fontSize: 11,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      ElevatedButton.icon(
-                        onPressed: () => _openAddFriend(friendUids),
-                        icon: const Icon(Icons.person_add_rounded, size: 14),
-                        label: const Text(
-                          'ADD',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w900,
-                            fontSize: 11.5,
-                            letterSpacing: 0.5,
                           ),
                         ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF38BDF8),
-                          foregroundColor: const Color(0xFF0F172A),
+
+                        // Dedicated Friends Header
+                        Padding(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
+                            horizontal: 16,
                             vertical: 8,
                           ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
+                          child: Row(
+                            children: [
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.arrow_back_ios_new_rounded,
+                                  color: Colors.white70,
+                                  size: 20,
+                                ),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                onPressed: () => Navigator.of(context).pop(),
+                              ),
+                              const SizedBox(width: 12),
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF1E2638),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Text(
+                                  '👥',
+                                  style: TextStyle(fontSize: 20),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'FRIENDS',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 16,
+                                        letterSpacing: 0.8,
+                                      ),
+                                    ),
+                                    InkWell(
+                                      borderRadius: BorderRadius.circular(6),
+                                      onTap: () {
+                                        HapticFeedback.lightImpact();
+                                        EditGamerTagDialog.show(context);
+                                      },
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            'Playing as ${user?.displayName ?? "Player"}',
+                                            style: const TextStyle(
+                                              color: Color(0xFF94A3B8),
+                                              fontSize: 11,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          const Icon(
+                                            Icons.edit_rounded,
+                                            size: 11,
+                                            color: Color(0xFF38BDF8),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              ElevatedButton.icon(
+                                onPressed: () => _openAddFriend(friendUids),
+                                icon: const Icon(
+                                  Icons.person_add_rounded,
+                                  size: 14,
+                                ),
+                                label: const Text(
+                                  'ADD',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 11.5,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF38BDF8),
+                                  foregroundColor: const Color(0xFF0F172A),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 8,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ),
-                    ],
+                        const Divider(color: Color(0xFF1E2638), height: 16),
+
+                        // Main Content (Invites + Friends)
+                        Expanded(
+                          child: Builder(
+                            builder: (context) {
+                              if (friendsSnap.connectionState ==
+                                      ConnectionState.waiting &&
+                                  !friendsSnap.hasData) {
+                                return const Center(
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Color(0xFF38BDF8),
+                                  ),
+                                );
+                              }
+
+                              if (friends.isEmpty && invites.isEmpty) {
+                                return _buildEmptyState(user, friendUids);
+                              }
+
+                              return StreamBuilder<List<CloudMatch>>(
+                                stream: FirestoreMatchService.instance
+                                    .streamUserMatches(myUid),
+                                builder: (context, matchSnap) {
+                                  final matches = matchSnap.data ?? [];
+
+                                  return ListView(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 8,
+                                    ),
+                                    children: [
+                                      if (invites.isNotEmpty) ...[
+                                        Padding(
+                                          padding: const EdgeInsets.only(
+                                            bottom: 8,
+                                            left: 2,
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              const Text(
+                                                'PENDING INVITES',
+                                                style: TextStyle(
+                                                  color: Color(0xFFF59E0B),
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w900,
+                                                  letterSpacing: 0.8,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 6),
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 6,
+                                                      vertical: 1,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  color: const Color(
+                                                    0xFFF59E0B,
+                                                  ),
+                                                  borderRadius:
+                                                      BorderRadius.circular(10),
+                                                ),
+                                                child: Text(
+                                                  '${invites.length}',
+                                                  style: const TextStyle(
+                                                    color: Color(0xFF0F172A),
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.w900,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        for (final inv in invites)
+                                          Padding(
+                                            padding: const EdgeInsets.only(
+                                              bottom: 8,
+                                            ),
+                                            child: _buildInviteCard(
+                                              context,
+                                              inv,
+                                              myUid,
+                                            ),
+                                          ),
+                                        const SizedBox(height: 8),
+                                      ],
+                                      if (friends.isNotEmpty) ...[
+                                        if (invites.isNotEmpty) ...[
+                                          const Padding(
+                                            padding: EdgeInsets.only(
+                                              bottom: 8,
+                                              left: 2,
+                                            ),
+                                            child: Text(
+                                              'MY FRIENDS',
+                                              style: TextStyle(
+                                                color: Color(0xFF94A3B8),
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w900,
+                                                letterSpacing: 0.8,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                        for (final friend in friends) ...[
+                                          Builder(
+                                            builder: (context) {
+                                              final match = matches
+                                                  .cast<CloudMatch?>()
+                                                  .firstWhere(
+                                                    (m) =>
+                                                        m != null &&
+                                                        m.playerIds.contains(
+                                                          friend.uid,
+                                                        ),
+                                                    orElse: () => null,
+                                                  );
+                                              return Padding(
+                                                padding: const EdgeInsets.only(
+                                                  bottom: 8,
+                                                ),
+                                                child: _buildFriendCard(
+                                                  friend,
+                                                  myUid,
+                                                  match,
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                        ],
+                                      ] else if (invites.isNotEmpty) ...[
+                                        const SizedBox(height: 16),
+                                        const Center(
+                                          child: Text(
+                                            'Accept pending invites above to connect with players!',
+                                            style: TextStyle(
+                                              color: Color(0xFF64748B),
+                                              fontSize: 12,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  );
+                                },
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildInviteCard(
+    BuildContext context,
+    FriendInvite invite,
+    String myUid,
+  ) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF161F2E),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFFF59E0B).withValues(alpha: 0.5),
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFF59E0B).withValues(alpha: 0.08),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E2638),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              invite.senderAvatar,
+              style: const TextStyle(fontSize: 20),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  invite.senderName,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
                   ),
                 ),
-                const Divider(color: Color(0xFF1E2638), height: 16),
-
-                // Main Friends Feed
-                Expanded(
-                  child: Builder(
-                    builder: (context) {
-                      if (friendsSnap.connectionState ==
-                              ConnectionState.waiting &&
-                          !friendsSnap.hasData) {
-                        return const Center(
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Color(0xFF38BDF8),
-                          ),
-                        );
-                      }
-
-                      if (friends.isEmpty) {
-                        return _buildEmptyState(user, friendUids);
-                      }
-
-                      return StreamBuilder<List<CloudMatch>>(
-                        stream: FirestoreMatchService.instance
-                            .streamUserMatches(myUid),
-                        builder: (context, matchSnap) {
-                          final matches = matchSnap.data ?? [];
-
-                          return ListView.separated(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 8,
-                            ),
-                            itemCount: friends.length,
-                            separatorBuilder: (context, index) =>
-                                const SizedBox(height: 8),
-                            itemBuilder: (context, index) {
-                              final friend = friends[index];
-                              final match = matches
-                                  .cast<CloudMatch?>()
-                                  .firstWhere(
-                                    (m) =>
-                                        m != null &&
-                                        m.playerIds.contains(friend.uid),
-                                    orElse: () => null,
-                                  );
-                              return _buildFriendCard(friend, myUid, match);
-                            },
-                          );
-                        },
-                      );
-                    },
+                const SizedBox(height: 2),
+                const Text(
+                  'Wants to be friends',
+                  style: TextStyle(
+                    color: Color(0xFFF59E0B),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
-            );
-          },
-        ),
+            ),
+          ),
+          IconButton(
+            onPressed: () async {
+              HapticFeedback.lightImpact();
+              await FriendsService.instance.declineFriendInvite(
+                myUid,
+                invite.senderUid,
+              );
+            },
+            icon: const Icon(
+              Icons.close_rounded,
+              color: Color(0xFF94A3B8),
+              size: 20,
+            ),
+            tooltip: 'Decline',
+            style: IconButton.styleFrom(
+              backgroundColor: const Color(0xFF1E2638),
+              padding: const EdgeInsets.all(8),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+                side: const BorderSide(color: Color(0xFF334155)),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          ElevatedButton(
+            onPressed: () async {
+              HapticFeedback.mediumImpact();
+              await FriendsService.instance.acceptFriendInvite(myUid, invite);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Added ${invite.senderName} as a friend! 🎉'),
+                    backgroundColor: const Color(0xFF1E2638),
+                    behavior: SnackBarBehavior.floating,
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF10B981),
+              foregroundColor: const Color(0xFF0F172A),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: const Text(
+              'ACCEPT',
+              style: TextStyle(
+                fontWeight: FontWeight.w900,
+                fontSize: 11.5,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
