@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 
 import '../../../models/cloud_match.dart';
 import '../../../models/friend_profile.dart';
@@ -10,7 +11,7 @@ import '../common/app_avatar.dart';
 
 /// Flanking circular player avatar with illuminated badge, "You" label,
 /// and live reactive inbox/turns notification pip.
-class ScoreboardPlayerAvatar extends StatefulWidget {
+class ScoreboardPlayerAvatar extends HookWidget {
   final bool isActive;
   final String label;
   final String avatar;
@@ -27,81 +28,42 @@ class ScoreboardPlayerAvatar extends StatefulWidget {
   });
 
   @override
-  State<ScoreboardPlayerAvatar> createState() => _ScoreboardPlayerAvatarState();
-}
-
-class _ScoreboardPlayerAvatarState extends State<ScoreboardPlayerAvatar>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _pulseController;
-  late final Animation<double> _scaleAnimation;
-  int _prevWaitingCount = 0;
-  String? _currentStreamUid;
-  Stream<List<CloudMatch>>? _matchesStream;
-
-  @override
-  void initState() {
-    super.initState();
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 900),
-    );
-
-    _scaleAnimation = Tween<double>(begin: 1.0, end: 1.10).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
-  }
-
-  @override
-  void dispose() {
-    _pulseController.dispose();
-    super.dispose();
-  }
-
-  void _onAlertsUpdated(int count) {
-    if (count > 0) {
-      if (!_pulseController.isAnimating) {
-        _pulseController.repeat(reverse: true);
-      }
-      if (count > _prevWaitingCount) {
-        HapticFeedback.lightImpact();
-      }
-    } else {
-      if (_pulseController.isAnimating) {
-        _pulseController.stop();
-        _pulseController.value = 0.0;
-      }
-    }
-    _prevWaitingCount = count;
-  }
-
-  @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<UserProfile?>(
       valueListenable: AuthService.instance.currentUserNotifier,
       builder: (context, user, _) {
         if (user == null || user.uid.isEmpty) {
-          return _buildAvatar(alertsCount: 0);
-        }
-
-        if (_currentStreamUid != user.uid) {
-          _currentStreamUid = user.uid;
-          _matchesStream = FirestoreMatchService.instance.streamUserMatches(
-            user.uid,
+          return _PulsingPlayerAvatar(
+            alertsCount: 0,
+            avatar: avatar,
+            label: label,
+            isActive: isActive,
+            onTap: onTap,
           );
         }
 
+        final matchesStream = useMemoized(
+          () => FirestoreMatchService.instance.streamUserMatches(user.uid),
+          [user.uid],
+        );
+
+        final invitesStream = useMemoized(
+          () => FriendsService.instance.streamIncomingInvites(user.uid),
+          [user.uid],
+        );
+
         return StreamBuilder<List<FriendInvite>>(
-          stream: FriendsService.instance.streamIncomingInvites(user.uid),
+          stream: invitesStream,
           initialData: const <FriendInvite>[],
           builder: (context, invitesSnapshot) {
             final invitesCount = (invitesSnapshot.data ?? []).length;
 
             return StreamBuilder<List<CloudMatch>>(
-              stream: _matchesStream,
+              stream: matchesStream,
               initialData: const <CloudMatch>[],
               builder: (context, snapshot) {
                 final matches = snapshot.data ?? [];
-                final activeId = widget.activeMatchId;
+                final activeId = activeMatchId;
                 final turnsWaiting = matches
                     .where(
                       (m) =>
@@ -120,9 +82,14 @@ class _ScoreboardPlayerAvatarState extends State<ScoreboardPlayerAvatar>
                 }).length;
 
                 final totalAlerts = turnsWaiting + invitesCount + chatAlerts;
-                _onAlertsUpdated(totalAlerts);
 
-                return _buildAvatar(alertsCount: totalAlerts);
+                return _PulsingPlayerAvatar(
+                  alertsCount: totalAlerts,
+                  avatar: avatar,
+                  label: label,
+                  isActive: isActive,
+                  onTap: onTap,
+                );
               },
             );
           },
@@ -130,15 +97,63 @@ class _ScoreboardPlayerAvatarState extends State<ScoreboardPlayerAvatar>
       },
     );
   }
+}
 
-  Widget _buildAvatar({required int alertsCount}) {
+class _PulsingPlayerAvatar extends HookWidget {
+  final int alertsCount;
+  final String avatar;
+  final String label;
+  final bool isActive;
+  final VoidCallback? onTap;
+
+  const _PulsingPlayerAvatar({
+    required this.alertsCount,
+    required this.avatar,
+    required this.label,
+    required this.isActive,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final pulseController = useAnimationController(
+      duration: const Duration(milliseconds: 900),
+    );
+
+    final scaleAnimation = useMemoized(
+      () => Tween<double>(begin: 1.0, end: 1.10).animate(
+        CurvedAnimation(parent: pulseController, curve: Curves.easeInOut),
+      ),
+      [pulseController],
+    );
+
+    final prevCountRef = useRef<int>(0);
+
+    useEffect(() {
+      if (alertsCount > 0) {
+        if (!pulseController.isAnimating) {
+          pulseController.repeat(reverse: true);
+        }
+        if (alertsCount > prevCountRef.value) {
+          HapticFeedback.lightImpact();
+        }
+      } else {
+        if (pulseController.isAnimating) {
+          pulseController.stop();
+          pulseController.value = 0.0;
+        }
+      }
+      prevCountRef.value = alertsCount;
+      return null;
+    }, [alertsCount]);
+
     final hasAlerts = alertsCount > 0;
 
     return AnimatedBuilder(
-      animation: _pulseController,
+      animation: pulseController,
       builder: (context, _) {
-        final scale = hasAlerts ? _scaleAnimation.value : 1.0;
-        final glowProgress = hasAlerts ? _pulseController.value : 0.0;
+        final scale = hasAlerts ? scaleAnimation.value : 1.0;
+        final glowProgress = hasAlerts ? pulseController.value : 0.0;
 
         final Color borderColor = hasAlerts
             ? Color.lerp(
@@ -146,7 +161,7 @@ class _ScoreboardPlayerAvatarState extends State<ScoreboardPlayerAvatar>
                 const Color(0xFFFBBF24),
                 glowProgress,
               )!
-            : (widget.isActive
+            : (isActive
                 ? const Color(0xFF86EFAC)
                 : Colors.white.withValues(alpha: 0.8));
 
@@ -154,7 +169,7 @@ class _ScoreboardPlayerAvatarState extends State<ScoreboardPlayerAvatar>
             ? const Color(0xFFF59E0B)
             : const Color(0xFF22C55E);
 
-        final bool showGlow = hasAlerts || widget.isActive;
+        final bool showGlow = hasAlerts || isActive;
 
         return Column(
           mainAxisSize: MainAxisSize.min,
@@ -165,17 +180,16 @@ class _ScoreboardPlayerAvatarState extends State<ScoreboardPlayerAvatar>
                 clipBehavior: Clip.none,
                 children: [
                   AppAvatar(
-                    avatar: widget.avatar,
+                    avatar: avatar,
                     size: 36.0,
                     borderColor: borderColor,
-                    borderWidth:
-                        hasAlerts ? 2.4 : (widget.isActive ? 2.2 : 1.5),
+                    borderWidth: hasAlerts ? 2.4 : (isActive ? 2.2 : 1.5),
                     showGlow: showGlow,
                     glowColor: glowColor,
                     onTap: () {
-                      if (widget.onTap != null) {
+                      if (onTap != null) {
                         HapticFeedback.lightImpact();
-                        widget.onTap!();
+                        onTap!();
                       }
                     },
                   ),
@@ -224,11 +238,11 @@ class _ScoreboardPlayerAvatarState extends State<ScoreboardPlayerAvatar>
             ),
             const SizedBox(height: 2.0),
             Text(
-              widget.label,
+              label,
               style: TextStyle(
                 color: hasAlerts
                     ? const Color(0xFFFBBF24)
-                    : (widget.isActive
+                    : (isActive
                         ? const Color(0xFF86EFAC)
                         : const Color(0xFF4ADE80)),
                 fontSize: 10.0,
