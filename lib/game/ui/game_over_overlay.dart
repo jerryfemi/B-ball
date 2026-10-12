@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 
@@ -64,10 +63,8 @@ class GameOverOverlay extends HookWidget {
                 constraints: const BoxConstraints(maxWidth: 380.0),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(28.0),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 20.0, sigmaY: 20.0),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
                         horizontal: 24.0,
                         vertical: 28.0,
                       ),
@@ -165,8 +162,7 @@ class GameOverOverlay extends HookWidget {
                 ),
               ),
             ),
-          ),
-        );
+          );
       },
     );
   }
