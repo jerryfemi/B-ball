@@ -180,81 +180,114 @@ class RoundIntermissionOverlay extends StatelessWidget {
                   ),
                   const SizedBox(height: 16.0),
 
-                  // Online 1v1 Room Code & Discrete Share action
+                  // Online 1v1 Room Code or Turn Status
                   if (isOnline) ...[
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12.0,
-                        vertical: 8.0,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1E2638),
-                        borderRadius: BorderRadius.circular(12.0),
-                        border: Border.all(color: const Color(0xFF334155)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.dialpad,
-                            size: 16.0,
-                            color: Color(0xFF00FFCC),
-                          ),
-                          const SizedBox(width: 8.0),
-                          Expanded(
-                            child: Text(
-                              'Match Code: ${session.cloudMatchId ?? ''}',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 13.0,
-                                letterSpacing: 1.0,
+                    if (session.isWaitingForOpponent)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12.0,
+                          vertical: 8.0,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1E2638),
+                          borderRadius: BorderRadius.circular(12.0),
+                          border: Border.all(color: const Color(0xFF334155)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.dialpad,
+                              size: 16.0,
+                              color: Color(0xFF00FFCC),
+                            ),
+                            const SizedBox(width: 8.0),
+                            Expanded(
+                              child: Text(
+                                'Match Code: ${session.cloudMatchId ?? ''}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 13.0,
+                                  letterSpacing: 1.0,
+                                ),
                               ),
                             ),
-                          ),
-                          InkWell(
-                            onTap: () {
-                              ShareTurnSheet.show(
-                                context,
-                                joinCode: session.cloudMatchId ?? '',
-                                roundIndex: session.currentRoundNumber,
-                                roundScore: roundScore,
-                                opponentName: session.player2.name,
-                              );
-                            },
-                            borderRadius: BorderRadius.circular(8.0),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10.0,
-                                vertical: 5.0,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF2563EB),
-                                borderRadius: BorderRadius.circular(8.0),
-                              ),
-                              child: const Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.share,
-                                    size: 13.0,
-                                    color: Colors.white,
-                                  ),
-                                  SizedBox(width: 4.0),
-                                  Text(
-                                    'Share',
-                                    style: TextStyle(
+                            InkWell(
+                              onTap: () {
+                                ShareTurnSheet.show(
+                                  context,
+                                  joinCode: session.cloudMatchId ?? '',
+                                  roundIndex: session.currentRoundNumber,
+                                  roundScore: roundScore,
+                                  opponentName: session.player2.name,
+                                );
+                              },
+                              borderRadius: BorderRadius.circular(8.0),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10.0,
+                                  vertical: 5.0,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF2563EB),
+                                  borderRadius: BorderRadius.circular(8.0),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.share,
+                                      size: 13.0,
                                       color: Colors.white,
-                                      fontSize: 11.0,
-                                      fontWeight: FontWeight.w800,
                                     ),
-                                  ),
-                                ],
+                                    SizedBox(width: 4.0),
+                                    Text(
+                                      'Share',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 11.0,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
+                      )
+                    else
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14.0,
+                          vertical: 10.0,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1E2638),
+                          borderRadius: BorderRadius.circular(12.0),
+                          border: Border.all(color: const Color(0xFF334155)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.check_circle_rounded,
+                              size: 16.0,
+                              color: Color(0xFF00FFCC),
+                            ),
+                            const SizedBox(width: 8.0),
+                            Expanded(
+                              child: Text(
+                                'Turn Sent • Waiting for ${session.player2.name}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12.0,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
                     const SizedBox(height: 14.0),
                   ],
 
@@ -265,7 +298,7 @@ class RoundIntermissionOverlay extends StatelessWidget {
                     child: ElevatedButton(
                       onPressed: () {
                         if (isOnline) {
-                          game.exitToSoloMode();
+                          game.stayInMatchCourt();
                         } else {
                           game.sendMatchTurn();
                         }
