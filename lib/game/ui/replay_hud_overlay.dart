@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../basketball_game.dart';
@@ -41,10 +40,8 @@ class ReplayHudOverlay extends StatelessWidget {
                 constraints: const BoxConstraints(maxWidth: 420.0),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(24.0),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 16.0, sigmaY: 16.0),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
                         horizontal: 14.0,
                         vertical: 12.0,
                       ),
@@ -172,8 +169,7 @@ class ReplayHudOverlay extends StatelessWidget {
                 ),
               ),
             ),
-          ),
-        );
+          );
       },
     );
   }
