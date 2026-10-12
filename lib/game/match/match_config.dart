@@ -1,3 +1,4 @@
+import '../../models/cloud_match.dart';
 import '../../models/friend_profile.dart';
 import '../../models/player_descriptor.dart';
 
@@ -27,6 +28,9 @@ class MatchConfig {
   /// Optional FriendProfile reference when challenging a friend directly.
   final FriendProfile? opponentFriend;
 
+  /// Optional pre-created CloudMatch if room was generated upfront in dialog.
+  final CloudMatch? precreatedMatch;
+
   const MatchConfig({
     this.totalRounds = 2,
     this.roundDurationSeconds = 60,
@@ -36,6 +40,7 @@ class MatchConfig {
     this.player2Avatar = 'assets/avatars/dunk_heads (2).webp',
     this.player2Uid,
     this.opponentFriend,
+    this.precreatedMatch,
   });
 
   MatchConfig copyWith({
@@ -47,6 +52,7 @@ class MatchConfig {
     String? player2Avatar,
     String? player2Uid,
     FriendProfile? opponentFriend,
+    CloudMatch? precreatedMatch,
   }) {
     return MatchConfig(
       totalRounds: totalRounds ?? this.totalRounds,
@@ -57,6 +63,7 @@ class MatchConfig {
       player2Avatar: player2Avatar ?? this.player2Avatar,
       player2Uid: player2Uid ?? this.player2Uid,
       opponentFriend: opponentFriend ?? this.opponentFriend,
+      precreatedMatch: precreatedMatch ?? this.precreatedMatch,
     );
   }
 }
