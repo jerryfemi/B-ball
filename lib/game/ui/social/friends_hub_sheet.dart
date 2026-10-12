@@ -7,6 +7,8 @@ import '../../../services/auth_service.dart';
 import '../../../services/firestore_match_service.dart';
 import '../../../services/friends_service.dart';
 import 'add_friend_dialog.dart';
+import 'components/friend_card_tile.dart';
+import 'components/friend_invite_tile.dart';
 import 'edit_gamer_tag_dialog.dart';
 import 'friend_conversation_sheet.dart';
 import '../common/app_avatar.dart';
@@ -276,10 +278,9 @@ class _FriendsHubSheetState extends State<FriendsHubSheet> {
                                             padding: const EdgeInsets.only(
                                               bottom: 8,
                                             ),
-                                            child: _buildInviteCard(
-                                              context,
-                                              inv,
-                                              myUid,
+                                            child: FriendInviteTile(
+                                              invite: inv,
+                                              myUid: myUid,
                                             ),
                                           ),
                                         const SizedBox(height: 8),
@@ -319,10 +320,19 @@ class _FriendsHubSheetState extends State<FriendsHubSheet> {
                                                 padding: const EdgeInsets.only(
                                                   bottom: 8,
                                                 ),
-                                                child: _buildFriendCard(
-                                                  friend,
-                                                  myUid,
-                                                  match,
+                                                child: FriendCardTile(
+                                                  friend: friend,
+                                                  myUid: myUid,
+                                                  match: match,
+                                                  onTap: () => _openConversation(
+                                                    friend,
+                                                    myUid,
+                                                    match,
+                                                  ),
+                                                  onPlayMatch: (m) {
+                                                    Navigator.of(context).pop();
+                                                    widget.onPlayMatch(m);
+                                                  },
                                                 ),
                                               );
                                             },
@@ -356,216 +366,6 @@ class _FriendsHubSheetState extends State<FriendsHubSheet> {
             ),
         );
       },
-    );
-  }
-
-  Widget _buildInviteCard(
-    BuildContext context,
-    FriendInvite invite,
-    String myUid,
-  ) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: const Color(0xFF161F2E),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: const Color(0xFFF59E0B).withValues(alpha: 0.5),
-          width: 1.2,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFFF59E0B).withValues(alpha: 0.08),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          AppAvatar(
-            avatar: invite.senderAvatar,
-            size: 36,
-            borderColor: const Color(0xFF38BDF8),
-            borderWidth: 1.5,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  invite.senderName,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                const Text(
-                  'Wants to be friends',
-                  style: TextStyle(
-                    color: Color(0xFFF59E0B),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            onPressed: () async {
-              HapticFeedback.lightImpact();
-              await FriendsService.instance.declineFriendInvite(
-                myUid,
-                invite.senderUid,
-              );
-            },
-            icon: const Icon(
-              Icons.close_rounded,
-              color: Color(0xFF94A3B8),
-              size: 20,
-            ),
-            tooltip: 'Decline',
-            style: IconButton.styleFrom(
-              backgroundColor: const Color(0xFF1E2638),
-              padding: const EdgeInsets.all(8),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-                side: const BorderSide(color: Color(0xFF334155)),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          ElevatedButton(
-            onPressed: () async {
-              HapticFeedback.mediumImpact();
-              await FriendsService.instance.acceptFriendInvite(myUid, invite);
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Added ${invite.senderName} as a friend! 🎉'),
-                    backgroundColor: const Color(0xFF1E2638),
-                    behavior: SnackBarBehavior.floating,
-                    duration: const Duration(seconds: 2),
-                  ),
-                );
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF10B981),
-              foregroundColor: const Color(0xFF0F172A),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            child: const Text(
-              'ACCEPT',
-              style: TextStyle(
-                fontWeight: FontWeight.w900,
-                fontSize: 11.5,
-                letterSpacing: 0.5,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFriendCard(
-    FriendProfile friend,
-    String myUid,
-    CloudMatch? match,
-  ) {
-    final hasActiveMatch =
-        match != null && match.status != MatchStatus.completed;
-    final isMyTurn = hasActiveMatch && match.isMyTurn(myUid);
-
-    return Container(
-      decoration: BoxDecoration(
-        color: isMyTurn ? const Color(0xFF19253B) : const Color(0xFF161F2E),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isMyTurn ? const Color(0xFF38BDF8) : const Color(0xFF26334A),
-          width: isMyTurn ? 1.5 : 1.0,
-        ),
-      ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-        onTap: () => _openConversation(friend, myUid, match),
-        leading: AppAvatar(
-          avatar: friend.avatarEmoji,
-          size: 38,
-          borderColor: const Color(0xFF38BDF8),
-          borderWidth: 1.5,
-        ),
-        title: Text(
-          friend.displayName,
-          style: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w800,
-            fontSize: 14,
-          ),
-        ),
-        subtitle: Text(
-          hasActiveMatch
-              ? (isMyTurn
-                    ? '⚡ Your turn to shoot (Round ${match.currentRound})'
-                    : '⏳ Waiting for opponent (Round ${match.currentRound})')
-              : 'Tap to chat & 1v1 challenge 🏀',
-          style: TextStyle(
-            color: isMyTurn ? const Color(0xFF38BDF8) : const Color(0xFF94A3B8),
-            fontSize: 11.5,
-            fontWeight: isMyTurn ? FontWeight.w700 : FontWeight.w400,
-          ),
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (isMyTurn)
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  widget.onPlayMatch(match);
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF38BDF8),
-                  foregroundColor: const Color(0xFF0F172A),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                child: const Text(
-                  'PLAY',
-                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 11),
-                ),
-              )
-            else ...[
-              IconButton(
-                icon: const Icon(
-                  Icons.chat_bubble_outline_rounded,
-                  color: Color(0xFF38BDF8),
-                  size: 18,
-                ),
-                tooltip: 'Chat',
-                onPressed: () => _openConversation(friend, myUid, match),
-              ),
-              const Icon(
-                Icons.chevron_right_rounded,
-                color: Colors.white38,
-                size: 20,
-              ),
-            ],
-          ],
-        ),
-      ),
     );
   }
 
