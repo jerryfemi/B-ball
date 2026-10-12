@@ -86,8 +86,8 @@ service cloud.firestore {
       // Update allowed for atomic join, active turn submission, or banter
       allow update: if isJoining() || isSubmittingTurn() || isSendingBanter();
 
-      // No client-side match deletion
-      allow delete: if false;
+      // Allow participants to evaporate completed match documents from Firestore
+      allow delete: if isParticipant() && resource.data.status == 'completed';
     }
   }
 }
