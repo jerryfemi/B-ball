@@ -7,6 +7,7 @@ import '../../../models/friend_profile.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/friends_service.dart';
 import '../common/app_avatar.dart';
+import '../common/app_modal_dialog.dart';
 
 /// Modal dialog to search and add friends by display name or player tag,
 /// and share one's own tag with others.
@@ -25,9 +26,8 @@ class AddFriendDialog extends StatefulWidget {
     required Set<String> existingFriendUids,
     ValueChanged<FriendProfile>? onFriendAdded,
   }) {
-    return showDialog<void>(
+    return AppModalDialog.show<void>(
       context: context,
-      barrierColor: Colors.black.withValues(alpha: 0.8),
       builder: (ctx) => AddFriendDialog(
         existingFriendUids: existingFriendUids,
         onFriendAdded: onFriendAdded,
@@ -128,67 +128,19 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
     final myAvatar =
         myUser?.avatarEmoji ?? 'assets/avatars/dunk_heads (1).webp';
 
-    return Center(
-      child: Material(
-        color: Colors.transparent,
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 380),
-          margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: const Color(0xFF131826),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: const Color(0xFF2E3954), width: 1.5),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.6),
-                blurRadius: 28,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Header
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1E2638),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(
-                      Icons.person_add_rounded,
-                      color: Color(0xFF38BDF8),
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  const Expanded(
-                    child: Text(
-                      'ADD FRIEND',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.0,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(
-                      Icons.close_rounded,
-                      color: Colors.white54,
-                      size: 20,
-                    ),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
+    return AppModalDialog(
+      maxWidth: 380,
+      iconWidget: const Icon(
+        Icons.person_add_rounded,
+        color: Color(0xFF38BDF8),
+        size: 20,
+      ),
+      title: 'ADD FRIEND',
+      showCloseButton: true,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
 
               // Player tag card
               Container(
@@ -446,8 +398,6 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
               ),
             ],
           ),
-        ),
-      ),
-    );
+        );
   }
 }
