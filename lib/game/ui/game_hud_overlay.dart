@@ -58,10 +58,11 @@ class GameHudOverlay extends StatelessWidget {
                 displayName: user.displayName ?? 'Player',
                 avatarEmoji: PlayerDescriptor.defaultAvatar,
               );
-          final newMatch = await FirestoreMatchService.instance.createMatch(
-            config: config,
-            player1Profile: profile,
-          );
+          final newMatch = config.precreatedMatch ??
+              await FirestoreMatchService.instance.createMatch(
+                config: config,
+                player1Profile: profile,
+              );
           game.startCloudMatch(newMatch, profile.uid);
         }
       },
