@@ -88,7 +88,12 @@ service cloud.firestore {
 
       function isTouchingTimestamp() {
         return isParticipant() &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['updatedAt']);
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'updatedAt',
+            'lastChatSenderUid',
+            'lastChatTimestamp',
+            'lastChatText'
+          ]);
       }
 
       // Read allowed if player is authenticated (non-existent codes return cleanly)
