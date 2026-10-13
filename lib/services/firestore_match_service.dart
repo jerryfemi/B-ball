@@ -698,6 +698,14 @@ class FirestoreMatchService {
           final data = change.doc.data();
           final shotMap = data?['shot'] as Map<String, dynamic>?;
           if (shotMap == null) return null;
+
+          final createdAt = (data?['createdAt'] as num?)?.toInt() ?? 0;
+          final nowMs = DateTime.now().millisecondsSinceEpoch;
+          // Filter out bursts of stale shots older than 3 seconds (e.g. from background tab resume)
+          if (createdAt > 0 && (nowMs - createdAt > 3000)) {
+            return null;
+          }
+
           return RecordedShot.fromJson(shotMap);
         })
         .where((shot) => shot != null)
