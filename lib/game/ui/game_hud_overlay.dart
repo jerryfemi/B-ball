@@ -5,6 +5,8 @@ import '../../services/auth_service.dart';
 import '../../services/firestore_match_service.dart';
 import '../basketball_game.dart';
 import '../match/match_session.dart';
+import '../../services/update/update_service.dart';
+import 'common/update_available_banner.dart';
 import 'floating_score_toast.dart';
 import 'game_over_overlay.dart';
 import 'game_rules_dialog.dart';
@@ -92,6 +94,20 @@ class GameHudOverlay extends StatelessWidget {
             game: game,
             onHelpTapped: () => _handleHelpTapped(context),
             onInboxTapped: () => _handleInboxTapped(context),
+          ),
+        ),
+
+        // 1b. Update Available Notification Pill (Positioned right below scoreboard header)
+        Positioned(
+          top: MediaQuery.of(context).padding.top + 72.0,
+          left: 0,
+          right: 0,
+          child: ValueListenableBuilder<bool>(
+            valueListenable: UpdateService.isUpdateAvailable,
+            builder: (context, hasUpdate, _) {
+              if (!hasUpdate) return const SizedBox.shrink();
+              return const Center(child: UpdateAvailableBanner());
+            },
           ),
         ),
 
