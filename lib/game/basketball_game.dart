@@ -20,6 +20,7 @@ import 'components/ground.dart';
 import 'match/match_session.dart';
 import 'physics/shot_difficulty.dart';
 import 'telemetry/shot_telemetry.dart';
+import 'ui/match/live_turn_transition_overlay.dart';
 
 /// Encapsulates details of a made basketball shot.
 class ScoreEvent {
@@ -171,6 +172,13 @@ class BasketballGame extends Forge2DGame {
       MatchSessionNotifier(null);
   final ValueNotifier<int> player1MatchScoreNotifier = ValueNotifier<int>(0);
   final ValueNotifier<int> player2MatchScoreNotifier = ValueNotifier<int>(0);
+  final ValueNotifier<LiveTransitionData?> liveTransitionNotifier =
+      ValueNotifier<LiveTransitionData?>(null);
+
+  StreamSubscription<RecordedShot>? _liveShotSubscription;
+  StreamSubscription<CloudMatch?>? _liveMatchSubscription;
+  String? _currentSubscribedMatchId;
+  String? _currentActiveTurnUid;
 
   /// Difficulty preset for solo play (configurable in the pause menu).
   final ValueNotifier<ShotDifficulty> soloDifficultyNotifier =
@@ -243,6 +251,20 @@ class BasketballGame extends Forge2DGame {
       backspin: backspin,
     );
     _currentRoundShots.add(shot);
+
+    final session = matchSessionNotifier.value;
+    if (session != null &&
+        session.mode == MatchGameMode.onlineCloud1v1 &&
+        session.cloudMatchId != null &&
+        session.phase == MatchTurnPhase.playingTurn) {
+      final myUid = AuthService.instance.currentUser?.uid ?? '';
+      unawaited(FirestoreMatchService.instance.broadcastLiveShot(
+        matchId: session.cloudMatchId!,
+        shot: shot,
+        shooterUid: myUid,
+        shotIndex: _currentRoundShots.length,
+      ));
+    }
   }
 
   void registerScore({required bool isSwish, required bool isBankShot}) {
@@ -298,6 +320,17 @@ class BasketballGame extends Forge2DGame {
         player2MatchScoreNotifier.value =
             session.player2.scoreUpToRound(session.currentRoundIndex) + score;
       }
+
+      if (session.mode == MatchGameMode.onlineCloud1v1 &&
+          session.cloudMatchId != null &&
+          session.phase == MatchTurnPhase.playingTurn) {
+        final myUid = AuthService.instance.currentUser?.uid ?? '';
+        unawaited(FirestoreMatchService.instance.updateLiveShooterScore(
+          matchId: session.cloudMatchId!,
+          currentRoundScore: score,
+          shooterUid: myUid,
+        ));
+      }
     }
 
     // If game ended, update stats in case of buzzer-beater basket
@@ -327,7 +360,13 @@ class BasketballGame extends Forge2DGame {
         final nextTime = timeRemainingNotifier.value - 1;
         timeRemainingNotifier.value = nextTime;
         if (nextTime <= 0) {
-          _onTimeExpired();
+          final session = matchSessionNotifier.value;
+          if (session != null &&
+              session.phase == MatchTurnPhase.watchingLiveOpponent) {
+            // Live spectator clock reached zero; wait for opponent's turn submission via Firestore
+          } else {
+            _onTimeExpired();
+          }
         }
       }
     } else if (gameStateNotifier.value == GameModeState.replay && !isPaused) {
@@ -380,15 +419,18 @@ class BasketballGame extends Forge2DGame {
     required bool isSwish,
     required bool isBankShot,
   }) {
-    if (gameStateNotifier.value == GameModeState.replay) {
-      final session = matchSessionNotifier.value;
-      if (session != null &&
-          session.phase == MatchTurnPhase.watchingOpponentReplay) {
+    final session = matchSessionNotifier.value;
+    final is1v1Spectating = session != null &&
+        (session.phase == MatchTurnPhase.watchingOpponentReplay ||
+         session.phase == MatchTurnPhase.watchingLiveOpponent);
+
+    if (gameStateNotifier.value == GameModeState.replay || is1v1Spectating) {
+      if (is1v1Spectating) {
         // Increment opponent's live scoreboard bay as each ghost basket is made
         if (session.activePlayerIndex == 1) {
-          player1MatchScoreNotifier.value += points;
-        } else {
           player2MatchScoreNotifier.value += points;
+        } else {
+          player1MatchScoreNotifier.value += points;
         }
       }
       final event = ScoreEvent(
@@ -667,7 +709,7 @@ class BasketballGame extends Forge2DGame {
     _prepareTurn();
   }
 
-  /// Initiates or resumes an online asynchronous 1v1 match from a synced [CloudMatch].
+  /// Initiates or resumes an online 1v1 match from a synced [CloudMatch].
   void startCloudMatch(CloudMatch match, String myUid) {
     final session = MatchSession.fromCloudMatch(match, myUid);
     currentMatchConfig = session.config;
@@ -677,21 +719,167 @@ class BasketballGame extends Forge2DGame {
     player1MatchScoreNotifier.value = session.player1.totalScore;
     player2MatchScoreNotifier.value = session.player2.totalScore;
 
-    if (session.phase == MatchTurnPhase.watchingOpponentReplay) {
+    _setupCloudMatchSync(match, myUid);
+
+    if (session.phase == MatchTurnPhase.watchingLiveOpponent) {
+      startLiveSpectatorMode();
+    } else if (session.phase == MatchTurnPhase.watchingOpponentReplay) {
       startOpponentReplay();
     } else {
       startMatchTurn();
     }
   }
 
+  void _setupCloudMatchSync(CloudMatch match, String myUid) {
+    if (_currentSubscribedMatchId == match.id && _liveMatchSubscription != null) {
+      return;
+    }
+    _currentSubscribedMatchId = match.id;
+    _currentActiveTurnUid = match.activeTurnPlayerUid;
+
+    _liveMatchSubscription?.cancel();
+    _liveMatchSubscription = FirestoreMatchService.instance
+        .streamMatch(match.id)
+        .listen((updatedMatch) {
+      _onCloudMatchUpdated(updatedMatch, myUid);
+    });
+  }
+
+  void _onCloudMatchUpdated(CloudMatch? updatedMatch, String myUid) {
+    if (updatedMatch == null) return;
+    final session = matchSessionNotifier.value;
+    if (session == null || session.cloudMatchId != updatedMatch.id) return;
+
+    // Check if match was completed
+    if (updatedMatch.status == MatchStatus.completed) {
+      session.phase = MatchTurnPhase.matchComplete;
+      gameStateNotifier.value = GameModeState.gameOver;
+      player1MatchScoreNotifier.value = updatedMatch.player1.totalScore;
+      player2MatchScoreNotifier.value = updatedMatch.player2?.totalScore ?? 0;
+      matchSessionNotifier.notify();
+      return;
+    }
+
+    final isMyTurn = updatedMatch.isMyTurn(myUid);
+    final previousTurnUid = _currentActiveTurnUid;
+    _currentActiveTurnUid = updatedMatch.activeTurnPlayerUid;
+
+    // Detect turn alternation between players
+    if (previousTurnUid != null &&
+        previousTurnUid != updatedMatch.activeTurnPlayerUid &&
+        updatedMatch.activeTurnPlayerUid.isNotEmpty) {
+      session.currentRoundIndex =
+          (updatedMatch.currentRound - 1).clamp(0, session.totalRounds - 1);
+
+      // Trigger interstitial countdown
+      _triggerLiveTurnTransition(
+        isMyTurnNow: isMyTurn,
+        opponentName: session.opponentPlayer.name,
+        currentRound: updatedMatch.currentRound,
+        totalRounds: updatedMatch.totalRounds,
+        onFinished: () {
+          if (isMyTurn) {
+            startMatchTurn();
+          } else {
+            startLiveSpectatorMode();
+          }
+        },
+      );
+      return;
+    }
+
+    // Sync live scoreboard ticks if opponent is shooting and we are spectating
+    if (session.phase == MatchTurnPhase.watchingLiveOpponent &&
+        updatedMatch.liveShooterScore != null) {
+      final oppBase =
+          session.opponentPlayer.scoreUpToRound(session.currentRoundIndex);
+      final totalLive = oppBase + updatedMatch.liveShooterScore!;
+      if (session.activePlayerIndex == 1) {
+        if (totalLive > player2MatchScoreNotifier.value) {
+          player2MatchScoreNotifier.value = totalLive;
+        }
+      } else {
+        if (totalLive > player1MatchScoreNotifier.value) {
+          player1MatchScoreNotifier.value = totalLive;
+        }
+      }
+    }
+  }
+
+  void _triggerLiveTurnTransition({
+    required bool isMyTurnNow,
+    required String opponentName,
+    required int currentRound,
+    required int totalRounds,
+    required VoidCallback onFinished,
+  }) {
+    liveTransitionNotifier.value = LiveTransitionData(
+      isMyTurnNow: isMyTurnNow,
+      opponentName: opponentName,
+      currentRound: currentRound,
+      totalRounds: totalRounds,
+      onFinished: () {
+        liveTransitionNotifier.value = null;
+        onFinished();
+      },
+    );
+  }
+
+  void startLiveSpectatorMode() {
+    final session = matchSessionNotifier.value;
+    if (session == null) return;
+
+    session.phase = MatchTurnPhase.watchingLiveOpponent;
+    session.activePlayerIndex = 1; // Opponent is active shooter
+    matchSessionNotifier.notify();
+
+    _roundElapsedSeconds = 0.0;
+    _secondAccumulator = 0.0;
+    timeRemainingNotifier.value = currentRoundDurationSeconds;
+
+    player1MatchScoreNotifier.value = session.player1.totalScore;
+    player2MatchScoreNotifier.value = session.player2.totalScore;
+
+    // Clear live player balls so screen is pure courtside
+    final existingBalls = world.children.whereType<Basketball>().toList();
+    for (final b in existingBalls) {
+      b.removeFromParent();
+    }
+
+    if (isPaused) {
+      resumeGame();
+    }
+
+    gameStateNotifier.value = GameModeState.playing;
+
+    // Connect real-time live shot listener
+    _liveShotSubscription?.cancel();
+    if (session.cloudMatchId != null) {
+      _liveShotSubscription = FirestoreMatchService.instance
+          .streamLiveShots(session.cloudMatchId!)
+          .listen((shot) {
+        spawnLiveGhostShot(shot);
+      });
+    }
+  }
+
+  void spawnLiveGhostShot(RecordedShot shot) {
+    final ghost = GhostBasketball(shot: shot);
+    world.add(ghost);
+  }
+
   void startMatchTurn() {
     final session = matchSessionNotifier.value;
     if (session == null) return;
+
+    _liveShotSubscription?.cancel();
+    _liveShotSubscription = null;
 
     player1MatchScoreNotifier.value = session.player1.totalScore;
     player2MatchScoreNotifier.value = session.player2.totalScore;
 
     session.phase = MatchTurnPhase.playingTurn;
+    session.activePlayerIndex = 0; // YOU are active shooter
     matchSessionNotifier.notify();
     activeGhostTelemetry = null;
 
@@ -794,6 +982,14 @@ class BasketballGame extends Forge2DGame {
   }
 
   void exitToSoloMode() {
+    _liveShotSubscription?.cancel();
+    _liveShotSubscription = null;
+    _liveMatchSubscription?.cancel();
+    _liveMatchSubscription = null;
+    _currentSubscribedMatchId = null;
+    _currentActiveTurnUid = null;
+    liveTransitionNotifier.value = null;
+
     currentRoundDurationSeconds = roundDurationSeconds;
     matchSessionNotifier.value = null;
     player1MatchScoreNotifier.value = 0;
@@ -956,6 +1152,11 @@ class BasketballGame extends Forge2DGame {
   void _spawnReadyBall({bool animate = false}) {
     if (gameStateNotifier.value == GameModeState.gameOver) return;
 
+    final session = matchSessionNotifier.value;
+    if (session != null && session.phase == MatchTurnPhase.watchingLiveOpponent) {
+      return; // Do not spawn interactive balls when spectating live
+    }
+
     final spawnX = animate ? _pickNextSpawnX() : 0.0;
     final ball = Basketball(
       // Rest directly on the hardwood court floor at the chosen baseline spot
@@ -995,6 +1196,9 @@ class BasketballGame extends Forge2DGame {
 
   @override
   void onRemove() {
+    _liveShotSubscription?.cancel();
+    _liveMatchSubscription?.cancel();
+    liveTransitionNotifier.dispose();
     AudioEngine.dispose();
     scoreNotifier.dispose();
     streakNotifier.dispose();
