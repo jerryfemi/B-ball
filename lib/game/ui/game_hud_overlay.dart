@@ -18,6 +18,8 @@ import 'replay_hud_overlay.dart';
 import 'inbox/match_inbox_sheet.dart';
 import 'stadium_scoreboard.dart';
 import 'tour/onboarding_tour_overlay.dart';
+import 'match/live_turn_transition_overlay.dart';
+import 'reactions/live_floating_reactions_overlay.dart';
 
 /// Top-level Game HUD Overlay mounted via Flame's [GameWidget.overlayBuilderMap].
 class GameHudOverlay extends StatelessWidget {
@@ -182,6 +184,24 @@ class GameHudOverlay extends StatelessWidget {
               return OnboardingTourOverlay(game: game);
             }
             return const SizedBox.shrink();
+          },
+        ),
+
+        // 7. Live Floating Reactions Overlay (Left-court track + spectator banter dock)
+        LiveFloatingReactionsOverlay(game: game),
+
+        // 8. Live Turn Transition Interstitial Overlay (3-2-1 countdown)
+        ValueListenableBuilder<LiveTransitionData?>(
+          valueListenable: game.liveTransitionNotifier,
+          builder: (context, data, _) {
+            if (data == null) return const SizedBox.shrink();
+            return LiveTurnTransitionOverlay(
+              isMyTurnNow: data.isMyTurnNow,
+              opponentName: data.opponentName,
+              currentRound: data.currentRound,
+              totalRounds: data.totalRounds,
+              onFinished: data.onFinished,
+            );
           },
         ),
       ],
