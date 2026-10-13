@@ -46,8 +46,8 @@ class BallPhysics3D {
   static const double rimRadius = 0.27; // Calibrated to match drawn front rim art (~0.32m in Forge units)
   static const double rimTubeRadius = 0.02; // 20mm steel tube
 
-  // Backboard vertical plane in meters (matched 1:1 to visual art)
-  static const double backboardZ = 4.85;
+  // Backboard vertical plane in meters (matched 1:1 to visual art, 5.05m gives 28cm clearance behind rim)
+  static const double backboardZ = 5.05;
   static const double backboardMinX = -0.72;
   static const double backboardMaxX = 0.72;
   static const double backboardMinY = 2.95;
@@ -68,7 +68,7 @@ class BallPhysics3D {
 
   // Cylindrical free-standing pole bounds
   static const double poleX = 0.0;
-  static const double poleZ = 4.85;
+  static const double poleZ = 5.05;
   static const double poleRadius = 0.04;
   static const double poleMaxY = 3.05;
 
