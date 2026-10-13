@@ -132,7 +132,7 @@ class BackboardVisual extends PositionComponent {
   void _renderPole(Canvas canvas) {
     const poleWidth = 0.22;
     const topY = -0.30;
-    const bottomY = 8.22; // Hardwood floor entry depth under hoop at Z=4.85m (derived from camera)
+    const bottomY = 8.11; // Hardwood floor entry depth under hoop at Z=5.05m (derived from camera)
 
     final poleRect = Rect.fromLTRB(
       -poleWidth / 2,
