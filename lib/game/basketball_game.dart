@@ -750,12 +750,43 @@ class BasketballGame extends Forge2DGame {
     final session = matchSessionNotifier.value;
     if (session == null || session.cloudMatchId != updatedMatch.id) return;
 
+    // Dynamically connect Player 2 when they join via code or accept invite
+    if (session.isWaitingForOpponent && updatedMatch.player2 != null) {
+      session.isWaitingForOpponent = false;
+      session.player2 = session.player2.copyWith(
+        id: updatedMatch.player2!.uid,
+        name: updatedMatch.player2!.displayName,
+        avatar: updatedMatch.player2!.avatarEmoji,
+      );
+      currentMatchConfig = currentMatchConfig.copyWith(
+        player2Name: updatedMatch.player2!.displayName,
+        player2Avatar: updatedMatch.player2!.avatarEmoji,
+        player2Uid: updatedMatch.player2!.uid,
+      );
+      session.config = currentMatchConfig;
+      matchSessionNotifier.notify();
+    }
+
+    final isP1 = updatedMatch.player1.uid == myUid;
+    final myCloudPlayer = isP1 ? updatedMatch.player1 : updatedMatch.player2;
+    final oppCloudPlayer = isP1 ? updatedMatch.player2 : updatedMatch.player1;
+
+    // Synchronize round scores from cloud match
+    if (myCloudPlayer != null && myCloudPlayer.roundScores.isNotEmpty) {
+      session.player1.roundScores.clear();
+      session.player1.roundScores.addAll(myCloudPlayer.roundScores);
+    }
+    if (oppCloudPlayer != null && oppCloudPlayer.roundScores.isNotEmpty) {
+      session.player2.roundScores.clear();
+      session.player2.roundScores.addAll(oppCloudPlayer.roundScores);
+    }
+
     // Check if match was completed
     if (updatedMatch.status == MatchStatus.completed) {
       session.phase = MatchTurnPhase.matchComplete;
       gameStateNotifier.value = GameModeState.gameOver;
-      player1MatchScoreNotifier.value = updatedMatch.player1.totalScore;
-      player2MatchScoreNotifier.value = updatedMatch.player2?.totalScore ?? 0;
+      player1MatchScoreNotifier.value = session.player1.totalScore;
+      player2MatchScoreNotifier.value = session.player2.totalScore;
       matchSessionNotifier.notify();
       return;
     }
