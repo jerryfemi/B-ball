@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import '../game/match/match_config.dart';
 import '../game/telemetry/shot_telemetry.dart';
 import '../models/cloud_match.dart';
+import '../models/friend_profile.dart';
 import '../models/live_reaction_event.dart';
 import '../models/match_invite.dart';
 import 'auth_service.dart';
