@@ -10,6 +10,7 @@ import '../../../providers/app_providers.dart';
 import '../../../services/firestore_match_service.dart';
 import '../common/app_avatar.dart';
 import '../common/app_button.dart';
+import '../common/app_colors.dart';
 import '../common/app_modal_dialog.dart';
 
 /// Modal dialog presented to a player when receiving an incoming 1v1 match challenge.
@@ -68,7 +69,7 @@ class IncomingChallengeDialog extends HookConsumerWidget {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Failed to join match: $e'),
-              backgroundColor: const Color(0xFFEF4444),
+              backgroundColor: AppColors.accentRed,
             ),
           );
         }
@@ -93,7 +94,7 @@ class IncomingChallengeDialog extends HookConsumerWidget {
       maxWidth: 380.0,
       iconWidget: const Icon(
         Icons.sports_basketball_rounded,
-        color: Color(0xFFF59E0B),
+        color: AppColors.accentAmber,
         size: 22.0,
       ),
       title: 'CHALLENGE RECEIVED!',
@@ -111,9 +112,9 @@ class IncomingChallengeDialog extends HookConsumerWidget {
               vertical: 16.0,
             ),
             decoration: BoxDecoration(
-              color: const Color(0xFF1E2638),
+              color: AppColors.surfaceTile,
               borderRadius: BorderRadius.circular(16.0),
-              border: Border.all(color: const Color(0xFF334155)),
+              border: Border.all(color: AppColors.borderInput),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -126,24 +127,27 @@ class IncomingChallengeDialog extends HookConsumerWidget {
                       AppAvatar(
                         avatar: invite.hostAvatar,
                         size: 48.0,
-                        borderColor: const Color(0xFF38BDF8),
+                        borderColor: AppColors.accentElectricSky,
                         borderWidth: 2.0,
                       ),
                       const SizedBox(height: 6.0),
-                      Text(
-                        invite.hostName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 12.5,
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          invite.hostName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.textPrimary,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12.5,
+                          ),
                         ),
                       ),
                       const Text(
                         'HOST',
                         style: TextStyle(
-                          color: Color(0xFF38BDF8),
+                          color: AppColors.accentElectricSky,
                           fontSize: 9.5,
                           fontWeight: FontWeight.w800,
                         ),
@@ -153,22 +157,25 @@ class IncomingChallengeDialog extends HookConsumerWidget {
                 ),
 
                 // VS Pill
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8.0,
-                    vertical: 4.0,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0F172A),
-                    borderRadius: BorderRadius.circular(8.0),
-                    border: Border.all(color: const Color(0xFF334155)),
-                  ),
-                  child: const Text(
-                    'VS',
-                    style: TextStyle(
-                      color: Color(0xFFF59E0B),
-                      fontWeight: FontWeight.w900,
-                      fontSize: 13.0,
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8.0,
+                      vertical: 4.0,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.buttonDarkText,
+                      borderRadius: BorderRadius.circular(8.0),
+                      border: Border.all(color: AppColors.borderInput),
+                    ),
+                    child: const Text(
+                      'VS',
+                      style: TextStyle(
+                        color: AppColors.accentAmber,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 13.0,
+                      ),
                     ),
                   ),
                 ),
@@ -182,24 +189,27 @@ class IncomingChallengeDialog extends HookConsumerWidget {
                         avatar: user?.avatarEmoji ??
                             PlayerDescriptor.defaultAvatar,
                         size: 48.0,
-                        borderColor: const Color(0xFF00FFCC),
+                        borderColor: AppColors.accentNeonCyan,
                         borderWidth: 2.0,
                       ),
                       const SizedBox(height: 6.0),
-                      Text(
-                        user?.displayName ?? 'You',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 12.5,
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          user?.displayName ?? 'You',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.textPrimary,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12.5,
+                          ),
                         ),
                       ),
                       const Text(
                         'YOU',
                         style: TextStyle(
-                          color: Color(0xFF00FFCC),
+                          color: AppColors.accentNeonCyan,
                           fontSize: 9.5,
                           fontWeight: FontWeight.w800,
                         ),
@@ -220,17 +230,20 @@ class IncomingChallengeDialog extends HookConsumerWidget {
                 vertical: 6.0,
               ),
               decoration: BoxDecoration(
-                color: const Color(0xFF0F172A),
+                color: AppColors.buttonDarkText,
                 borderRadius: BorderRadius.circular(8.0),
-                border: Border.all(color: const Color(0xFF334155)),
+                border: Border.all(color: AppColors.borderInput),
               ),
-              child: Text(
-                '${invite.totalRounds} ROUNDS • ${invite.roundDurationSeconds}s • ${invite.difficulty.toUpperCase()}',
-                style: const TextStyle(
-                  color: Color(0xFF94A3B8),
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.8,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  '${invite.totalRounds} ROUNDS • ${invite.roundDurationSeconds}s • ${invite.difficulty.toUpperCase()}',
+                  style: const TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.8,
+                  ),
                 ),
               ),
             ),
@@ -240,8 +253,8 @@ class IncomingChallengeDialog extends HookConsumerWidget {
           // Accept Action CTA
           AppPrimaryButton(
             label: isAccepting.value ? 'JOINING ROOM...' : 'ACCEPT CHALLENGE ➔',
-            backgroundColor: const Color(0xFF00FFCC),
-            foregroundColor: const Color(0xFF0F172A),
+            backgroundColor: AppColors.accentNeonCyan,
+            foregroundColor: AppColors.buttonDarkText,
             iconData: Icons.sports_basketball_rounded,
             onPressed: isAccepting.value ? null : handleAccept,
           ),
@@ -251,8 +264,8 @@ class IncomingChallengeDialog extends HookConsumerWidget {
           OutlinedButton(
             onPressed: isAccepting.value ? null : handleDecline,
             style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFF94A3B8),
-              side: const BorderSide(color: Color(0xFF334155)),
+              foregroundColor: AppColors.textMuted,
+              side: const BorderSide(color: AppColors.borderInput),
               padding: const EdgeInsets.symmetric(vertical: 10.0),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12.0),
