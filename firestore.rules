@@ -28,6 +28,15 @@ service cloud.firestore {
         // The recipient can read, accept, or decline/delete the invite
         allow read, write: if isUser(userId);
       }
+
+      match /match_invites/{matchInviteId} {
+        // Any authenticated host can send a match challenge to this user
+        allow create: if isAuthenticated() && request.resource.data.hostUid == request.auth.uid;
+        // The recipient can read, update (to accept or decline), or delete
+        allow read, write: if isUser(userId);
+        // The host can read or update (to cancel)
+        allow read, update: if isAuthenticated() && (resource == null || resource.data.hostUid == request.auth.uid);
+      }
     }
 
     // Direct Friend Conversations
