@@ -8,6 +8,8 @@ import '../../../services/auth_service.dart';
 import '../../../services/firestore_match_service.dart';
 import '../../basketball_game.dart';
 import '../../match/match_session.dart';
+import '../common/app_avatar.dart';
+import '../common/app_colors.dart';
 
 /// Data class representing an active floating item in the courtside track.
 class _ActiveFloatingReaction {
@@ -53,6 +55,7 @@ class _LiveFloatingReactionsOverlayState
   StreamSubscription<LiveReactionEvent>? _reactionSubscription;
   String? _activeSubscribedMatchId;
   DateTime _lastSentTime = DateTime.fromMillisecondsSinceEpoch(0);
+  bool _isDockExpanded = false;
 
   // Reaction options
   static const List<String> _quickEmojis = ['🔥', '🧱', '🗑️', '😱', '👏'];
@@ -226,116 +229,183 @@ class _LiveFloatingReactionsOverlayState
           ),
         ),
 
-        // 2. Spectator Reactions Dock (Visible when spectating live)
+        // 2. Spectator Reactions Dock (Collapsible Streamer Strip on bottom-left)
         if (isSpectating)
           Positioned(
-            left: 16.0,
-            bottom: 24.0,
-            right: 16.0,
-            child: _buildSpectatorReactionDock(context),
+            left: 14.0,
+            bottom: 20.0,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              switchInCurve: Curves.easeOutBack,
+              switchOutCurve: Curves.easeInQuad,
+              transitionBuilder: (child, animation) {
+                return FadeTransition(
+                  opacity: animation,
+                  child: ScaleTransition(
+                    scale: animation,
+                    alignment: Alignment.bottomLeft,
+                    child: child,
+                  ),
+                );
+              },
+              child: _isDockExpanded
+                  ? _buildStreamerStrip(context)
+                  : _buildMinimizedPill(context),
+            ),
           ),
       ],
     );
   }
 
-  Widget _buildSpectatorReactionDock(BuildContext context) {
-    return Center(
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 420.0),
-        padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 10.0),
-        decoration: BoxDecoration(
-          color: const Color(0xE6090D16),
-          borderRadius: BorderRadius.circular(24.0),
-          border: Border.all(
-            color: const Color(0x3338BDF8),
-            width: 1.2,
-          ),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x88000000),
-              blurRadius: 20.0,
-              offset: Offset(0, 6),
-            ),
-          ],
+  /// Sleek dual-action minimized quick pill: [ 🔥 | ⌃ ]
+  /// Tap 🔥 sends instant reaction with zero delay; tap ⌃ expands full palette.
+  Widget _buildMinimizedPill(BuildContext context) {
+    return Container(
+      key: const ValueKey('minimized_pill'),
+      padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 3.0),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceCard.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(20.0),
+        border: Border.all(
+          color: AppColors.accentNeonCyan.withValues(alpha: 0.35),
+          width: 1.2,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Header Indicator: Live Spectator Badge
-            Row(
-              children: [
-                Container(
-                  width: 8.0,
-                  height: 8.0,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFEF4444),
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Color(0xCCEF4444),
-                        blurRadius: 6.0,
-                        spreadRadius: 1.0,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 6.0),
-                Text(
-                  'SPECTATOR BANTER',
-                  style: TextStyle(
-                    fontFamily: 'Outfit',
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.2,
-                    color: Colors.white.withValues(alpha: 0.75),
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  'Tap to react',
-                  style: TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 10.0,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.white.withValues(alpha: 0.4),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8.0),
-
-            // Top Row: 5 Quick Emojis
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: _quickEmojis.map((emoji) {
-                return _ReactionButton(
-                  content: emoji,
-                  isEmoji: true,
-                  onTap: () => _handleSendReaction(isEmoji: true, content: emoji),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 6.0),
-
-            // Bottom Row: Quick Text Taunt Pills
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              child: Row(
-                children: _quickTexts.map((text) {
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 6.0),
-                    child: _TextTauntPill(
-                      text: text,
-                      onTap: () => _handleSendReaction(isEmoji: false, content: text),
-                    ),
-                  );
-                }).toList(),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.45),
+            blurRadius: 10.0,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Quick-fire Fire Emoji button
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _handleSendReaction(isEmoji: true, content: '🔥'),
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+              child: Text(
+                '🔥',
+                style: TextStyle(fontSize: 18.0),
               ),
             ),
-          ],
+          ),
+          // Vertical micro-divider
+          Container(
+            width: 1.0,
+            height: 16.0,
+            color: AppColors.borderInput.withValues(alpha: 0.6),
+          ),
+          // Expand button
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              HapticFeedback.selectionClick();
+              setState(() => _isDockExpanded = true);
+            },
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 7.0, vertical: 4.0),
+              child: Icon(
+                Icons.keyboard_arrow_up_rounded,
+                color: AppColors.accentNeonCyan,
+                size: 20.0,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Template 1: Streamer Glass Strip (Ultra-compact 2-tier dock without BackdropFilter)
+  Widget _buildStreamerStrip(BuildContext context) {
+    final maxW = math.min(290.0, MediaQuery.of(context).size.width - 28.0);
+    return Container(
+      key: const ValueKey('expanded_dock'),
+      constraints: BoxConstraints(maxWidth: maxW),
+      padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 6.0),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceCard.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(16.0),
+        border: Border.all(
+          color: AppColors.accentNeonCyan.withValues(alpha: 0.30),
+          width: 1.2,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.55),
+            blurRadius: 14.0,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Top Row: Raw emojis without circle containers + minimize chevron
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              ..._quickEmojis.map((emoji) {
+                return _BorderlessEmojiButton(
+                  emoji: emoji,
+                  onTap: () => _handleSendReaction(isEmoji: true, content: emoji),
+                );
+              }),
+              // Minimize button
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  setState(() => _isDockExpanded = false);
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(4.0),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.08),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    color: AppColors.textMuted,
+                    size: 16.0,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4.0),
+          // Bottom Row: Clean typographic text taunt strip (no bulky pills)
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            child: Row(
+              children: [
+                for (int i = 0; i < _quickTexts.length; i++) ...[
+                  _TypographicTauntButton(
+                    text: _quickTexts[i],
+                    onTap: () => _handleSendReaction(isEmoji: false, content: _quickTexts[i]),
+                  ),
+                  if (i < _quickTexts.length - 1)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 6.0),
+                      child: Text(
+                        '•',
+                        style: TextStyle(
+                          color: AppColors.textMuted.withValues(alpha: 0.4),
+                          fontSize: 10.0,
+                        ),
+                      ),
+                    ),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -457,17 +527,17 @@ class _FloatingReactionBubbleState extends State<_FloatingReactionBubble>
     return Container(
       padding: const EdgeInsets.all(7.0),
       decoration: BoxDecoration(
-        color: const Color(0xCC0F172A),
+        color: AppColors.surfaceCard.withValues(alpha: 0.85),
         shape: BoxShape.circle,
         border: Border.all(
-          color: const Color(0x5538BDF8),
+          color: AppColors.accentElectricSky.withValues(alpha: 0.35),
           width: 1.5,
         ),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            color: Color(0x66000000),
+            color: Colors.black.withValues(alpha: 0.4),
             blurRadius: 10.0,
-            offset: Offset(0, 4),
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -482,37 +552,37 @@ class _FloatingReactionBubbleState extends State<_FloatingReactionBubble>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 6.0),
       decoration: BoxDecoration(
-        color: const Color(0xEA0F172A),
+        color: AppColors.surfaceCard.withValues(alpha: 0.92),
         borderRadius: BorderRadius.circular(16.0),
         border: Border.all(
-          color: const Color(0x6600FFCC),
+          color: AppColors.accentNeonCyan.withValues(alpha: 0.40),
           width: 1.2,
         ),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            color: Color(0x77000000),
+            color: Colors.black.withValues(alpha: 0.45),
             blurRadius: 12.0,
-            offset: Offset(0, 4),
+            offset: const Offset(0, 4),
           ),
         ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            widget.reaction.senderAvatar.isNotEmpty
-                ? widget.reaction.senderAvatar
-                : '👤',
-            style: const TextStyle(fontSize: 13.0),
+          AppAvatar(
+            avatar: widget.reaction.senderAvatar,
+            size: 18.0,
+            borderWidth: 1.0,
+            borderColor: AppColors.accentNeonCyan,
           ),
-          const SizedBox(width: 5.0),
+          const SizedBox(width: 6.0),
           Text(
             widget.reaction.content,
             style: const TextStyle(
               fontFamily: 'Outfit',
               fontSize: 12.5,
               fontWeight: FontWeight.w700,
-              color: Color(0xFF00FFCC),
+              color: AppColors.accentNeonCyan,
               letterSpacing: 0.3,
             ),
           ),
@@ -522,23 +592,21 @@ class _FloatingReactionBubbleState extends State<_FloatingReactionBubble>
   }
 }
 
-/// Bouncy round emoji button in the spectator dock.
-class _ReactionButton extends StatefulWidget {
-  final String content;
-  final bool isEmoji;
+/// Borderless bouncy emoji button in the spectator dock.
+class _BorderlessEmojiButton extends StatefulWidget {
+  final String emoji;
   final VoidCallback onTap;
 
-  const _ReactionButton({
-    required this.content,
-    required this.isEmoji,
+  const _BorderlessEmojiButton({
+    required this.emoji,
     required this.onTap,
   });
 
   @override
-  State<_ReactionButton> createState() => _ReactionButtonState();
+  State<_BorderlessEmojiButton> createState() => _BorderlessEmojiButtonState();
 }
 
-class _ReactionButtonState extends State<_ReactionButton>
+class _BorderlessEmojiButtonState extends State<_BorderlessEmojiButton>
     with SingleTickerProviderStateMixin {
   late final AnimationController _scaleController;
 
@@ -547,8 +615,8 @@ class _ReactionButtonState extends State<_ReactionButton>
     super.initState();
     _scaleController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 120),
-      lowerBound: 0.85,
+      duration: const Duration(milliseconds: 100),
+      lowerBound: 0.82,
       upperBound: 1.0,
       value: 1.0,
     );
@@ -571,26 +639,17 @@ class _ReactionButtonState extends State<_ReactionButton>
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTapDown: _onTapDown,
       onTapUp: _onTapUp,
       onTapCancel: _onTapCancel,
       child: ScaleTransition(
         scale: _scaleController,
-        child: Container(
-          width: 44.0,
-          height: 44.0,
-          decoration: BoxDecoration(
-            color: const Color(0x33FFFFFF),
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: const Color(0x2BFFFFFF),
-              width: 1.0,
-            ),
-          ),
-          alignment: Alignment.center,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 3.0),
           child: Text(
-            widget.content,
-            style: const TextStyle(fontSize: 22.0),
+            widget.emoji,
+            style: const TextStyle(fontSize: 21.0),
           ),
         ),
       ),
@@ -598,21 +657,21 @@ class _ReactionButtonState extends State<_ReactionButton>
   }
 }
 
-/// Frosted-glass text taunt pill in the spectator dock.
-class _TextTauntPill extends StatefulWidget {
+/// Clean typographic text taunt button in the spectator dock (no bulky pills).
+class _TypographicTauntButton extends StatefulWidget {
   final String text;
   final VoidCallback onTap;
 
-  const _TextTauntPill({
+  const _TypographicTauntButton({
     required this.text,
     required this.onTap,
   });
 
   @override
-  State<_TextTauntPill> createState() => _TextTauntPillState();
+  State<_TypographicTauntButton> createState() => _TypographicTauntButtonState();
 }
 
-class _TextTauntPillState extends State<_TextTauntPill>
+class _TypographicTauntButtonState extends State<_TypographicTauntButton>
     with SingleTickerProviderStateMixin {
   late final AnimationController _scaleController;
 
@@ -621,7 +680,7 @@ class _TextTauntPillState extends State<_TextTauntPill>
     super.initState();
     _scaleController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 100),
+      duration: const Duration(milliseconds: 90),
       lowerBound: 0.90,
       upperBound: 1.0,
       value: 1.0,
@@ -637,6 +696,7 @@ class _TextTauntPillState extends State<_TextTauntPill>
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTapDown: (_) => _scaleController.reverse(),
       onTapUp: (_) {
         _scaleController.forward();
@@ -645,23 +705,15 @@ class _TextTauntPillState extends State<_TextTauntPill>
       onTapCancel: () => _scaleController.forward(),
       child: ScaleTransition(
         scale: _scaleController,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 11.0, vertical: 5.5),
-          decoration: BoxDecoration(
-            color: const Color(0x2638BDF8),
-            borderRadius: BorderRadius.circular(14.0),
-            border: Border.all(
-              color: const Color(0x4438BDF8),
-              width: 1.0,
-            ),
-          ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2.0, horizontal: 2.0),
           child: Text(
             widget.text,
             style: const TextStyle(
               fontFamily: 'Outfit',
               fontSize: 11.5,
               fontWeight: FontWeight.w600,
-              color: Color(0xFFBAE6FD),
+              color: AppColors.accentNeonCyan,
               letterSpacing: 0.2,
             ),
           ),
