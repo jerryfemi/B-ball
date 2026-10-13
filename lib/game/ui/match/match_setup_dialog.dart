@@ -109,10 +109,24 @@ class MatchSetupDialog extends HookWidget {
 
     void onStartPressed() {
       HapticFeedback.mediumImpact();
+      if (opponentMode.value == 1 && selectedFriend.value == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please select a friend to challenge, or switch to Open Code.'),
+            backgroundColor: Color(0xFFEF4444),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+
       final profile = AuthService.instance.currentUser;
       final myName = profile?.displayName ?? 'Player';
       final myAvatar =
           profile?.avatarEmoji ?? PlayerDescriptor.defaultAvatar;
+
+      final isFriendMode =
+          opponentMode.value == 1 && selectedFriend.value != null;
 
       final config = MatchConfig(
         totalRounds: selectedRounds.value,
@@ -121,31 +135,28 @@ class MatchSetupDialog extends HookWidget {
         player1Name: myName,
         player1Avatar: myAvatar,
         player2Name:
-            opponentMode.value == 1 && selectedFriend.value != null
-                ? selectedFriend.value!.displayName
-                : 'Opponent',
+            isFriendMode ? selectedFriend.value!.displayName : 'Opponent',
         player2Avatar:
-            opponentMode.value == 1 && selectedFriend.value != null
-                ? selectedFriend.value!.avatarEmoji
-                : '⏳',
-        player2Uid:
-            opponentMode.value == 1 ? selectedFriend.value?.uid : null,
-        opponentFriend:
-            opponentMode.value == 1 ? selectedFriend.value : null,
-        precreatedMatch: precreatedMatch.value,
+            isFriendMode ? selectedFriend.value!.avatarEmoji : '⏳',
+        player2Uid: isFriendMode ? selectedFriend.value?.uid : null,
+        opponentFriend: isFriendMode ? selectedFriend.value : null,
+        precreatedMatch: isFriendMode ? null : precreatedMatch.value,
       );
 
       Navigator.of(context).pop(config);
     }
 
     String getStartButtonLabel() {
-      if (opponentMode.value == 1 && selectedFriend.value != null) {
-        return 'CHALLENGE ${selectedFriend.value!.displayName.toUpperCase()} ➔';
+      if (opponentMode.value == 1) {
+        if (selectedFriend.value != null) {
+          return 'CHALLENGE ${selectedFriend.value!.displayName.toUpperCase()} ➔';
+        }
+        return 'SELECT A FRIEND TO CHALLENGE';
       }
       if (precreatedMatch.value != null) {
-        return 'START ROUND 1 ➔';
+        return 'ENTER MATCH LOBBY ➔';
       }
-      return 'START 1V1 MATCH';
+      return 'CREATE 1V1 MATCH';
     }
 
     final profile = AuthService.instance.currentUser;
