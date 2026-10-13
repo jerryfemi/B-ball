@@ -46,8 +46,8 @@ class BallPhysics3D {
   static const double rimRadius = 0.27; // Calibrated to match drawn front rim art (~0.32m in Forge units)
   static const double rimTubeRadius = 0.02; // 20mm steel tube
 
-  // Backboard vertical plane in meters (matched 1:1 to visual art, 5.05m gives 28cm clearance behind rim)
-  static const double backboardZ = 5.05;
+  // Backboard vertical plane in meters (matched 1:1 to visual art, 4.96m gives 19cm clearance behind rim)
+  static const double backboardZ = 4.96;
   static const double backboardMinX = -0.72;
   static const double backboardMaxX = 0.72;
   static const double backboardMinY = 2.95;
@@ -68,7 +68,7 @@ class BallPhysics3D {
 
   // Cylindrical free-standing pole bounds
   static const double poleX = 0.0;
-  static const double poleZ = 5.05;
+  static const double poleZ = 4.96;
   static const double poleRadius = 0.04;
   static const double poleMaxY = 3.05;
 
@@ -198,6 +198,7 @@ class BallPhysics3D {
 
     // 4. Rim Torus Collision Detection & Response
     _checkRimTorusCollision();
+    _checkMountingBracketCollision();
 
     // 5. Backboard Plane Collision Detection & Response
     _checkBackboardCollision();
@@ -268,6 +269,25 @@ class BallPhysics3D {
     }
   }
 
+  /// Solid mounting flange connecting the back rim to the backboard faceplate.
+  /// Forward-slanted deflector wedge strictly prevents balls from wedging or resting
+  /// between the back rim and backboard.
+  void _checkMountingBracketCollision() {
+    const double bracketMinZ = 4.77;
+    final double bracketMaxZ = backboardZ;
+    if (pos.z + radius >= bracketMinZ && pos.z - radius <= bracketMaxZ) {
+      if (pos.x.abs() <= 0.16 &&
+          pos.y >= rimCenter.y - 0.05 &&
+          pos.y <= rimCenter.y + 0.25) {
+        if (vel.y < 0) {
+          pos.y = rimCenter.y + 0.25 + 0.001;
+          vel.y = math.max(-vel.y * 0.45, 0.35);
+          vel.z = math.min(vel.z, -1.2);
+        }
+      }
+    }
+  }
+
   /// 3D Vertical Backboard collision detection and response.
   /// Features two-sided collision (front glass bank + rear structure deflection)
   /// to strictly prevent balls from phasing through the backboard into the hoop.
@@ -298,9 +318,16 @@ class BallPhysics3D {
 
           if (isShootersSquare) {
             // Dynamic Bank Shot Guidance:
-            // Proportional soft nudges centering lateral offset and soft downward velocity
+            // 1. Proportional lateral centering nudge
             vel.x -= pos.x * 1.5;
-            vel.y -= 0.35;
+            // 2. Controlled vertical descent arc (prevents aggressive downward plummet)
+            if (vel.y > 0.1) {
+              vel.y = math.min(vel.y * 0.35, 0.05);
+            } else {
+              vel.y = math.max(vel.y - 0.15, -1.1);
+            }
+            // 3. Forward propulsion toward the hoop center (Z = 4.50m)
+            vel.z = math.min(vel.z, -1.65);
           }
         } else if (vel.z < 0) {
           // Rear-face collision (ball is behind the backboard returning forward)
