@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../models/cloud_match.dart';
 import '../../../../models/friend_profile.dart';
 import '../../common/app_avatar.dart';
+import '../../common/app_colors.dart';
 
 /// Card tile representing an existing friend in the Friends Hub with match status indicator and chat/play triggers.
 class FriendCardTile extends StatelessWidget {
@@ -28,12 +29,11 @@ class FriendCardTile extends StatelessWidget {
     final isMyTurn = hasActiveMatch && match!.isMyTurn(myUid);
 
     return Material(
-      color: isMyTurn ? const Color(0xFF19253B) : const Color(0xFF161F2E),
-      borderRadius: BorderRadius.circular(16),
+      color: isMyTurn ? AppColors.surfaceTile : AppColors.surfaceCard,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(
-          color: isMyTurn ? const Color(0xFF38BDF8) : const Color(0xFF26334A),
+          color: isMyTurn ? AppColors.accentElectricSky : AppColors.borderSubtle,
           width: isMyTurn ? 1.5 : 1.0,
         ),
       ),
@@ -44,13 +44,13 @@ class FriendCardTile extends StatelessWidget {
         leading: AppAvatar(
           avatar: friend.avatarEmoji,
           size: 38,
-          borderColor: const Color(0xFF38BDF8),
+          borderColor: AppColors.accentElectricSky,
           borderWidth: 1.5,
         ),
         title: Text(
           friend.displayName,
           style: const TextStyle(
-            color: Colors.white,
+            color: AppColors.textPrimary,
             fontWeight: FontWeight.w800,
             fontSize: 14,
           ),
@@ -62,7 +62,7 @@ class FriendCardTile extends StatelessWidget {
                     : '⏳ Waiting for opponent (Round ${match!.currentRound})')
               : 'Tap to chat & 1v1 challenge 🏀',
           style: TextStyle(
-            color: isMyTurn ? const Color(0xFF38BDF8) : const Color(0xFF94A3B8),
+            color: isMyTurn ? AppColors.accentElectricSky : AppColors.textMuted,
             fontSize: 11.5,
             fontWeight: isMyTurn ? FontWeight.w700 : FontWeight.w400,
           ),
@@ -74,8 +74,8 @@ class FriendCardTile extends StatelessWidget {
               ElevatedButton(
                 onPressed: () => onPlayMatch(match!),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF38BDF8),
-                  foregroundColor: const Color(0xFF0F172A),
+                  backgroundColor: AppColors.accentElectricSky,
+                  foregroundColor: AppColors.buttonDarkText,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 10,
                     vertical: 6,
@@ -93,7 +93,7 @@ class FriendCardTile extends StatelessWidget {
               IconButton(
                 icon: const Icon(
                   Icons.chat_bubble_outline_rounded,
-                  color: Color(0xFF38BDF8),
+                  color: AppColors.accentElectricSky,
                   size: 18,
                 ),
                 tooltip: 'Chat',
