@@ -58,6 +58,11 @@ class BallPhysics3D {
   static const double shootersSquareMinY = 3.18;
   static const double shootersSquareMaxY = 3.42;
 
+  // Generous backboard bank funnel target bounds (covers central bank area: 84cm wide, Y=3.08m..3.65m)
+  static const double bankZoneHalfWidth = 0.42;
+  static const double bankZoneMinY = 3.08;
+  static const double bankZoneMaxY = 3.65;
+
   // Nylon net bounds
   static const double netBottomY = 2.60;
 
@@ -198,7 +203,6 @@ class BallPhysics3D {
 
     // 4. Rim Torus Collision Detection & Response
     _checkRimTorusCollision();
-    _checkMountingBracketCollision();
 
     // 5. Backboard Plane Collision Detection & Response
     _checkBackboardCollision();
@@ -256,35 +260,25 @@ class BallPhysics3D {
       pos.y = qy + ny * (contactRadius + 0.001);
       pos.z = qz + nz * (contactRadius + 0.001);
 
-      // Unified contact: steel rim (e=0.60, μ=0.25)
+      // Unified contact: soft shock-absorbing rim (e=0.44, μ=0.28)
       // Backspin "kiss and drop" on back rim emerges naturally from friction coupling.
       // Front rim grazes that should roll in DO roll in — the normal handles it.
       // Side rattles produce unique bounces based on contact geometry.
       final impactSpeed = vel.length;
       final n = Vector3(nx, ny, nz);
-      _contact(n, e: 0.60, mu: 0.25);
+      _contact(n, e: 0.44, mu: 0.28);
+
+      // Shooter's Touch: soft grazes lose excess upward velocity and roll inward toward the cylinder
+      if (impactSpeed < 3.2 && pos.y >= rimCenter.y - 0.05) {
+        vel.y = math.min(vel.y, 0.22);
+        final toCenter = (rimCenter - pos)..y = 0.0;
+        if (toCenter.length > 1e-4) {
+          vel.addScaled(toCenter.normalized(), 0.38);
+        }
+      }
 
       hasClankedRim = true;
       onRimImpact?.call(impactSpeed);
-    }
-  }
-
-  /// Solid mounting flange connecting the back rim to the backboard faceplate.
-  /// Forward-slanted deflector wedge strictly prevents balls from wedging or resting
-  /// between the back rim and backboard.
-  void _checkMountingBracketCollision() {
-    const double bracketMinZ = 4.77;
-    final double bracketMaxZ = backboardZ;
-    if (pos.z + radius >= bracketMinZ && pos.z - radius <= bracketMaxZ) {
-      if (pos.x.abs() <= 0.16 &&
-          pos.y >= rimCenter.y - 0.05 &&
-          pos.y <= rimCenter.y + 0.25) {
-        if (vel.y < 0) {
-          pos.y = rimCenter.y + 0.25 + 0.001;
-          vel.y = math.max(-vel.y * 0.45, 0.35);
-          vel.z = math.min(vel.z, -1.2);
-        }
-      }
     }
   }
 
@@ -306,17 +300,17 @@ class BallPhysics3D {
           hasBankedBackboard = true;
           final impactSpeed = vel.length;
 
-          // Check if hitting inside the regulation shooter's square
-          final isShootersSquare = pos.x.abs() <= shootersSquareHalfWidth &&
-              pos.y >= shootersSquareMinY &&
-              pos.y <= shootersSquareMaxY;
+          // Check if hitting inside the central backboard bank zone
+          final isBankZone = pos.x.abs() <= bankZoneHalfWidth &&
+              pos.y >= bankZoneMinY &&
+              pos.y <= bankZoneMaxY;
 
           // Physical tempered-glass impulse contact (e=0.62, μ=0.12)
           final n = Vector3(0.0, 0.0, -1.0);
           _contact(n, e: 0.62, mu: 0.12);
           onBackboardImpact?.call(impactSpeed);
 
-          if (isShootersSquare) {
+          if (isBankZone) {
             // Dynamic Bank Shot Guidance:
             // 1. Proportional lateral centering nudge
             vel.x -= pos.x * 1.5;
