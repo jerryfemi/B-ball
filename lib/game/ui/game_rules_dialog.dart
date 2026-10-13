@@ -36,7 +36,43 @@ class GameRulesDialog extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const _SectionHeader(title: 'HUD & GAME CONTROLS'),
+                  _SectionHeader(
+                    title: 'HUD & GAME CONTROLS',
+                    trailing: game != null
+                        ? TextButton(
+                            onPressed: () {
+                              Navigator.of(context).pop();
+                              game!.isTourActiveNotifier.value = true;
+                            },
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6.0,
+                                vertical: 2.0,
+                              ),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.play_circle_outline_rounded,
+                                  size: 14.0,
+                                  color: Color(0xFF38BDF8),
+                                ),
+                                SizedBox(width: 4.0),
+                                Text(
+                                  'Replay',
+                                  style: TextStyle(
+                                    color: Color(0xFF38BDF8),
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : null,
+                  ),
                   const SizedBox(height: 8.0),
                   const _RuleRow(
                     icon: '👤',
@@ -64,6 +100,59 @@ class GameRulesDialog extends StatelessWidget {
                     title: 'Pause & Sound Controls',
                     desc:
                         'Tap pause to adjust SFX/music volume, mute, or restart your solo round.',
+                  ),
+                  const SizedBox(height: 10.0),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      const Text('🎯', style: TextStyle(fontSize: 18.0)),
+                      const SizedBox(width: 12.0),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Visual Court Tour',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 13.0,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            SizedBox(height: 2.0),
+                            Text(
+                              'Tap "Replay" to see in-game spotlight walkthrough on court.',
+                              style: TextStyle(
+                                color: Color(0xFF94A3B8),
+                                fontSize: 11.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (game != null)
+                        TextButton(
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            game!.isTourActiveNotifier.value = true;
+                          },
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8.0,
+                              vertical: 4.0,
+                            ),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          child: const Text(
+                            'Replay',
+                            style: TextStyle(
+                              color: Color(0xFF38BDF8),
+                              fontWeight: FontWeight.w900,
+                              fontSize: 12.5,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                   const SizedBox(height: 16.0),
                   const _SectionHeader(title: 'SHOOTING & SCORING'),
@@ -129,40 +218,7 @@ class GameRulesDialog extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 14.0),
-          if (game != null) ...[
-            OutlinedButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                game!.isTourActiveNotifier.value = true;
-              },
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: Color(0x6638BDF8), width: 1.0),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12.0),
-                ),
-                backgroundColor: const Color(0x180284C7),
-                padding: const EdgeInsets.symmetric(vertical: 12.0),
-              ),
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.tour_rounded, size: 16.0, color: Color(0xFF38BDF8)),
-                  SizedBox(width: 8.0),
-                  Text(
-                    'REPLAY CONTROLS TOUR',
-                    style: TextStyle(
-                      color: Color(0xFF38BDF8),
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.8,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8.0),
-          ],
+          const SizedBox(height: 16.0),
           AppPrimaryButton(
             label: 'GOT IT',
             backgroundColor: AppColors.accentEmerald,
@@ -177,26 +233,36 @@ class GameRulesDialog extends StatelessWidget {
 
 class _SectionHeader extends StatelessWidget {
   final String title;
-  const _SectionHeader({required this.title});
+  final Widget? trailing;
+
+  const _SectionHeader({required this.title, this.trailing});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 3.0),
-      decoration: BoxDecoration(
-        color: const Color(0x2238BDF8),
-        borderRadius: BorderRadius.circular(6.0),
-        border: Border.all(color: const Color(0x4438BDF8), width: 1.0),
-      ),
-      child: Text(
-        title,
-        style: const TextStyle(
-          color: Color(0xFF38BDF8),
-          fontSize: 10.5,
-          fontWeight: FontWeight.w900,
-          letterSpacing: 1.0,
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 3.0),
+          decoration: BoxDecoration(
+            color: const Color(0x2238BDF8),
+            borderRadius: BorderRadius.circular(6.0),
+            border: Border.all(color: const Color(0x4438BDF8), width: 1.0),
+          ),
+          child: Text(
+            title,
+            style: const TextStyle(
+              color: Color(0xFF38BDF8),
+              fontSize: 10.5,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.0,
+            ),
+          ),
         ),
-      ),
+        if (trailing != null) ...[
+          const Spacer(),
+          trailing!,
+        ],
+      ],
     );
   }
 }

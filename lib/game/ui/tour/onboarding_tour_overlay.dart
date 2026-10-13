@@ -18,6 +18,7 @@ class OnboardingTourOverlay extends StatefulWidget {
 class _OnboardingTourOverlayState extends State<OnboardingTourOverlay>
     with SingleTickerProviderStateMixin {
   int _currentStep = 0;
+  bool _ready = false;
   late final AnimationController _pulseController;
   late final Animation<double> _pulseAnimation;
 
@@ -32,6 +33,12 @@ class _OnboardingTourOverlayState extends State<OnboardingTourOverlay>
     _pulseAnimation = Tween<double>(begin: 0.95, end: 1.08).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
+
+    // Wait for the scoreboard / HUD widgets to finish layout so that
+    // GlobalKey.findRenderObject() returns accurate positions.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() => _ready = true);
+    });
   }
 
   @override
@@ -65,51 +72,104 @@ class _OnboardingTourOverlayState extends State<OnboardingTourOverlay>
     }
   }
 
+  Offset _getTargetCenter(Size size, double topPadding) {
+    if (_currentStep == 0) {
+      final ctx = widget.game.playerAvatarKey.currentContext;
+      if (ctx != null) {
+        final box = ctx.findRenderObject() as RenderBox?;
+        if (box != null && box.hasSize) {
+          final pos = box.localToGlobal(Offset.zero);
+          return pos + Offset(box.size.width / 2.0, box.size.height / 2.0);
+        }
+      }
+      return Offset(size.width * 0.15, topPadding + 42.0);
+    } else if (_currentStep == 1) {
+      final ctx = widget.game.rightFlankKey.currentContext;
+      if (ctx != null) {
+        final box = ctx.findRenderObject() as RenderBox?;
+        if (box != null && box.hasSize) {
+          final pos = box.localToGlobal(Offset.zero);
+          return pos + Offset(box.size.width / 2.0, box.size.height / 2.0);
+        }
+      }
+      return Offset(size.width * 0.85, topPadding + 42.0);
+    } else {
+      // Step 2: Basketball on court floor
+      return Offset(
+        size.width / 2.0,
+        size.height - (size.height * 0.11).clamp(70.0, 95.0),
+      );
+    }
+  }
+
+  double _getTargetRadius(Size size) {
+    if (_currentStep == 0) {
+      final ctx = widget.game.playerAvatarKey.currentContext;
+      if (ctx != null) {
+        final box = ctx.findRenderObject() as RenderBox?;
+        if (box != null && box.hasSize) {
+          return (box.size.width / 2.0) + 4.0;
+        }
+      }
+      return (size.width * 0.065).clamp(22.0, 30.0);
+    } else if (_currentStep == 1) {
+      final ctx = widget.game.rightFlankKey.currentContext;
+      if (ctx != null) {
+        final box = ctx.findRenderObject() as RenderBox?;
+        if (box != null && box.hasSize) {
+          return (box.size.width / 2.0) + 4.0;
+        }
+      }
+      return (size.width * 0.065).clamp(22.0, 30.0);
+    } else {
+      return (size.width * 0.11).clamp(36.0, 48.0);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
     final topPadding = MediaQuery.paddingOf(context).top;
 
-    // Target positions based on standard HUD layout
-    final spotlightTargets = [
-      // Step 0: Player Avatar (Top Left)
-      Offset(44.0, topPadding + 36.0),
-      // Step 1: Opponent Bay / Chat (Top Right)
-      Offset(size.width - 44.0, topPadding + 36.0),
-      // Step 2: Basketball Launch Zone (Bottom Center)
-      Offset(size.width / 2.0, size.height - 90.0),
-    ];
-
-    final spotlightRadius = [30.0, 30.0, 48.0];
-    final currentTarget = spotlightTargets[_currentStep];
-    final currentRadius = spotlightRadius[_currentStep];
+    // Don't render the spotlight until the layout pass is complete so
+    // GlobalKey positions are accurate.
+    if (!_ready) {
+      return const ColoredBox(
+        color: Color(0xD805070C),
+        child: SizedBox.expand(),
+      );
+    }
 
     return Material(
       color: Colors.transparent,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          // 1. Semi-transparent backdrop with spotlight cutout
-          CustomPaint(
-            size: size,
-            painter: _SpotlightPainter(
-              target: currentTarget,
-              radius: currentRadius,
-              pulseScale: _pulseAnimation.value,
-            ),
-          ),
+      child: AnimatedBuilder(
+        animation: _pulseAnimation,
+        builder: (context, _) {
+          final currentTarget = _getTargetCenter(size, topPadding);
+          final currentRadius = _getTargetRadius(size);
+          final pulse = _pulseAnimation.value;
 
-          // 2. Animated Pulse Ring around the target
-          Positioned(
-            left: currentTarget.dx - (currentRadius * 1.3),
-            top: currentTarget.dy - (currentRadius * 1.3),
-            child: IgnorePointer(
-              child: AnimatedBuilder(
-                animation: _pulseAnimation,
-                builder: (context, _) {
-                  return Container(
-                    width: currentRadius * 2.6 * _pulseAnimation.value,
-                    height: currentRadius * 2.6 * _pulseAnimation.value,
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              // 1. Semi-transparent backdrop with spotlight cutout
+              CustomPaint(
+                size: size,
+                painter: _SpotlightPainter(
+                  target: currentTarget,
+                  radius: currentRadius,
+                  pulseScale: pulse,
+                ),
+              ),
+
+              // 2. Animated Pulse Ring directly aligned with cutout
+              Positioned(
+                left: currentTarget.dx - (currentRadius * pulse),
+                top: currentTarget.dy - (currentRadius * pulse),
+                child: IgnorePointer(
+                  child: Container(
+                    width: currentRadius * 2.0 * pulse,
+                    height: currentRadius * 2.0 * pulse,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(
@@ -124,15 +184,15 @@ class _OnboardingTourOverlayState extends State<OnboardingTourOverlay>
                         ),
                       ],
                     ),
-                  );
-                },
+                  ),
+                ),
               ),
-            ),
-          ),
 
-          // 3. Tooltip Card
-          _buildTooltipCard(context, size, topPadding),
-        ],
+              // 3. Tooltip Card
+              _buildTooltipCard(context, size, topPadding, currentTarget, currentRadius),
+            ],
+          );
+        },
       ),
     );
   }
@@ -141,30 +201,38 @@ class _OnboardingTourOverlayState extends State<OnboardingTourOverlay>
     BuildContext context,
     Size size,
     double topPadding,
+    Offset currentTarget,
+    double currentRadius,
   ) {
     final bool isBottomStep = _currentStep == 2;
+    final topCardPos = (currentTarget.dy + currentRadius + 18.0).clamp(
+      topPadding + 65.0,
+      size.height - 240.0,
+    );
+    final bottomCardPos =
+        ((size.height - currentTarget.dy) + currentRadius + 18.0).clamp(
+      120.0,
+      size.height - 240.0,
+    );
 
     final stepsData = [
       _TourStepData(
         stepNumber: '1 OF 3',
         icon: '👤',
         title: 'YOUR PROFILE & FRIENDS',
-        desc:
-            'Tap your avatar to open your Profile, Friends Hub, and active invites. It pulses when it is your turn to shoot!',
+        desc: 'Tap your avatar to open your Profile, Friends Hub, and active invites. It pulses when you have a notification',
       ),
       _TourStepData(
         stepNumber: '2 OF 3',
         icon: '💬',
         title: '1V1 MATCHES & CHAT',
-        desc:
-            'Tap your opponent\'s avatar during 1v1 online showdowns to trash-talk and send live in-game messages!',
+        desc: 'Tap your opponent\'s avatar during 1v1 online showdowns to send live in-game messages!',
       ),
       _TourStepData(
         stepNumber: '3 OF 3',
         icon: '🏀',
         title: 'SWIPE UP TO SHOOT',
-        desc:
-            'Flick from the court floor toward the hoop with finger speed and angle. Clean swishes and bank shots score 3 PTS!',
+        desc: 'Flick from the court floor toward the hoop with finger speed and angle. Clean swishes and bank shots score 3 PTS!',
       ),
     ];
 
@@ -180,10 +248,7 @@ class _OnboardingTourOverlayState extends State<OnboardingTourOverlay>
         decoration: BoxDecoration(
           color: const Color(0xF2090D16),
           borderRadius: BorderRadius.circular(22.0),
-          border: Border.all(
-            color: const Color(0x6638BDF8),
-            width: 1.4,
-          ),
+          border: Border.all(color: const Color(0x6638BDF8), width: 1.4),
           boxShadow: const [
             BoxShadow(
               color: Color(0x99000000),
@@ -223,10 +288,7 @@ class _OnboardingTourOverlayState extends State<OnboardingTourOverlay>
                   ),
                 ),
                 const Spacer(),
-                Text(
-                  currentData.icon,
-                  style: const TextStyle(fontSize: 20.0),
-                ),
+                Text(currentData.icon, style: const TextStyle(fontSize: 20.0)),
               ],
             ),
             const SizedBox(height: 10.0),
@@ -362,14 +424,10 @@ class _SpotlightPainter extends CustomPainter {
     final backgroundPaint = Paint()..color = const Color(0xD805070C);
 
     // Create a path covering the full screen, with a circle cut out at target
-    final fullPath = Path()..addRect(Rect.fromLTWH(0, 0, size.width, size.height));
+    final fullPath = Path()
+      ..addRect(Rect.fromLTWH(0, 0, size.width, size.height));
     final spotlightPath = Path()
-      ..addOval(
-        Rect.fromCircle(
-          center: target,
-          radius: radius * pulseScale,
-        ),
-      );
+      ..addOval(Rect.fromCircle(center: target, radius: radius * pulseScale));
 
     final combinedPath = Path.combine(
       PathOperation.difference,

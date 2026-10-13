@@ -151,6 +151,11 @@ class BasketballGame extends Forge2DGame {
       ValueNotifier<int>(roundDurationSeconds);
   final ValueNotifier<int> bestScoreNotifier = ValueNotifier<int>(0);
   final ValueNotifier<bool> isTourActiveNotifier = ValueNotifier<bool>(false);
+
+  /// GlobalKeys to locate scoreboard widgets dynamically for tour spotlight
+  final GlobalKey playerAvatarKey = GlobalKey();
+  final GlobalKey rightFlankKey = GlobalKey();
+
   final ValueNotifier<GameModeState> gameStateNotifier =
       ValueNotifier<GameModeState>(GameModeState.ready);
   final ValueNotifier<bool> isPausedNotifier = ValueNotifier<bool>(false);

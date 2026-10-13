@@ -1,11 +1,12 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flame_audio/flame_audio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 /// Centralized audio and haptics coordinator for basketball collisions,
-/// net swishes, floor bounces, and round-ending buzzers.
+/// net swishes, floor bounces, round-ending buzzers, and background music.
 ///
 /// Performance architecture:
 /// - **Pre-Warmed Player Pooling:** Fixed pools with [minPlayers] matching [maxPlayers]
@@ -15,29 +16,38 @@ import 'package:flutter/services.dart';
 ///   and wall-clock shifts during the 240 Hz physics substep loop.
 /// - **Velocity Gating:** Minimum impact speed thresholds prevent
 ///   trivially soft micro-collisions from ever reaching the audio pipeline.
+/// - **Background Music Jukebox:** 7 tracks played in random shuffle order,
+///   auto-advancing on completion, with independent volume control.
 class AudioEngine {
-  static final ValueNotifier<bool> isMutedNotifier =
-      ValueNotifier<bool>(false);
+  static final ValueNotifier<bool> isMutedNotifier = ValueNotifier<bool>(false);
   static bool get isMuted => isMutedNotifier.value;
   static set isMuted(bool value) => isMutedNotifier.value = value;
 
   /// Volume scale for sound effects (0.0 to 1.0).
-  static final ValueNotifier<double> sfxVolumeNotifier =
-      ValueNotifier<double>(0.85);
+  static final ValueNotifier<double> sfxVolumeNotifier = ValueNotifier<double>(
+    0.65,
+  );
   static double get sfxVolume => sfxVolumeNotifier.value;
   static set sfxVolume(double value) =>
       sfxVolumeNotifier.value = value.clamp(0.0, 1.0);
 
-  /// Volume scale for background music (0.0 to 1.0).
+  /// Volume scale for background music (0.0 to 1.0). Default 35%.
   static final ValueNotifier<double> musicVolumeNotifier =
-      ValueNotifier<double>(0.65);
+      ValueNotifier<double>(0.35);
   static double get musicVolume => musicVolumeNotifier.value;
-  static set musicVolume(double value) =>
-      musicVolumeNotifier.value = value.clamp(0.0, 1.0);
+  static set musicVolume(double value) {
+    musicVolumeNotifier.value = value.clamp(0.0, 1.0);
+    _applyMusicVolume();
+  }
 
   /// Toggles mute state and notifies all reactive UI listeners.
   static void toggleMute() {
     isMutedNotifier.value = !isMutedNotifier.value;
+    if (isMutedNotifier.value) {
+      _pauseMusic();
+    } else {
+      _resumeMusic();
+    }
   }
 
   static bool _initialized = false;
@@ -57,6 +67,23 @@ class AudioEngine {
   static AudioPool? _swishPool;
   static AudioPool? _bouncePool;
   static AudioPool? _buzzerPool;
+
+  // ── Background Music Jukebox ──
+  static final List<String> _musicTracks = [
+    'music/Get On Down - Mr. Scruff.mp3',
+    'music/Mr Scruff - Bang The Floor - Ninja Tune.mp3',
+    'music/Mr Scruff - Hairy Bumpercress - Ninja Tune.mp3',
+    'music/Mr Scruff - Music Takes Me Up - JoeStephens78.mp3',
+    'music/Mr Scruff - Test The Sound - Ninja Tune.mp3',
+    'music/Mr Scruff - Whiplash - Ninja Tune.mp3',
+    'music/Mr Scruff- Kalimba (Ninja Tuna) - Calum White.mp3',
+  ];
+  static final Random _rng = Random();
+  static AudioPlayer? _musicPlayer;
+  static List<int> _shuffledIndices = [];
+  static int _currentShufflePos = 0;
+  static bool _musicStarted = false;
+  static StreamSubscription? _musicCompleteSub;
 
   // ── Minimum impact velocity thresholds (m/s) ──
   // Impacts below these speeds produce no audible response, preventing
@@ -108,7 +135,93 @@ class AudioEngine {
     if (!_initialized) {
       unawaited(init());
     }
+    // Start background music on first user interaction (required by browsers).
+    if (!_musicStarted) {
+      _startMusic();
+    }
   }
+
+  // ─────────────────────────── Background Music ───────────────────────────
+
+  /// Generates a new random shuffle of track indices.
+  static void _reshufflePlaylist() {
+    _shuffledIndices = List<int>.generate(_musicTracks.length, (i) => i)
+      ..shuffle(_rng);
+    _currentShufflePos = 0;
+  }
+
+  /// Starts the background music jukebox from a random track.
+  static void _startMusic() {
+    _musicStarted = true;
+    _reshufflePlaylist();
+    // Pick a random starting position in the shuffled list.
+    _currentShufflePos = _rng.nextInt(_shuffledIndices.length);
+    _playCurrentTrack();
+  }
+
+  /// Plays the track at the current shuffle position.
+  static Future<void> _playCurrentTrack() async {
+    try {
+      _musicCompleteSub?.cancel();
+
+      // Dispose previous player to free resources.
+      await _musicPlayer?.dispose();
+      _musicPlayer = AudioPlayer();
+
+      final trackPath = _musicTracks[_shuffledIndices[_currentShufflePos]];
+      final effectiveVolume = isMuted
+          ? 0.0
+          : (musicVolume * 0.6).clamp(0.0, 1.0);
+      await _musicPlayer!.setVolume(effectiveVolume);
+      await _musicPlayer!.setSource(AssetSource(trackPath));
+      await _musicPlayer!.resume();
+
+      // Listen for track completion to auto-advance.
+      _musicCompleteSub = _musicPlayer!.onPlayerComplete.listen(
+        (_) => _onTrackComplete(),
+      );
+
+      debugPrint(
+        '[AudioEngine] 🎵 Now playing: $trackPath '
+        '(${_currentShufflePos + 1}/${_shuffledIndices.length})',
+      );
+    } catch (e) {
+      debugPrint('[AudioEngine] Music playback error: $e');
+      // Try next track after a short delay on error.
+      Future.delayed(const Duration(seconds: 2), _onTrackComplete);
+    }
+  }
+
+  /// Called when a track finishes — advances to the next in the shuffle.
+  static void _onTrackComplete() {
+    _currentShufflePos++;
+    if (_currentShufflePos >= _shuffledIndices.length) {
+      _reshufflePlaylist(); // Loop: re-shuffle and start over.
+    }
+    _playCurrentTrack();
+  }
+
+  /// Applies the current music volume to the active player.
+  static void _applyMusicVolume() {
+    if (_musicPlayer == null) return;
+    final effectiveVolume = isMuted ? 0.0 : (musicVolume * 0.6).clamp(0.0, 1.0);
+    _musicPlayer!.setVolume(effectiveVolume);
+  }
+
+  /// Pauses the background music (used when muting).
+  static void _pauseMusic() {
+    _musicPlayer?.pause();
+  }
+
+  /// Resumes the background music (used when unmuting).
+  static void _resumeMusic() {
+    if (_musicStarted && _musicPlayer != null) {
+      _applyMusicVolume();
+      _musicPlayer!.resume();
+    }
+  }
+
+  // ─────────────────────────── SFX Playback ───────────────────────────
 
   /// Triggers a metallic rim clank with volume and heavy haptics scaled by impact velocity.
   static void playRimClank(double impactSpeed) {
@@ -174,12 +287,20 @@ class AudioEngine {
   static void _safePoolPlay(AudioPool? pool, double volume) {
     if (pool == null || isMuted) return;
     try {
-      final effectiveVolume = (volume * masterVolume * sfxVolume).clamp(0.0, 1.0);
+      final effectiveVolume = (volume * masterVolume * sfxVolume).clamp(
+        0.0,
+        1.0,
+      );
       if (effectiveVolume <= 0.001) return;
       unawaited(
-        pool.start(volume: effectiveVolume).then((_) => null, onError: (e) {
-          debugPrint('[AudioEngine] Pool playback error: $e');
-        }),
+        pool
+            .start(volume: effectiveVolume)
+            .then(
+              (_) => null,
+              onError: (e) {
+                debugPrint('[AudioEngine] Pool playback error: $e');
+              },
+            ),
       );
     } catch (e) {
       debugPrint('[AudioEngine] Pool synchronous error: $e');
@@ -192,10 +313,24 @@ class AudioEngine {
     } catch (_) {}
   }
 
-  /// Releases all pooled audio resources and frees native player handles.
+  /// Releases all pooled audio resources, stops music, and frees native player handles.
   /// Safe to call multiple times.
   static void dispose() {
-    final pools = [_rimPool, _backboardPool, _swishPool, _bouncePool, _buzzerPool];
+    // Stop and dispose music player.
+    _musicCompleteSub?.cancel();
+    _musicCompleteSub = null;
+    _musicPlayer?.dispose();
+    _musicPlayer = null;
+    _musicStarted = false;
+
+    // Dispose SFX pools.
+    final pools = [
+      _rimPool,
+      _backboardPool,
+      _swishPool,
+      _bouncePool,
+      _buzzerPool,
+    ];
     _rimPool = null;
     _backboardPool = null;
     _swishPool = null;
