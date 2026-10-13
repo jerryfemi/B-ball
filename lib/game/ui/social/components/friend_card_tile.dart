@@ -27,15 +27,17 @@ class FriendCardTile extends StatelessWidget {
         match != null && match!.status != MatchStatus.completed;
     final isMyTurn = hasActiveMatch && match!.isMyTurn(myUid);
 
-    return Container(
-      decoration: BoxDecoration(
-        color: isMyTurn ? const Color(0xFF19253B) : const Color(0xFF161F2E),
+    return Material(
+      color: isMyTurn ? const Color(0xFF19253B) : const Color(0xFF161F2E),
+      borderRadius: BorderRadius.circular(16),
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
+        side: BorderSide(
           color: isMyTurn ? const Color(0xFF38BDF8) : const Color(0xFF26334A),
           width: isMyTurn ? 1.5 : 1.0,
         ),
       ),
+      clipBehavior: Clip.antiAlias,
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
         onTap: onTap,
