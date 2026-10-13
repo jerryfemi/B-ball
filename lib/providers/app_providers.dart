@@ -4,6 +4,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../models/cloud_match.dart';
 import '../models/friend_profile.dart';
+import '../models/match_invite.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_match_service.dart';
 import '../services/friends_service.dart';
@@ -96,6 +97,16 @@ final incomingInvitesProvider = StreamProvider.autoDispose<List<FriendInvite>>((
   return friendsService.streamIncomingInvites(user.uid);
 });
 
+/// Streams pending incoming 1v1 match challenges dispatched by friends.
+final incomingMatchChallengesProvider = StreamProvider.autoDispose<List<MatchInvite>>((ref) {
+  final user = ref.watch(currentUserProfileProvider).value;
+  if (user == null || user.uid.isEmpty) {
+    return Stream.value(const <MatchInvite>[]);
+  }
+  final matchService = ref.watch(matchServiceProvider);
+  return matchService.streamIncomingMatchChallenges(user.uid);
+});
+
 // ==========================================
 // 5. Computed Notification Alerts Provider
 // ==========================================
@@ -107,6 +118,7 @@ final userAlertsCountProvider = Provider.autoDispose.family<int, String?>((ref, 
   if (user == null || user.uid.isEmpty) return 0;
 
   final invites = ref.watch(incomingInvitesProvider).value ?? const [];
+  final challenges = ref.watch(incomingMatchChallengesProvider).value ?? const [];
   final matches = ref.watch(userMatchesProvider).value ?? const [];
 
   final turnsWaiting = matches
@@ -125,7 +137,7 @@ final userAlertsCountProvider = Provider.autoDispose.family<int, String?>((ref, 
     return lastMsg.senderUid != user.uid;
   }).length;
 
-  return turnsWaiting + invites.length + chatAlerts;
+  return turnsWaiting + invites.length + challenges.length + chatAlerts;
 });
 
 /// Streams a specific match by ID.
