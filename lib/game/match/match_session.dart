@@ -55,6 +55,24 @@ class PlayerMatchState implements PlayerDescriptor {
   }) : roundScores = roundScores ?? [],
        roundTelemetries = roundTelemetries ?? [];
 
+  PlayerMatchState copyWith({
+    String? id,
+    String? name,
+    String? avatar,
+    Color? accentColor,
+    List<int>? roundScores,
+    List<RoundTelemetry>? roundTelemetries,
+  }) {
+    return PlayerMatchState(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      avatar: avatar ?? this.avatar,
+      accentColor: accentColor ?? this.accentColor,
+      roundScores: roundScores ?? this.roundScores,
+      roundTelemetries: roundTelemetries ?? this.roundTelemetries,
+    );
+  }
+
   int get totalScore => roundScores.fold(0, (acc, s) => acc + s);
 
   /// Total successful shots made across all played rounds.
@@ -107,15 +125,15 @@ class PlayerMatchState implements PlayerDescriptor {
 /// Orchestrates multi-round 1v1 turn progression and match telemetry.
 class MatchSession {
   final MatchGameMode mode;
-  final MatchConfig config;
+  MatchConfig config;
   final int totalRounds;
   final String? cloudMatchId;
   final String? joinCode;
-  final bool isWaitingForOpponent;
+  bool isWaitingForOpponent;
   int currentRoundIndex; // 0-indexed (0 = Round 1, 1 = Round 2)
   int activePlayerIndex; // 0 = Player 1 ("YOU"), 1 = Player 2 ("THEM")
-  final PlayerMatchState player1;
-  final PlayerMatchState player2;
+  PlayerMatchState player1;
+  PlayerMatchState player2;
   MatchTurnPhase phase;
 
   MatchSession({
