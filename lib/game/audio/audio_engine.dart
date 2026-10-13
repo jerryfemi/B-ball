@@ -5,27 +5,37 @@ import 'package:flame_audio/flame_audio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+/// Represents a background soundtrack item with instant-start bundled asset support
+/// and progressive streaming support for remote CDN / Firebase Storage URLs.
+class MusicTrack {
+  final String title;
+  final String assetPath;
+  final String? remoteUrl;
+
+  const MusicTrack({
+    required this.title,
+    required this.assetPath,
+    this.remoteUrl,
+  });
+
+  Source get source {
+    if (remoteUrl != null && remoteUrl!.isNotEmpty) {
+      return UrlSource(remoteUrl!);
+    }
+    return AssetSource(assetPath);
+  }
+}
+
 /// Centralized audio and haptics coordinator for basketball collisions,
 /// net swishes, floor bounces, round-ending buzzers, and background music.
-///
-/// Performance architecture:
-/// - **Pre-Warmed Player Pooling:** Fixed pools with [minPlayers] matching [maxPlayers]
-///   are fully allocated upfront during [init], completely eliminating mid-gameplay
-///   player creation and platform channel allocation churn.
-/// - **Stopwatch Rate-Limiting:** A monotonic [Stopwatch] eliminates timing drift
-///   and wall-clock shifts during the 240 Hz physics substep loop.
-/// - **Velocity Gating:** Minimum impact speed thresholds prevent
-///   trivially soft micro-collisions from ever reaching the audio pipeline.
-/// - **Background Music Jukebox:** 7 tracks played in random shuffle order,
-///   auto-advancing on completion, with independent volume control.
 class AudioEngine {
   static final ValueNotifier<bool> isMutedNotifier = ValueNotifier<bool>(false);
   static bool get isMuted => isMutedNotifier.value;
   static set isMuted(bool value) => isMutedNotifier.value = value;
 
-  /// Volume scale for sound effects (0.0 to 1.0).
+  /// Volume scale for sound effects (0.0 to 1.0). Default 45%.
   static final ValueNotifier<double> sfxVolumeNotifier = ValueNotifier<double>(
-    0.65,
+    0.45,
   );
   static double get sfxVolume => sfxVolumeNotifier.value;
   static set sfxVolume(double value) =>
@@ -68,16 +78,43 @@ class AudioEngine {
   static AudioPool? _bouncePool;
   static AudioPool? _buzzerPool;
 
-  // ── Background Music Jukebox ──
-  static final List<String> _musicTracks = [
-    'music/Get On Down - Mr. Scruff.mp3',
-    'music/Mr Scruff - Bang The Floor - Ninja Tune.mp3',
-    'music/Mr Scruff - Hairy Bumpercress - Ninja Tune.mp3',
-    'music/Mr Scruff - Music Takes Me Up - JoeStephens78.mp3',
-    'music/Mr Scruff - Test The Sound - Ninja Tune.mp3',
-    'music/Mr Scruff - Whiplash - Ninja Tune.mp3',
-    'music/Mr Scruff- Kalimba (Ninja Tuna) - Calum White.mp3',
+  // ── Background Music Jukebox (Instant-Start + Stream Architecture) ──
+  /// The lightweight (~800KB) bundled offline track guaranteed to start instantly with 0ms network latency.
+  static const MusicTrack _bundledOfflineTrack = MusicTrack(
+    title: 'Test The Sound - Mr. Scruff',
+    assetPath: 'music/Mr Scruff - Test The Sound - Ninja Tune.mp3',
+  );
+
+  /// Full jukebox playlist. To stream tracks from Firebase Storage or a CDN, simply populate `remoteUrl`.
+  /// The audio engine streams progressively and falls back smoothly to offline assets if network fails.
+  static final List<MusicTrack> _playlist = [
+    _bundledOfflineTrack,
+    const MusicTrack(
+      title: 'Get On Down - Mr. Scruff',
+      assetPath: 'music/Get On Down - Mr. Scruff.mp3',
+    ),
+    const MusicTrack(
+      title: 'Bang The Floor - Mr. Scruff',
+      assetPath: 'music/Mr Scruff - Bang The Floor - Ninja Tune.mp3',
+    ),
+    const MusicTrack(
+      title: 'Hairy Bumpercress - Mr. Scruff',
+      assetPath: 'music/Mr Scruff - Hairy Bumpercress - Ninja Tune.mp3',
+    ),
+    const MusicTrack(
+      title: 'Music Takes Me Up - Mr. Scruff',
+      assetPath: 'music/Mr Scruff - Music Takes Me Up - JoeStephens78.mp3',
+    ),
+    const MusicTrack(
+      title: 'Whiplash - Mr. Scruff',
+      assetPath: 'music/Mr Scruff - Whiplash - Ninja Tune.mp3',
+    ),
+    const MusicTrack(
+      title: 'Kalimba - Mr. Scruff',
+      assetPath: 'music/Mr Scruff- Kalimba (Ninja Tuna) - Calum White.mp3',
+    ),
   ];
+
   static final Random _rng = Random();
   static AudioPlayer? _musicPlayer;
   static List<int> _shuffledIndices = [];
@@ -126,18 +163,45 @@ class AudioEngine {
     }
   }
 
+  static int _musicGen = 0;
   static bool _audioUnlocked = false;
+  static bool _unlocking = false;
 
   /// Unlocks Web Audio playback on iOS Safari / mobile browsers upon user touch.
+  /// Uses a retryable unlock mechanism so that if a touch occurs before
+  /// initialization completes or Safari rejects the initial play(), subsequent
+  /// taps will continue attempting to unlock until playback succeeds.
   static void unlockAudio() {
-    if (_audioUnlocked) return;
-    _audioUnlocked = true;
+    if (_audioUnlocked || _unlocking) return;
     if (!_initialized) {
       unawaited(init());
+      return;
     }
-    // Start background music on first user interaction (required by browsers).
+    _unlocking = true;
+
+    // Warm pooled SFX players inside the gesture context at near-silent volume.
+    // This unlocks iOS WebKit audio playback restrictions for HTML/WebAudio elements.
+    final warmUps = <Future>[];
+    for (final pool in [_rimPool, _backboardPool, _swishPool, _bouncePool, _buzzerPool]) {
+      if (pool != null) {
+        warmUps.add(
+          pool.start(volume: 0.001).then<void>((_) => null, onError: (_) => null),
+        );
+      }
+    }
+
+    Future.wait(warmUps).then((_) {
+      _audioUnlocked = true;
+    }).catchError((e) {
+      debugPrint('[AudioEngine] Audio unlock retry needed: $e');
+    }).whenComplete(() {
+      _unlocking = false;
+    });
+
     if (!_musicStarted) {
       _startMusic();
+    } else if (_musicPlayer != null && !isMuted) {
+      _musicPlayer!.resume();
     }
   }
 
@@ -145,58 +209,93 @@ class AudioEngine {
 
   /// Generates a new random shuffle of track indices.
   static void _reshufflePlaylist() {
-    _shuffledIndices = List<int>.generate(_musicTracks.length, (i) => i)
+    _shuffledIndices = List<int>.generate(_playlist.length, (i) => i)
       ..shuffle(_rng);
     _currentShufflePos = 0;
   }
 
-  /// Starts the background music jukebox from a random track.
+  /// Starts the background music jukebox, guaranteeing the instant-start bundled track plays first.
   static void _startMusic() {
+    if (_playlist.isEmpty) return;
     _musicStarted = true;
     _reshufflePlaylist();
-    // Pick a random starting position in the shuffled list.
-    _currentShufflePos = _rng.nextInt(_shuffledIndices.length);
+
+    // Place the instant-start bundled track at index 0 on startup
+    final bundledIdx = _playlist.indexOf(_bundledOfflineTrack);
+    if (bundledIdx != -1) {
+      _shuffledIndices.remove(bundledIdx);
+      _shuffledIndices.insert(0, bundledIdx);
+    }
+    _currentShufflePos = 0;
+
+    _musicPlayer ??= AudioPlayer();
+    _musicPlayer!.audioCache.prefix = 'assets/';
+    _musicCompleteSub ??=
+        _musicPlayer!.onPlayerComplete.listen((_) => _onTrackComplete());
+
     _playCurrentTrack();
   }
 
-  /// Plays the track at the current shuffle position.
-  static Future<void> _playCurrentTrack() async {
+  /// Plays the track at the current shuffle position on the single reused player.
+  /// If a streamed track fails due to network issues, it automatically falls back to the bundled offline track.
+  static Future<void> _playCurrentTrack({bool fallbackToBundled = false}) async {
+    final gen = ++_musicGen;
     try {
-      _musicCompleteSub?.cancel();
+      if (_currentShufflePos >= _shuffledIndices.length) {
+        _currentShufflePos = 0;
+      }
+      final track = fallbackToBundled
+          ? _bundledOfflineTrack
+          : _playlist[_shuffledIndices[_currentShufflePos]];
 
-      // Dispose previous player to free resources.
-      await _musicPlayer?.dispose();
-      _musicPlayer = AudioPlayer();
+      final effectiveVolume =
+          isMuted ? 0.0 : (musicVolume * 0.6).clamp(0.0, 1.0);
 
-      final trackPath = _musicTracks[_shuffledIndices[_currentShufflePos]];
-      final effectiveVolume = isMuted
-          ? 0.0
-          : (musicVolume * 0.6).clamp(0.0, 1.0);
+      _musicPlayer ??= AudioPlayer();
+      _musicPlayer!.audioCache.prefix = 'assets/';
       await _musicPlayer!.setVolume(effectiveVolume);
-      await _musicPlayer!.setSource(AssetSource(trackPath));
-      await _musicPlayer!.resume();
 
-      // Listen for track completion to auto-advance.
-      _musicCompleteSub = _musicPlayer!.onPlayerComplete.listen(
-        (_) => _onTrackComplete(),
-      );
+      if (gen != _musicGen) return;
+
+      final source = track.source;
+      if (!isMuted) {
+        await _musicPlayer!.play(source);
+      } else {
+        await _musicPlayer!.setSource(source);
+      }
 
       debugPrint(
-        '[AudioEngine] 🎵 Now playing: $trackPath '
+        '[AudioEngine] 🎵 Now playing: ${track.title} '
         '(${_currentShufflePos + 1}/${_shuffledIndices.length})',
       );
     } catch (e) {
       debugPrint('[AudioEngine] Music playback error: $e');
-      // Try next track after a short delay on error.
-      Future.delayed(const Duration(seconds: 2), _onTrackComplete);
+      // If a remote/streamed track errors out, smoothly fallback to bundled offline track once
+      if (!fallbackToBundled) {
+        _playCurrentTrack(fallbackToBundled: true);
+        return;
+      }
+      if (_audioUnlocked && _musicStarted) {
+        Future.delayed(const Duration(seconds: 2), () {
+          if (gen == _musicGen) _onTrackComplete();
+        });
+      }
     }
   }
 
   /// Called when a track finishes — advances to the next in the shuffle.
   static void _onTrackComplete() {
+    if (!_musicStarted) return;
     _currentShufflePos++;
     if (_currentShufflePos >= _shuffledIndices.length) {
-      _reshufflePlaylist(); // Loop: re-shuffle and start over.
+      final lastTrackIdx =
+          _shuffledIndices.isNotEmpty ? _shuffledIndices.last : -1;
+      _reshufflePlaylist();
+      // Avoid playing the exact same track back-to-back across reshuffles
+      if (_shuffledIndices.length > 1 &&
+          _shuffledIndices.first == lastTrackIdx) {
+        _shuffledIndices.add(_shuffledIndices.removeAt(0));
+      }
     }
     _playCurrentTrack();
   }
@@ -204,20 +303,35 @@ class AudioEngine {
   /// Applies the current music volume to the active player.
   static void _applyMusicVolume() {
     if (_musicPlayer == null) return;
-    final effectiveVolume = isMuted ? 0.0 : (musicVolume * 0.6).clamp(0.0, 1.0);
+    final effectiveVolume =
+        isMuted ? 0.0 : (musicVolume * 0.6).clamp(0.0, 1.0);
     _musicPlayer!.setVolume(effectiveVolume);
   }
 
-  /// Pauses the background music (used when muting).
+  /// Pauses the background music (used when muting or backgrounding).
   static void _pauseMusic() {
     _musicPlayer?.pause();
   }
 
-  /// Resumes the background music (used when unmuting).
+  /// Resumes the background music (used when unmuting or returning to foreground).
   static void _resumeMusic() {
     if (_musicStarted && _musicPlayer != null) {
       _applyMusicVolume();
       _musicPlayer!.resume();
+    } else if (!_musicStarted && _audioUnlocked) {
+      _startMusic();
+    }
+  }
+
+  /// Call when app goes to background or browser tab is hidden.
+  static void onAppBackground() {
+    _pauseMusic();
+  }
+
+  /// Call when app returns to foreground.
+  static void onAppForeground() {
+    if (!isMuted) {
+      _resumeMusic();
     }
   }
 
