@@ -9,12 +9,14 @@ import 'game/audio/audio_engine.dart';
 import 'game/basketball_game.dart';
 import 'game/ui/game_hud_overlay.dart';
 import 'services/auth_service.dart';
+import 'services/chat_read_receipt_service.dart';
 import 'services/update/update_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   unawaited(AudioEngine.init());
   unawaited(UpdateService.instance.initialize());
+  unawaited(ChatReadReceiptService.instance.init());
   await initializeForge2D();
   try {
     if (Firebase.apps.isEmpty) {
