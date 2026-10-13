@@ -10,6 +10,7 @@ import '../basketball_game.dart';
 import '../match/match_session.dart';
 import '../../services/update/update_service.dart';
 import 'common/app_avatar.dart';
+import 'common/app_colors.dart';
 import 'common/update_available_banner.dart';
 import 'floating_score_toast.dart';
 import 'game_over_overlay.dart';
@@ -171,15 +172,15 @@ class GameHudOverlay extends StatelessWidget {
                         vertical: 8.0,
                       ),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1E2638),
+                        color: AppColors.surfaceTile,
                         borderRadius: BorderRadius.circular(20.0),
                         border: Border.all(
-                          color: const Color(0xFF00FFCC),
+                          color: AppColors.accentNeonCyan,
                           width: 1.2,
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF00FFCC).withValues(alpha: 0.2),
+                            color: AppColors.accentNeonCyan.withValues(alpha: 0.2),
                             blurRadius: 12.0,
                             spreadRadius: 1.0,
                           ),
@@ -191,19 +192,23 @@ class GameHudOverlay extends StatelessWidget {
                           AppAvatar(
                             avatar: topChallenge.hostAvatar,
                             size: 26.0,
-                            borderColor: const Color(0xFF00FFCC),
+                            borderColor: AppColors.accentNeonCyan,
                             borderWidth: 1.0,
                           ),
                           const SizedBox(width: 8.0),
                           Flexible(
-                            child: Text(
-                              '⚔️ ${topChallenge.hostName} challenged you to 1v1!',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12.0,
-                                fontWeight: FontWeight.w800,
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                '⚔️ ${topChallenge.hostName} challenged you to 1v1!',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: AppColors.textPrimary,
+                                  fontSize: 12.0,
+                                  fontWeight: FontWeight.w800,
+                                ),
                               ),
                             ),
                           ),
@@ -214,13 +219,13 @@ class GameHudOverlay extends StatelessWidget {
                               vertical: 3.0,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF00FFCC),
+                              color: AppColors.accentNeonCyan,
                               borderRadius: BorderRadius.circular(10.0),
                             ),
                             child: const Text(
                               'ACCEPT ➔',
                               style: TextStyle(
-                                color: Color(0xFF0F172A),
+                                color: AppColors.buttonDarkText,
                                 fontSize: 10.0,
                                 fontWeight: FontWeight.w900,
                               ),
