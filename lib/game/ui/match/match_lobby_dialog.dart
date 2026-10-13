@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -135,14 +136,12 @@ class MatchLobbyDialog extends HookConsumerWidget {
       ),
       title: isOpponentConnected
           ? 'MATCHUP CONFIRMED'
-          : (challengedFriend != null
-              ? 'CHALLENGE DISPATCHED'
-              : 'MATCH LOBBY'),
+          : (challengedFriend != null ? 'CHALLENGE DISPATCHED' : 'MATCH LOBBY'),
       subtitle: isOpponentConnected
           ? 'Opponent entered the room'
           : (challengedFriend != null
-              ? 'Waiting for ${challengedFriend!.displayName} to accept'
-              : 'Share 6-digit code or wait for challenger'),
+                ? 'Waiting for ${challengedFriend!.displayName} to accept'
+                : 'Share 6-digit code or wait for challenger'),
       showCloseButton: true,
       onClose: handleCancel,
       child: isOpponentConnected
@@ -164,7 +163,10 @@ class MatchLobbyDialog extends HookConsumerWidget {
                     animation: radarController,
                     builder: (context, child) {
                       final scale = 1.0 + (radarController.value * 0.12);
-                      final glow = (0.2 + (radarController.value * 0.4)).clamp(0.0, 1.0);
+                      final glow = (0.2 + (radarController.value * 0.4)).clamp(
+                        0.0,
+                        1.0,
+                      );
                       return Stack(
                         alignment: Alignment.center,
                         children: [
@@ -174,13 +176,16 @@ class MatchLobbyDialog extends HookConsumerWidget {
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               border: Border.all(
-                                color: AppColors.accentElectricSky.withValues(alpha: glow),
+                                color: AppColors.accentElectricSky.withValues(
+                                  alpha: glow,
+                                ),
                                 width: 2.0,
                               ),
                             ),
                           ),
                           AppAvatar(
-                            avatar: challengedFriend?.avatarEmoji ??
+                            avatar:
+                                challengedFriend?.avatarEmoji ??
                                 'assets/avatars/dunk_heads (2).webp',
                             size: 64.0,
                             borderColor: AppColors.accentElectricSky,
