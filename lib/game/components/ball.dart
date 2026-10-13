@@ -365,50 +365,64 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
       }
     }
 
-    // 2. Dynamic Backboard Glass Proximity Contact Shadow
-    // Cast on the transparent backboard when within ~35cm in front of the board (Z in 4.61m..4.96m)
+    // 2. Dynamic Backboard Acrylic Contact Shadow (Convergence Depth Cue)
+    // Cast on the white acrylic backboard as the ball approaches within ~1.20m (Z >= 3.76m).
+    // An arena spotlight angle casts the shadow slightly down and to the side,
+    // ensuring it is fully visible outside the ball's silhouette. As the ball approaches,
+    // the shadow sharpens, darkens, and smoothly converges to the exact contact point.
     final double distToBoard =
         (BallPhysics3D.backboardZ - (physics.pos.z + physics.radius))
-            .clamp(0.0, 0.35);
-    final bool inBoardFrame =
-        physics.pos.x.abs() <= BallPhysics3D.backboardMaxX + 0.05 &&
-        physics.pos.y >= BallPhysics3D.backboardMinY - 0.05 &&
-        physics.pos.y <= BallPhysics3D.backboardMaxY + 0.05;
+            .clamp(0.0, 1.20);
+    final double boardProximity = (1.0 - (distToBoard / 1.20)).clamp(0.0, 1.0);
 
-    if (distToBoard < 0.35 && inBoardFrame) {
-      final double boardProximity = 1.0 - (distToBoard / 0.35);
-      final double boardShadowAlpha =
-          (boardProximity * 0.42 * opacity).clamp(0.0, 0.42);
+    if (distToBoard < 1.20 &&
+        physics.pos.z <= BallPhysics3D.backboardZ + 0.05 &&
+        shadowImage != null) {
+      // Offset shrinks from (dx = 0.14m, dy = -0.24m) at 1.2m away down to (0, 0) at contact
+      final double offsetX = (1.0 - boardProximity) * 0.14;
+      final double offsetY = -(1.0 - boardProximity) * 0.24;
+      final double shadowWorldX = physics.pos.x + offsetX;
+      final double shadowWorldY = physics.pos.y + offsetY;
 
-      if (boardShadowAlpha > 0.01 && shadowImage != null) {
-        // Overhead arena spotlight: casts shadow slightly downward on the glass
-        final double shadowY = physics.pos.y - (0.02 + distToBoard * 0.05);
-        final boardF2D = camera3D.projectToForge2D(
-          physics.pos.x,
-          shadowY,
-          BallPhysics3D.backboardZ,
-        );
-        final boardShadowOffset = Offset(
-          boardF2D.dx - body.position.x,
-          boardF2D.dy - body.position.y,
-        );
+      final bool inBoardBounds =
+          shadowWorldX.abs() <= BallPhysics3D.backboardMaxX + 0.12 &&
+          shadowWorldY >= BallPhysics3D.backboardMinY - 0.15 &&
+          shadowWorldY <= BallPhysics3D.backboardMaxY + 0.15;
 
-        final boardZScale = camera3D.scaleAtDepth(BallPhysics3D.backboardZ);
-        final boardVisualRadius = radius * boardZScale * 1.38;
-        final shadowSpread = 1.0 + (1.0 - boardProximity) * 0.30;
+      if (inBoardBounds) {
+        // Opacity smoothly increases up to 0.65 as ball closes in
+        final double boardShadowAlpha =
+            (math.pow(boardProximity, 0.6) * 0.65 * opacity).clamp(0.0, 0.65);
 
-        final boardShadowRect = Rect.fromCenter(
-          center: boardShadowOffset,
-          width: boardVisualRadius * 1.9 * shadowSpread,
-          height: boardVisualRadius * 1.9 * shadowSpread,
-        );
-        canvas.drawImageRect(
-          shadowImage,
-          _shadowSrcRect,
-          boardShadowRect,
-          _sharedShadowPaint
-            ..color = Color.fromRGBO(0, 0, 0, boardShadowAlpha),
-        );
+        if (boardShadowAlpha > 0.02) {
+          final boardF2D = camera3D.projectToForge2D(
+            shadowWorldX,
+            shadowWorldY,
+            BallPhysics3D.backboardZ,
+          );
+          final boardShadowOffset = Offset(
+            boardF2D.dx - body.position.x,
+            boardF2D.dy - body.position.y,
+          );
+
+          final boardZScale = camera3D.scaleAtDepth(BallPhysics3D.backboardZ);
+          final boardVisualRadius = radius * boardZScale * 1.38;
+          // Diffuse spread shrinks from 1.55x down to 1.0x contact sharpness
+          final shadowSpread = 1.0 + (1.0 - boardProximity) * 0.55;
+
+          final boardShadowRect = Rect.fromCenter(
+            center: boardShadowOffset,
+            width: boardVisualRadius * 2.0 * shadowSpread,
+            height: boardVisualRadius * 2.0 * shadowSpread,
+          );
+          canvas.drawImageRect(
+            shadowImage,
+            _shadowSrcRect,
+            boardShadowRect,
+            _sharedShadowPaint
+              ..color = Color.fromRGBO(0, 0, 0, boardShadowAlpha),
+          );
+        }
       }
     }
 
