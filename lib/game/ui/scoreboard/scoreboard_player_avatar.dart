@@ -36,8 +36,9 @@ class ScoreboardPlayerAvatar extends HookConsumerWidget {
     return _PulsingPlayerAvatar(
       alertState: alertState,
       recentMessageCount: chatMessages.length,
-      lastMessageSenderUid:
-          chatMessages.isNotEmpty ? chatMessages.last.senderUid : null,
+      lastMessageSenderUid: chatMessages.isNotEmpty
+          ? chatMessages.last.senderUid
+          : null,
       myUid: user?.uid,
       avatar: avatar,
       label: label,
@@ -90,18 +91,24 @@ class _PulsingPlayerAvatar extends HookWidget {
     final bounceScaleAnimation = useMemoized(
       () => TweenSequence<double>([
         TweenSequenceItem(
-          tween: Tween<double>(begin: 1.0, end: 1.32)
-              .chain(CurveTween(curve: Curves.easeOutBack)),
+          tween: Tween<double>(
+            begin: 1.0,
+            end: 1.32,
+          ).chain(CurveTween(curve: Curves.easeOutBack)),
           weight: 45.0,
         ),
         TweenSequenceItem(
-          tween: Tween<double>(begin: 1.32, end: 0.94)
-              .chain(CurveTween(curve: Curves.easeInOut)),
+          tween: Tween<double>(
+            begin: 1.32,
+            end: 0.94,
+          ).chain(CurveTween(curve: Curves.easeInOut)),
           weight: 25.0,
         ),
         TweenSequenceItem(
-          tween: Tween<double>(begin: 0.94, end: 1.0)
-              .chain(CurveTween(curve: Curves.elasticOut)),
+          tween: Tween<double>(
+            begin: 0.94,
+            end: 1.0,
+          ).chain(CurveTween(curve: Curves.elasticOut)),
           weight: 30.0,
         ),
       ]).animate(bounceController),
@@ -130,31 +137,39 @@ class _PulsingPlayerAvatar extends HookWidget {
       return null;
     }, [shouldPulse]);
 
-    useEffect(() {
-      final turnJustBecameMine = isActive && !prevIsActiveRef.value;
-      final newMessageFromOpponent =
-          recentMessageCount > prevMsgCountRef.value &&
-              lastMessageSenderUid != null &&
-              lastMessageSenderUid != myUid;
-      final alertsIncreased = alertState.totalCount > prevCountRef.value;
-      final alertTypeChanged =
-          alertState.alertType != prevTypeRef.value &&
-          alertState.alertType != ScoreboardAlertType.none;
+    useEffect(
+      () {
+        final turnJustBecameMine = isActive && !prevIsActiveRef.value;
+        final newMessageFromOpponent =
+            recentMessageCount > prevMsgCountRef.value &&
+            lastMessageSenderUid != null &&
+            lastMessageSenderUid != myUid;
+        final alertsIncreased = alertState.totalCount > prevCountRef.value;
+        final alertTypeChanged =
+            alertState.alertType != prevTypeRef.value &&
+            alertState.alertType != ScoreboardAlertType.none;
 
-      if (turnJustBecameMine ||
-          newMessageFromOpponent ||
-          alertsIncreased ||
-          alertTypeChanged) {
-        HapticFeedback.mediumImpact();
-        bounceController.forward(from: 0.0);
-      }
+        if (turnJustBecameMine ||
+            newMessageFromOpponent ||
+            alertsIncreased ||
+            alertTypeChanged) {
+          HapticFeedback.mediumImpact();
+          bounceController.forward(from: 0.0);
+        }
 
-      prevIsActiveRef.value = isActive;
-      prevMsgCountRef.value = recentMessageCount;
-      prevCountRef.value = alertState.totalCount;
-      prevTypeRef.value = alertState.alertType;
-      return null;
-    }, [isActive, recentMessageCount, alertState.totalCount, alertState.alertType]);
+        prevIsActiveRef.value = isActive;
+        prevMsgCountRef.value = recentMessageCount;
+        prevCountRef.value = alertState.totalCount;
+        prevTypeRef.value = alertState.alertType;
+        return null;
+      },
+      [
+        isActive,
+        recentMessageCount,
+        alertState.totalCount,
+        alertState.alertType,
+      ],
+    );
 
     // Color and icon determination by strict hierarchy: Turn (Cyan) > Challenge (Amber) > Chat (Red)
     final Color badgeColor;
@@ -183,8 +198,9 @@ class _PulsingPlayerAvatar extends HookWidget {
     return AnimatedBuilder(
       animation: Listenable.merge([pulseController, bounceController]),
       builder: (context, _) {
-        final bounceMultiplier =
-            bounceController.isAnimating ? bounceScaleAnimation.value : 1.0;
+        final bounceMultiplier = bounceController.isAnimating
+            ? bounceScaleAnimation.value
+            : 1.0;
         final basePulse = shouldPulse ? pulseScaleAnimation.value : 1.0;
         final totalScale = basePulse * bounceMultiplier;
         final glowProgress = shouldPulse ? pulseController.value : 0.0;
@@ -196,12 +212,12 @@ class _PulsingPlayerAvatar extends HookWidget {
                 glowProgress,
               )!
             : (isActive
-                ? Color.lerp(
-                    const Color(0xFF4ADE80),
-                    const Color(0xFF86EFAC),
-                    glowProgress,
-                  )!
-                : Colors.white.withValues(alpha: 0.8));
+                  ? Color.lerp(
+                      const Color(0xFF4ADE80),
+                      const Color(0xFF86EFAC),
+                      glowProgress,
+                    )!
+                  : Colors.white.withValues(alpha: 0.8));
 
         return Column(
           mainAxisSize: MainAxisSize.min,
@@ -291,8 +307,8 @@ class _PulsingPlayerAvatar extends HookWidget {
                 color: hasAlerts
                     ? badgeColor
                     : (isActive
-                        ? const Color(0xFF86EFAC)
-                        : const Color(0xFF4ADE80)),
+                          ? const Color(0xFF86EFAC)
+                          : const Color(0xFF4ADE80)),
                 fontSize: 10.0,
                 fontWeight: FontWeight.w900,
                 shadows: const [Shadow(color: Colors.black, blurRadius: 4.0)],
