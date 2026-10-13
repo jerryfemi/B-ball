@@ -8,6 +8,7 @@ import '../../../models/friend_profile.dart';
 import '../../../models/player_descriptor.dart';
 import '../../../providers/app_providers.dart';
 import '../../../services/auth_service.dart';
+import '../../../services/chat_read_receipt_service.dart';
 import '../../../services/firestore_match_service.dart';
 import '../../../services/friends_service.dart';
 import '../../match/match_config.dart';
@@ -71,6 +72,14 @@ class FriendConversationSheet extends HookConsumerWidget {
     final scrollController = useScrollController();
     final currentMatch = useState<CloudMatch?>(activeMatch);
     final currentUser = ref.watch(currentUserProfileProvider).value;
+
+    useEffect(() {
+      ChatReadReceiptService.instance.markFriendChatRead(friend.uid);
+      if (activeMatch != null) {
+        ChatReadReceiptService.instance.markMatchRead(activeMatch!.id);
+      }
+      return null;
+    }, [friend.uid, activeMatch?.id]);
 
     void scrollToBottom() {
       Future.delayed(const Duration(milliseconds: 150), () {
