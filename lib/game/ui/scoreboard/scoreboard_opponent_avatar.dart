@@ -197,14 +197,20 @@ class ScoreboardOpponentAvatar extends HookConsumerWidget {
     }
 
     final matchId = activeMatchId;
+    final matchMessages = (matchId != null && matchId.isNotEmpty)
+        ? ref.watch(matchChatProvider(matchId)).value ?? const []
+        : const [];
     final match = (matchId != null && matchId.isNotEmpty)
         ? ref.watch(singleMatchProvider(matchId)).value
         : null;
     final user = ref.watch(currentUserProfileProvider).value;
 
     useEffect(() {
-      if (match != null && match.chat.isNotEmpty) {
-        final lastMsg = match.chat.last;
+      final messages = matchMessages.isNotEmpty
+          ? matchMessages
+          : (match?.chat ?? const []);
+      if (messages.isNotEmpty) {
+        final lastMsg = messages.last;
         final myUid = user?.uid ?? '';
         if (lastMsg.senderUid != myUid &&
             lastMsg.timestamp > lastSeenTimestampRef.value) {
@@ -213,7 +219,7 @@ class ScoreboardOpponentAvatar extends HookConsumerWidget {
         }
       }
       return null;
-    }, [match]);
+    }, [matchMessages, match]);
 
     return buildContent();
   }

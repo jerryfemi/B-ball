@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flame/components.dart';
 import 'package:flame_forge2d/flame_forge2d.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/cloud_match.dart';
 import '../services/auth_service.dart';
@@ -148,6 +150,12 @@ class BasketballGame extends Forge2DGame {
   final ValueNotifier<int> timeRemainingNotifier =
       ValueNotifier<int>(roundDurationSeconds);
   final ValueNotifier<int> bestScoreNotifier = ValueNotifier<int>(0);
+  final ValueNotifier<bool> isTourActiveNotifier = ValueNotifier<bool>(false);
+
+  /// GlobalKeys to locate scoreboard widgets dynamically for tour spotlight
+  final GlobalKey playerAvatarKey = GlobalKey();
+  final GlobalKey rightFlankKey = GlobalKey();
+
   final ValueNotifier<GameModeState> gameStateNotifier =
       ValueNotifier<GameModeState>(GameModeState.ready);
   final ValueNotifier<bool> isPausedNotifier = ValueNotifier<bool>(false);
@@ -469,6 +477,7 @@ class BasketballGame extends Forge2DGame {
     final bool isNew = score > bestScoreNotifier.value;
     if (isNew) {
       bestScoreNotifier.value = score;
+      _saveBestScore(score);
     }
     statsNotifier.value = GameRoundStats(
       score: score,
@@ -480,6 +489,27 @@ class BasketballGame extends Forge2DGame {
       bestStreak: bestStreakInRound,
       isNewRecord: isNew,
     );
+  }
+
+  void _saveBestScore(int newBest) {
+    unawaited(() async {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setInt('b_ball_best_score', newBest);
+        final user = AuthService.instance.currentUser;
+        if (user != null) {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .set({
+            'highScore': newBest,
+            'updatedAt': DateTime.now().millisecondsSinceEpoch,
+          }, SetOptions(merge: true));
+        }
+      } catch (e) {
+        debugPrint('[BasketballGame] Error saving best score: $e');
+      }
+    }());
   }
 
   void startReplayMode() {
@@ -821,6 +851,37 @@ class BasketballGame extends Forge2DGame {
       Basketball.loadProgram(),
     ]);
 
+    // Asynchronously restore high score and check onboarding tour status
+    unawaited(() async {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final localBest = prefs.getInt('b_ball_best_score') ?? 0;
+        if (localBest > bestScoreNotifier.value) {
+          bestScoreNotifier.value = localBest;
+        }
+
+        final hasSeenTour = prefs.getBool('b_ball_has_seen_tour') ?? false;
+        if (!hasSeenTour) {
+          isTourActiveNotifier.value = true;
+        }
+
+        final user = AuthService.instance.currentUser;
+        if (user != null) {
+          final doc = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .get();
+          final cloudBest = (doc.data()?['highScore'] as num?)?.toInt() ?? 0;
+          if (cloudBest > bestScoreNotifier.value) {
+            bestScoreNotifier.value = cloudBest;
+            await prefs.setInt('b_ball_best_score', cloudBest);
+          }
+        }
+      } catch (e) {
+        debugPrint('[BasketballGame] Error loading persisted data: $e');
+      }
+    }());
+
     // 1. Fluid Full-Screen Viewport
     final metersToPixels = size.y / worldHeightInMeters;
 
@@ -939,6 +1000,7 @@ class BasketballGame extends Forge2DGame {
     streakNotifier.dispose();
     timeRemainingNotifier.dispose();
     bestScoreNotifier.dispose();
+    isTourActiveNotifier.dispose();
     gameStateNotifier.dispose();
     isPausedNotifier.dispose();
     ghostScoreNotifier.dispose();

@@ -32,6 +32,7 @@ class BallPhysics3D {
   bool passedThroughRim = false;
   bool hasClankedRim = false;
   bool hasBankedBackboard = false;
+  bool isDeadBall = false;
   int bounceCount = 0;
   bool isSettled = false;
   double timeSinceLaunch = 0.0;
@@ -99,6 +100,7 @@ class BallPhysics3D {
     passedThroughRim = false;
     hasClankedRim = false;
     hasBankedBackboard = false;
+    isDeadBall = false;
     bounceCount = 0;
     isSettled = false;
     timeSinceLaunch = 0.0;
@@ -266,17 +268,21 @@ class BallPhysics3D {
     }
   }
 
-  /// 3D Vertical Backboard glass collision detection and response.
-  /// Matched 1:1 to visual art to prevent phasing, and features calibrated
-  /// bank shot kinematics for shots hitting the regulation shooter's square.
+  /// 3D Vertical Backboard collision detection and response.
+  /// Features two-sided collision (front glass bank + rear structure deflection)
+  /// to strictly prevent balls from phasing through the backboard into the hoop.
   void _checkBackboardCollision() {
-    if (pos.z + radius >= backboardZ && pos.z - radius <= backboardZ + 0.08) {
+    const double boardFrontZ = backboardZ;
+    const double boardBackZ = backboardZ + 0.10;
+
+    if (pos.z + radius >= boardFrontZ && pos.z - radius <= boardBackZ) {
       if (pos.x >= backboardMinX &&
           pos.x <= backboardMaxX &&
           pos.y >= backboardMinY &&
           pos.y <= backboardMaxY) {
         if (vel.z > 0) {
-          pos.z = backboardZ - radius - 0.001;
+          // Front-face collision (incoming from player toward the backboard)
+          pos.z = boardFrontZ - radius - 0.001;
           hasBankedBackboard = true;
           final impactSpeed = vel.length;
 
@@ -296,6 +302,15 @@ class BallPhysics3D {
             vel.x -= pos.x * 1.5;
             vel.y -= 0.35;
           }
+        } else if (vel.z < 0) {
+          // Rear-face collision (ball is behind the backboard returning forward)
+          // Solid board structure prevents phasing forward into the rim
+          pos.z = boardBackZ + radius + 0.001;
+          isDeadBall = true;
+          final impactSpeed = vel.length;
+          final n = Vector3(0.0, 0.0, 1.0);
+          _contact(n, e: 0.40, mu: 0.30);
+          onBackboardImpact?.call(impactSpeed);
         }
       }
     }
@@ -309,8 +324,10 @@ class BallPhysics3D {
     final dz = pos.z - rimCenter.z;
     final dXZ = math.sqrt(dx * dx + dz * dz);
 
-    // Score recorded when ball descends through rim plane within inner opening
+    // Score recorded when ball descends through rim plane within inner opening.
+    // Disallowed if ball is dead (e.g. rebounded off gym back wall or rear of backboard).
     if (!passedThroughRim &&
+        !isDeadBall &&
         prevY > rimCenter.y &&
         pos.y <= rimCenter.y &&
         dXZ < rimRadius + 0.02 &&
@@ -365,6 +382,7 @@ class BallPhysics3D {
   void _checkBackWallCollision() {
     if (pos.z + radius >= wallZ) {
       pos.z = wallZ - radius - 0.001;
+      isDeadBall = true; // Ball hit back wall: out of bounds / dead ball
 
       if (vel.z > 0) {
         onWallImpact?.call(Vector3(pos.x, pos.y, wallZ));

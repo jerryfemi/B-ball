@@ -17,7 +17,7 @@ class ScoreboardPlayerAvatar extends HookConsumerWidget {
 
   const ScoreboardPlayerAvatar({
     super.key,
-    this.isActive = true,
+    this.isActive = false,
     this.label = 'You',
     this.avatar = AppAvatar.defaultAvatar,
     this.activeMatchId,
@@ -27,9 +27,17 @@ class ScoreboardPlayerAvatar extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final alertsCount = ref.watch(userAlertsCountProvider(activeMatchId));
+    final chatMessages = (activeMatchId != null && activeMatchId!.isNotEmpty)
+        ? ref.watch(matchChatProvider(activeMatchId!)).value ?? const []
+        : const [];
+    final user = ref.watch(currentUserProfileProvider).value;
 
     return _PulsingPlayerAvatar(
       alertsCount: alertsCount,
+      recentMessageCount: chatMessages.length,
+      lastMessageSenderUid:
+          chatMessages.isNotEmpty ? chatMessages.last.senderUid : null,
+      myUid: user?.uid,
       avatar: avatar,
       label: label,
       isActive: isActive,
@@ -40,6 +48,9 @@ class ScoreboardPlayerAvatar extends HookConsumerWidget {
 
 class _PulsingPlayerAvatar extends HookWidget {
   final int alertsCount;
+  final int recentMessageCount;
+  final String? lastMessageSenderUid;
+  final String? myUid;
   final String avatar;
   final String label;
   final bool isActive;
@@ -47,6 +58,9 @@ class _PulsingPlayerAvatar extends HookWidget {
 
   const _PulsingPlayerAvatar({
     required this.alertsCount,
+    this.recentMessageCount = 0,
+    this.lastMessageSenderUid,
+    this.myUid,
     required this.avatar,
     required this.label,
     required this.isActive,
@@ -56,25 +70,26 @@ class _PulsingPlayerAvatar extends HookWidget {
   @override
   Widget build(BuildContext context) {
     final pulseController = useAnimationController(
-      duration: const Duration(milliseconds: 900),
+      duration: const Duration(milliseconds: 750),
     );
 
     final scaleAnimation = useMemoized(
-      () => Tween<double>(begin: 1.0, end: 1.10).animate(
+      () => Tween<double>(begin: 1.0, end: 1.15).animate(
         CurvedAnimation(parent: pulseController, curve: Curves.easeInOut),
       ),
       [pulseController],
     );
 
-    final prevCountRef = useRef<int>(0);
+    final prevIsActiveRef = useRef<bool>(isActive);
+    final prevMsgCountRef = useRef<int>(recentMessageCount);
+    final prevCountRef = useRef<int>(alertsCount);
+
+    final shouldPulse = isActive || alertsCount > 0;
 
     useEffect(() {
-      if (alertsCount > 0) {
+      if (shouldPulse) {
         if (!pulseController.isAnimating) {
           pulseController.repeat(reverse: true);
-        }
-        if (alertsCount > prevCountRef.value) {
-          HapticFeedback.lightImpact();
         }
       } else {
         if (pulseController.isAnimating) {
@@ -82,17 +97,39 @@ class _PulsingPlayerAvatar extends HookWidget {
           pulseController.value = 0.0;
         }
       }
+      return null;
+    }, [shouldPulse]);
+
+    useEffect(() {
+      final turnJustBecameMine = isActive && !prevIsActiveRef.value;
+      final newMessageFromOpponent =
+          recentMessageCount > prevMsgCountRef.value &&
+              lastMessageSenderUid != null &&
+              lastMessageSenderUid != myUid;
+      final alertsIncreased = alertsCount > prevCountRef.value;
+
+      if (turnJustBecameMine || newMessageFromOpponent || alertsIncreased) {
+        HapticFeedback.mediumImpact();
+        pulseController.forward(from: 0.0).then((_) {
+          if (shouldPulse) {
+            pulseController.repeat(reverse: true);
+          }
+        });
+      }
+
+      prevIsActiveRef.value = isActive;
+      prevMsgCountRef.value = recentMessageCount;
       prevCountRef.value = alertsCount;
       return null;
-    }, [alertsCount]);
+    }, [isActive, recentMessageCount, alertsCount]);
 
     final hasAlerts = alertsCount > 0;
 
     return AnimatedBuilder(
       animation: pulseController,
       builder: (context, _) {
-        final scale = hasAlerts ? scaleAnimation.value : 1.0;
-        final glowProgress = hasAlerts ? pulseController.value : 0.0;
+        final scale = (hasAlerts || isActive) ? scaleAnimation.value : 1.0;
+        final glowProgress = (hasAlerts || isActive) ? pulseController.value : 0.0;
 
         final Color borderColor = hasAlerts
             ? Color.lerp(
@@ -101,7 +138,11 @@ class _PulsingPlayerAvatar extends HookWidget {
                 glowProgress,
               )!
             : (isActive
-                ? const Color(0xFF86EFAC)
+                ? Color.lerp(
+                    const Color(0xFF4ADE80),
+                    const Color(0xFF86EFAC),
+                    glowProgress,
+                  )!
                 : Colors.white.withValues(alpha: 0.8));
 
         final Color glowColor = hasAlerts

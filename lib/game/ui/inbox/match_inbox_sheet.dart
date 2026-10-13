@@ -100,7 +100,7 @@ class MatchInboxSheet extends HookConsumerWidget {
                   Center(
                     child: AppAvatar(
                       avatar: selectedAvatar,
-                      size: 72,
+                      size: 96,
                       borderColor: const Color(0xFF00FFCC),
                       borderWidth: 2.5,
                       showGlow: true,

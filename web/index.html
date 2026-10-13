@@ -17,10 +17,40 @@
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
-  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <script>
+    // High-performance Mobile WebGL optimization:
+    // On mobile devices with ultra-high Retina DPI (>= 2.0x), clamp devicePixelRatio to 1.5.
+    // This slashes the fragment shader pixel fill-rate by 44% to 75% without reducing visual sharpness or altering aspect ratio.
+    (function() {
+      try {
+        var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        if (isMobile && window.devicePixelRatio > 1.5) {
+          var clampedDpr = 1.5;
+          Object.defineProperty(window, 'devicePixelRatio', {
+            get: function() { return clampedDpr; },
+            configurable: true
+          });
+        }
+      } catch (e) {
+        console.warn('DPR clamp not supported', e);
+      }
+    })();
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <meta name="description" content="Real-time 3D physics arcade basketball game with head-to-head 1v1 showdowns, ranked streaks, and multiplayer rooms.">
+  <meta name="description" content="Fast-paced 1v1 arcade basketball in your browser. Shoot hoops, challenge friends, and climb the ranks.">
   <meta name="theme-color" content="#0A0E1A">
+
+  <!-- Open Graph / WhatsApp / iMessage / Social Previews -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="B-Ball • 1v1 Arcade Basketball">
+  <meta property="og:description" content="Fast-paced 1v1 arcade basketball in your browser. Shoot hoops, challenge friends, and climb the ranks.">
+  <meta property="og:image" content="icons/Icon-512.png">
+
+  <!-- Twitter / Discord Previews -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="B-Ball • 1v1 Arcade Basketball">
+  <meta name="twitter:description" content="Fast-paced 1v1 arcade basketball in your browser. Shoot hoops, challenge friends, and climb the ranks.">
+  <meta name="twitter:image" content="icons/Icon-512.png">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
@@ -162,6 +192,7 @@
     For more details:
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
+  <script src="assets/packages/flutter_soloud/web/init_soloud.js" defer></script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

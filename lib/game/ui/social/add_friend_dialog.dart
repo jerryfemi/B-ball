@@ -76,19 +76,46 @@ class AddFriendDialog extends HookWidget {
     Future<void> handleSendInvite(FriendProfile friend) async {
       HapticFeedback.mediumImpact();
       final myProfile = AuthService.instance.currentUser;
-      if (myProfile != null) {
+      if (myProfile == null) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please sign in to send invites'),
+              backgroundColor: Color(0xFF7F1D1D),
+              behavior: SnackBarBehavior.floating,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+        return;
+      }
+      // Optimistically mark as invited for instant feedback
+      invitedUids.value = {...invitedUids.value, friend.uid};
+      try {
         await FriendsService.instance.sendFriendInvite(
           targetUid: friend.uid,
           myProfile: myProfile,
         );
         if (context.mounted) {
-          invitedUids.value = {...invitedUids.value, friend.uid};
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Friend invite sent to ${friend.displayName}! 📨'),
               backgroundColor: const Color(0xFF1E2638),
               behavior: SnackBarBehavior.floating,
               duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      } catch (e) {
+        // Revert optimistic update on failure
+        invitedUids.value = {...invitedUids.value}..remove(friend.uid);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to send invite: $e'),
+              backgroundColor: const Color(0xFF7F1D1D),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 3),
             ),
           );
         }

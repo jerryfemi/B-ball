@@ -1,20 +1,23 @@
 import 'package:flutter/material.dart';
 
+import '../basketball_game.dart';
 import 'common/app_button.dart';
 import 'common/app_colors.dart';
 import 'common/app_modal_dialog.dart';
 
 /// Displays the collegiate "HOW TO PLAY" rules dialog.
-Future<void> showGameRulesDialog(BuildContext context) {
+Future<void> showGameRulesDialog(BuildContext context, {BasketballGame? game}) {
   return AppModalDialog.show<void>(
     context: context,
-    builder: (context) => const GameRulesDialog(),
+    builder: (context) => GameRulesDialog(game: game),
   );
 }
 
-/// Collegiate rules modal explaining flicks, buzzer beater clock, and scoring bonuses.
+/// Collegiate rules modal explaining HUD controls, flicks, clock, and scoring bonuses.
 class GameRulesDialog extends StatelessWidget {
-  const GameRulesDialog({super.key});
+  final BasketballGame? game;
+
+  const GameRulesDialog({super.key, this.game});
 
   @override
   Widget build(BuildContext context) {
@@ -33,6 +36,125 @@ class GameRulesDialog extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  _SectionHeader(
+                    title: 'HUD & GAME CONTROLS',
+                    trailing: game != null
+                        ? TextButton(
+                            onPressed: () {
+                              Navigator.of(context).pop();
+                              game!.isTourActiveNotifier.value = true;
+                            },
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6.0,
+                                vertical: 2.0,
+                              ),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.play_circle_outline_rounded,
+                                  size: 14.0,
+                                  color: Color(0xFF38BDF8),
+                                ),
+                                SizedBox(width: 4.0),
+                                Text(
+                                  'Replay',
+                                  style: TextStyle(
+                                    color: Color(0xFF38BDF8),
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : null,
+                  ),
+                  const SizedBox(height: 8.0),
+                  const _RuleRow(
+                    icon: '👤',
+                    title: 'Your Avatar (Top-Left)',
+                    desc:
+                        'Tap your avatar anytime to view friend invites, check H2H stats, and host 1v1 matches.',
+                  ),
+                  const SizedBox(height: 10.0),
+                  const _RuleRow(
+                    icon: '⚡',
+                    title: 'Bouncing Avatar (Turn Alert)',
+                    desc:
+                        'Your avatar pulses rhythmically when it is your turn to shoot, or when you receive a match invite.',
+                  ),
+                  const SizedBox(height: 10.0),
+                  const _RuleRow(
+                    icon: '💬',
+                    title: 'Opponent Avatar & Chat',
+                    desc:
+                        'Tap the opponent avatar during 1v1 online matches to send trash-talk reactions and live banter.',
+                  ),
+                  const SizedBox(height: 10.0),
+                  const _RuleRow(
+                    icon: '⏸️',
+                    title: 'Pause & Sound Controls',
+                    desc:
+                        'Tap pause to adjust SFX/music volume, mute, or restart your solo round.',
+                  ),
+                  const SizedBox(height: 10.0),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      const Text('🎯', style: TextStyle(fontSize: 18.0)),
+                      const SizedBox(width: 12.0),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Visual Court Tour',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 13.0,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            SizedBox(height: 2.0),
+                            Text(
+                              'Tap "Replay" to see in-game spotlight walkthrough on court.',
+                              style: TextStyle(
+                                color: Color(0xFF94A3B8),
+                                fontSize: 11.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (game != null)
+                        TextButton(
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            game!.isTourActiveNotifier.value = true;
+                          },
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8.0,
+                              vertical: 4.0,
+                            ),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          child: const Text(
+                            'Replay',
+                            style: TextStyle(
+                              color: Color(0xFF38BDF8),
+                              fontWeight: FontWeight.w900,
+                              fontSize: 12.5,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 16.0),
                   const _SectionHeader(title: 'SHOOTING & SCORING'),
                   const SizedBox(height: 8.0),
                   const _RuleRow(
@@ -96,7 +218,7 @@ class GameRulesDialog extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 18.0),
+          const SizedBox(height: 16.0),
           AppPrimaryButton(
             label: 'GOT IT',
             backgroundColor: AppColors.accentEmerald,
@@ -111,26 +233,36 @@ class GameRulesDialog extends StatelessWidget {
 
 class _SectionHeader extends StatelessWidget {
   final String title;
-  const _SectionHeader({required this.title});
+  final Widget? trailing;
+
+  const _SectionHeader({required this.title, this.trailing});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 3.0),
-      decoration: BoxDecoration(
-        color: const Color(0x2238BDF8),
-        borderRadius: BorderRadius.circular(6.0),
-        border: Border.all(color: const Color(0x4438BDF8), width: 1.0),
-      ),
-      child: Text(
-        title,
-        style: const TextStyle(
-          color: Color(0xFF38BDF8),
-          fontSize: 10.5,
-          fontWeight: FontWeight.w900,
-          letterSpacing: 1.0,
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 3.0),
+          decoration: BoxDecoration(
+            color: const Color(0x2238BDF8),
+            borderRadius: BorderRadius.circular(6.0),
+            border: Border.all(color: const Color(0x4438BDF8), width: 1.0),
+          ),
+          child: Text(
+            title,
+            style: const TextStyle(
+              color: Color(0xFF38BDF8),
+              fontSize: 10.5,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.0,
+            ),
+          ),
         ),
-      ),
+        if (trailing != null) ...[
+          const Spacer(),
+          trailing!,
+        ],
+      ],
     );
   }
 }

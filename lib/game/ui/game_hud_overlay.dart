@@ -5,6 +5,8 @@ import '../../services/auth_service.dart';
 import '../../services/firestore_match_service.dart';
 import '../basketball_game.dart';
 import '../match/match_session.dart';
+import '../../services/update/update_service.dart';
+import 'common/update_available_banner.dart';
 import 'floating_score_toast.dart';
 import 'game_over_overlay.dart';
 import 'game_rules_dialog.dart';
@@ -15,6 +17,7 @@ import 'pause_overlay.dart';
 import 'replay_hud_overlay.dart';
 import 'inbox/match_inbox_sheet.dart';
 import 'stadium_scoreboard.dart';
+import 'tour/onboarding_tour_overlay.dart';
 
 /// Top-level Game HUD Overlay mounted via Flame's [GameWidget.overlayBuilderMap].
 class GameHudOverlay extends StatelessWidget {
@@ -27,7 +30,7 @@ class GameHudOverlay extends StatelessWidget {
     if (wasPlaying) {
       game.pauseGame(manual: true);
     }
-    await showGameRulesDialog(context);
+    await showGameRulesDialog(context, game: game);
     if (wasPlaying && game.isPaused) {
       game.resumeGame();
     }
@@ -94,6 +97,20 @@ class GameHudOverlay extends StatelessWidget {
           ),
         ),
 
+        // 1b. Update Available Notification Pill (Positioned right below scoreboard header)
+        Positioned(
+          top: MediaQuery.of(context).padding.top + 72.0,
+          left: 0,
+          right: 0,
+          child: ValueListenableBuilder<bool>(
+            valueListenable: UpdateService.isUpdateAvailable,
+            builder: (context, hasUpdate, _) {
+              if (!hasUpdate) return const SizedBox.shrink();
+              return const Center(child: UpdateAvailableBanner());
+            },
+          ),
+        ),
+
         // 2. Floating Score Toast Spawner (Centered around hoop plane, non-blocking)
         Positioned(
           top: MediaQuery.of(context).size.height * 0.28,
@@ -152,6 +169,17 @@ class GameHudOverlay extends StatelessWidget {
           builder: (context, state, _) {
             if (state == GameModeState.replay) {
               return ReplayHudOverlay(game: game);
+            }
+            return const SizedBox.shrink();
+          },
+        ),
+
+        // 6. First-Launch / Replay Onboarding Tour Overlay
+        ValueListenableBuilder<bool>(
+          valueListenable: game.isTourActiveNotifier,
+          builder: (context, isTourActive, _) {
+            if (isTourActive) {
+              return OnboardingTourOverlay(game: game);
             }
             return const SizedBox.shrink();
           },

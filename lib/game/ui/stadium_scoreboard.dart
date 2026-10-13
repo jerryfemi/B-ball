@@ -172,8 +172,8 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
               : matchSession.activePlayerIndex)
         : 0;
 
-    final p1Active = shootingPlayerIndex == 0;
-    final p2Active = shootingPlayerIndex == 1;
+    final p1Active = is1v1 && shootingPlayerIndex == 0;
+    final p2Active = is1v1 && shootingPlayerIndex == 1;
 
     final String myAvatar =
         userProfile?.avatarEmoji ?? PlayerDescriptor.defaultAvatar;
@@ -203,6 +203,7 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
                 children: [
                   // Left Flank: Player Avatar + Pause Badge
                   ScoreboardPlayerAvatar(
+                    key: widget.game.playerAvatarKey,
                     isActive: p1Active,
                     label: p1Label,
                     avatar: p1Avatar,
@@ -217,21 +218,31 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
                   const SizedBox(width: 8.0),
 
                   // Right Flank: Help Badge + Mute Badge (+ Opponent Avatar in 1v1)
-                  ScoreboardHelpBadge(onTap: widget.onHelpTapped),
-                  const SizedBox(width: 6.0),
-                  const ScoreboardMuteBadge(),
                   if (is1v1) ...[
+                    ScoreboardHelpBadge(onTap: widget.onHelpTapped),
+                    const SizedBox(width: 6.0),
+                    const ScoreboardMuteBadge(),
                     const SizedBox(width: 6.0),
                     ScoreboardOpponentAvatar(
+                      key: widget.game.rightFlankKey,
                       isActive: p2Active,
                       label: matchSession.isWaitingForOpponent
-                          ? (matchSession.joinCode != null ? 'CODE: ${matchSession.joinCode}' : 'WAITING')
+                          ? (matchSession.joinCode != null
+                              ? 'CODE: ${matchSession.joinCode}'
+                              : 'WAITING')
                           : matchSession.player2.name,
                       avatar: matchSession.player2.avatar,
                       isWaiting: matchSession.isWaitingForOpponent,
                       joinCode: matchSession.joinCode,
                       activeMatchId: matchSession.cloudMatchId,
                     ),
+                  ] else ...[
+                    ScoreboardHelpBadge(
+                      key: widget.game.rightFlankKey,
+                      onTap: widget.onHelpTapped,
+                    ),
+                    const SizedBox(width: 6.0),
+                    const ScoreboardMuteBadge(),
                   ],
                 ],
               ),

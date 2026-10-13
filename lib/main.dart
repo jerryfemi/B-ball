@@ -5,12 +5,16 @@ import 'package:flame_forge2d/flame_forge2d.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'firebase_options.dart';
+import 'game/audio/audio_engine.dart';
 import 'game/basketball_game.dart';
 import 'game/ui/game_hud_overlay.dart';
 import 'services/auth_service.dart';
+import 'services/update/update_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  unawaited(AudioEngine.init());
+  unawaited(UpdateService.instance.initialize());
   await initializeForge2D();
   try {
     if (Firebase.apps.isEmpty) {
@@ -25,22 +29,56 @@ Future<void> main() async {
   runApp(const ProviderScope(child: BasketballApp()));
 }
 
-class BasketballApp extends StatelessWidget {
+class BasketballApp extends StatefulWidget {
   const BasketballApp({super.key});
 
   @override
+  State<BasketballApp> createState() => _BasketballAppState();
+}
+
+class _BasketballAppState extends State<BasketballApp>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.inactive) {
+      AudioEngine.onAppBackground();
+    } else if (state == AppLifecycleState.resumed) {
+      AudioEngine.onAppForeground();
+      UpdateService.instance.checkForUpdates();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Basketball Challenge',
-      theme: ThemeData.dark(),
-      home: Scaffold(
-        body: GameWidget<BasketballGame>(
-          game: BasketballGame(),
-          overlayBuilderMap: {
-            'HUD': (context, game) => GameHudOverlay(game: game),
-          },
-          initialActiveOverlays: const ['HUD'],
+    return Listener(
+      onPointerUp: (_) => AudioEngine.unlockAudio(),
+      behavior: HitTestBehavior.translucent,
+      child: MaterialApp(
+        debugShowCheckedModeBanner: false,
+        title: 'B-Ball',
+        theme: ThemeData.dark(),
+        home: Scaffold(
+          body: GameWidget<BasketballGame>(
+            game: BasketballGame(),
+            overlayBuilderMap: {
+              'HUD': (context, game) => GameHudOverlay(game: game),
+            },
+            initialActiveOverlays: const ['HUD'],
+          ),
         ),
       ),
     );

@@ -55,17 +55,16 @@ class AppAvatar extends StatelessWidget {
     bool showGlow = false,
     Color? glowColor,
     VoidCallback? onTap,
-  }) =>
-      AppAvatar(
-        key: key,
-        avatar: player.avatar,
-        size: size,
-        borderColor: borderColor,
-        borderWidth: borderWidth,
-        showGlow: showGlow,
-        glowColor: glowColor,
-        onTap: onTap,
-      );
+  }) => AppAvatar(
+    key: key,
+    avatar: player.avatar,
+    size: size,
+    borderColor: borderColor,
+    borderWidth: borderWidth,
+    showGlow: showGlow,
+    glowColor: glowColor,
+    onTap: onTap,
+  );
 
   /// Helper to test if a given avatar string points to a local image asset.
   static bool isImageAsset(String path) {
@@ -115,8 +114,9 @@ class AppAvatar extends StatelessWidget {
           boxShadow: showGlow
               ? [
                   BoxShadow(
-                    color: (glowColor ?? borderColor ?? AppColors.accentNeonCyan)
-                        .withValues(alpha: 0.35),
+                    color:
+                        (glowColor ?? borderColor ?? AppColors.accentNeonCyan)
+                            .withValues(alpha: 0.35),
                     blurRadius: 10.0,
                     spreadRadius: 1.0,
                   ),

@@ -1,11 +1,11 @@
 {
-    "name": "B-Ball • 3D Arcade Basketball",
+    "name": "B-Ball",
     "short_name": "B-Ball",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0A0E1A",
     "theme_color": "#0A0E1A",
-    "description": "Real-time 3D physics arcade basketball game with head-to-head 1v1 showdowns, hot streaks, and multiplayer rooms.",
+    "description": "Fast-paced 1v1 arcade basketball in your browser. Shoot hoops, challenge friends, and climb the ranks.",
     "orientation": "portrait-primary",
     "categories": ["games", "sports", "entertainment"],
     "prefer_related_applications": false,

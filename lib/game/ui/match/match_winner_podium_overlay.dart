@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
 import '../../../services/firestore_match_service.dart';
@@ -61,10 +59,8 @@ class MatchWinnerPodiumOverlay extends StatelessWidget {
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(28.0),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 20.0, sigmaY: 20.0),
-            child: Container(
-              padding: const EdgeInsets.symmetric(
+          child: Container(
+            padding: const EdgeInsets.symmetric(
                 horizontal: 22.0,
                 vertical: 22.0,
               ),
@@ -292,9 +288,8 @@ class MatchWinnerPodiumOverlay extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
-  }
+      );
+    }
 
   Widget _buildAggregateColumn({
     required String name,
