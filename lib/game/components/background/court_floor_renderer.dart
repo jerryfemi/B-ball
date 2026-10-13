@@ -255,8 +255,8 @@ class CourtFloorRenderer {
 
   void _renderPoleFloorReflection(Canvas canvas, RoomGeometry geom) {
     // GamePigeon signature glossy white reflection streak running straight down
-    // from the base of the pole (X = 0, Z = 5.05m) across the court floor.
-    final poleFloorPt = geom.projectFloor(0.0, 5.05);
+    // from the base of the pole (X = 0, Z = 4.96m) across the court floor.
+    final poleFloorPt = geom.projectFloor(0.0, 4.96);
     final startY = poleFloorPt.dy;
     final endY = geom.screenHeight;
     final centerX = geom.screenWidth / 2.0;
