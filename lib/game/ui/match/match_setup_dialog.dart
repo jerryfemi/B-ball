@@ -11,6 +11,7 @@ import '../../match/match_config.dart';
 import '../../physics/shot_difficulty.dart';
 import '../common/app_avatar.dart';
 import '../common/app_button.dart';
+import '../common/app_colors.dart';
 import '../common/app_modal_dialog.dart';
 import 'components/friend_selector_ribbon.dart';
 import 'components/match_code_card.dart';
@@ -113,7 +114,7 @@ class MatchSetupDialog extends HookWidget {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Please select a friend to challenge, or switch to Open Code.'),
-            backgroundColor: Color(0xFFEF4444),
+            backgroundColor: AppColors.accentRed,
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -169,7 +170,7 @@ class MatchSetupDialog extends HookWidget {
       scrollable: true,
       iconWidget: const Icon(
         Icons.sports_basketball_rounded,
-        color: Color(0xFFF59E0B),
+        color: AppColors.accentAmber,
         size: 22.0,
       ),
       title: 'NEW 1V1 MATCH',
@@ -186,16 +187,16 @@ class MatchSetupDialog extends HookWidget {
               vertical: 10.0,
             ),
             decoration: BoxDecoration(
-              color: const Color(0xFF1E2638),
+              color: AppColors.surfaceTile,
               borderRadius: BorderRadius.circular(14.0),
-              border: Border.all(color: const Color(0xFF334155)),
+              border: Border.all(color: AppColors.borderInput),
             ),
             child: Row(
               children: [
                 AppAvatar(
                   avatar: myAvatar,
                   size: 34.0,
-                  borderColor: const Color(0xFF38BDF8),
+                  borderColor: AppColors.accentElectricSky,
                   borderWidth: 1.5,
                 ),
                 const SizedBox(width: 10.0),
@@ -206,18 +207,22 @@ class MatchSetupDialog extends HookWidget {
                       const Text(
                         'CREATING AS',
                         style: TextStyle(
-                          color: Color(0xFF64748B),
+                          color: AppColors.textSubtle,
                           fontSize: 10.0,
                           fontWeight: FontWeight.w800,
                           letterSpacing: 1.0,
                         ),
                       ),
-                      Text(
-                        myName,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14.0,
-                          fontWeight: FontWeight.w800,
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          myName,
+                          style: const TextStyle(
+                            color: AppColors.textPrimary,
+                            fontSize: 14.0,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
                       ),
                     ],
@@ -226,7 +231,7 @@ class MatchSetupDialog extends HookWidget {
                 const Text(
                   'HOST',
                   style: TextStyle(
-                    color: Color(0xFF38BDF8),
+                    color: AppColors.accentElectricSky,
                     fontSize: 11.0,
                     fontWeight: FontWeight.w900,
                   ),
@@ -240,7 +245,7 @@ class MatchSetupDialog extends HookWidget {
           const Text(
             'OPPONENT',
             style: TextStyle(
-              color: Color(0xFF94A3B8),
+              color: AppColors.textMuted,
               fontSize: 11.0,
               fontWeight: FontWeight.w800,
               letterSpacing: 1.0,
@@ -477,7 +482,7 @@ class MatchSetupDialog extends HookWidget {
           // Primary Start Challenge Button
           AppPrimaryButton(
             label: getStartButtonLabel(),
-            backgroundColor: const Color(0xFF38BDF8),
+            backgroundColor: AppColors.accentElectricSky,
             iconData: Icons.arrow_forward_rounded,
             onPressed: onStartPressed,
           ),
@@ -505,37 +510,40 @@ class MatchSetupDialog extends HookWidget {
           decoration: BoxDecoration(
             color: isSelected
                 ? const Color(0xFF1E3A5F)
-                : const Color(0xFF1E2638),
+                : AppColors.surfaceTile,
             borderRadius: BorderRadius.circular(12.0),
             border: Border.all(
               color: isSelected
-                  ? const Color(0xFF38BDF8)
-                  : const Color(0xFF334155),
+                  ? AppColors.accentElectricSky
+                  : AppColors.borderInput,
               width: isSelected ? 1.5 : 1.0,
             ),
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 14.0,
-                color: isSelected
-                    ? const Color(0xFF38BDF8)
-                    : const Color(0xFF94A3B8),
-              ),
-              const SizedBox(width: 6.0),
-              Text(
-                label,
-                style: TextStyle(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  icon,
+                  size: 14.0,
                   color: isSelected
-                      ? Colors.white
-                      : const Color(0xFF94A3B8),
-                  fontSize: 11.0,
-                  fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
+                      ? AppColors.accentElectricSky
+                      : AppColors.textMuted,
                 ),
-              ),
-            ],
+                const SizedBox(width: 6.0),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: isSelected
+                        ? AppColors.textPrimary
+                        : AppColors.textMuted,
+                    fontSize: 11.0,
+                    fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
