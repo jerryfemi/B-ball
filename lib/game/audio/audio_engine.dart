@@ -10,10 +10,7 @@ class MusicTrack {
   final String title;
   final String assetPath;
 
-  const MusicTrack({
-    required this.title,
-    required this.assetPath,
-  });
+  const MusicTrack({required this.title, required this.assetPath});
 }
 
 /// Centralized audio and haptics coordinator for basketball collisions,
@@ -94,7 +91,8 @@ class AudioEngine {
     ),
     const MusicTrack(
       title: 'Music Takes Me Up - Mr. Scruff',
-      assetPath: 'assets/music/Mr Scruff - Music Takes Me Up - JoeStephens78.mp3',
+      assetPath:
+          'assets/music/Mr Scruff - Music Takes Me Up - JoeStephens78.mp3',
     ),
     const MusicTrack(
       title: 'Whiplash - Mr. Scruff',
@@ -102,7 +100,8 @@ class AudioEngine {
     ),
     const MusicTrack(
       title: 'Kalimba - Mr. Scruff',
-      assetPath: 'assets/music/Mr Scruff- Kalimba (Ninja Tuna) - Calum White.mp3',
+      assetPath:
+          'assets/music/Mr Scruff- Kalimba (Ninja Tuna) - Calum White.mp3',
     ),
   ];
 
@@ -138,11 +137,26 @@ class AudioEngine {
 
       // Preload the 5 collision SFX into RAM (LoadMode.memory)
       final results = await Future.wait([
-        SoLoud.instance.loadAsset('assets/audio/rim_clank.wav', mode: LoadMode.memory),
-        SoLoud.instance.loadAsset('assets/audio/backboard.wav', mode: LoadMode.memory),
-        SoLoud.instance.loadAsset('assets/audio/swish.wav', mode: LoadMode.memory),
-        SoLoud.instance.loadAsset('assets/audio/bounce.wav', mode: LoadMode.memory),
-        SoLoud.instance.loadAsset('assets/audio/buzzer.wav', mode: LoadMode.memory),
+        SoLoud.instance.loadAsset(
+          'assets/audio/rim_clank.wav',
+          mode: LoadMode.memory,
+        ),
+        SoLoud.instance.loadAsset(
+          'assets/audio/backboard.wav',
+          mode: LoadMode.memory,
+        ),
+        SoLoud.instance.loadAsset(
+          'assets/audio/swish.wav',
+          mode: LoadMode.memory,
+        ),
+        SoLoud.instance.loadAsset(
+          'assets/audio/bounce.wav',
+          mode: LoadMode.memory,
+        ),
+        SoLoud.instance.loadAsset(
+          'assets/audio/buzzer.wav',
+          mode: LoadMode.memory,
+        ),
       ]);
 
       _rimSource = results[0];
@@ -152,7 +166,9 @@ class AudioEngine {
       _buzzerSource = results[4];
 
       _initialized = true;
-      debugPrint('[AudioEngine] SoLoud engine initialized with 5 preloaded SFX.');
+      debugPrint(
+        '[AudioEngine] SoLoud engine initialized with 5 preloaded SFX.',
+      );
     } catch (e) {
       debugPrint('[AudioEngine] SoLoud preload error: $e');
     }
@@ -162,9 +178,11 @@ class AudioEngine {
   static void unlockAudio() {
     if (_audioUnlocked) return;
     if (!_initialized) {
-      unawaited(init().then((_) {
-        if (_initialized) unlockAudio();
-      }));
+      unawaited(
+        init().then((_) {
+          if (_initialized) unlockAudio();
+        }),
+      );
       return;
     }
     _audioUnlocked = true;
@@ -230,8 +248,9 @@ class AudioEngine {
 
       _currentMusicSource = source;
 
-      final effectiveVolume =
-          isMuted ? 0.0 : (musicVolume * 0.6).clamp(0.0, 1.0);
+      final effectiveVolume = isMuted
+          ? 0.0
+          : (musicVolume * 0.6).clamp(0.0, 1.0);
 
       _musicHandle = SoLoud.instance.play(
         source,
@@ -241,7 +260,8 @@ class AudioEngine {
 
       // Auto-advance to next track when playback finishes
       _musicEventSub = source.soundEvents.listen((event) {
-        if (event.event == SoundEventType.handleIsNoMoreValid && gen == _musicGen) {
+        if (event.event == SoundEventType.handleIsNoMoreValid &&
+            gen == _musicGen) {
           _onTrackComplete();
         }
       });
@@ -287,8 +307,9 @@ class AudioEngine {
     if (!_musicStarted) return;
     _currentShufflePos++;
     if (_currentShufflePos >= _shuffledIndices.length) {
-      final lastTrackIdx =
-          _shuffledIndices.isNotEmpty ? _shuffledIndices.last : -1;
+      final lastTrackIdx = _shuffledIndices.isNotEmpty
+          ? _shuffledIndices.last
+          : -1;
       _reshufflePlaylist();
       // Avoid playing the exact same track back-to-back across reshuffles
       if (_shuffledIndices.length > 1 &&
@@ -304,8 +325,9 @@ class AudioEngine {
     if (_musicHandle == null || !SoLoud.instance.isInitialized) return;
     try {
       if (SoLoud.instance.getIsValidVoiceHandle(_musicHandle!)) {
-        final effectiveVolume =
-            isMuted ? 0.0 : (musicVolume * 0.6).clamp(0.0, 1.0);
+        final effectiveVolume = isMuted
+            ? 0.0
+            : (musicVolume * 0.6).clamp(0.0, 1.0);
         SoLoud.instance.setVolume(_musicHandle!, effectiveVolume);
       }
     } catch (_) {}
