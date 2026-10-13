@@ -18,6 +18,9 @@ enum MatchTurnPhase {
   /// Spectating the opponent's recorded round trajectory before shooting.
   watchingOpponentReplay,
 
+  /// Spectating the opponent shooting in real time via live ghost telemetry.
+  watchingLiveOpponent,
+
   /// Intermission between turns/rounds (shows stats & turn handoff).
   turnComplete,
 
@@ -198,6 +201,24 @@ class MatchSession {
     );
 
     final isWaiting = isP1 && cloudMatch.player2 == null;
+    final isMyTurn = cloudMatch.isMyTurn(myUid);
+
+    final MatchTurnPhase initialPhase;
+    if (cloudMatch.status == MatchStatus.completed) {
+      initialPhase = MatchTurnPhase.matchComplete;
+    } else if (isMyTurn) {
+      if (hasOpponentTelemetry) {
+        initialPhase = MatchTurnPhase.watchingOpponentReplay;
+      } else {
+        initialPhase = MatchTurnPhase.playingTurn;
+      }
+    } else {
+      if (isWaiting) {
+        initialPhase = MatchTurnPhase.waitingForOpponentTurn;
+      } else {
+        initialPhase = MatchTurnPhase.watchingLiveOpponent;
+      }
+    }
 
     return MatchSession(
       mode: MatchGameMode.onlineCloud1v1,
@@ -209,10 +230,8 @@ class MatchSession {
         0,
         cloudMatch.totalRounds - 1,
       ),
-      activePlayerIndex: 0,
-      phase: hasOpponentTelemetry
-          ? MatchTurnPhase.watchingOpponentReplay
-          : MatchTurnPhase.playingTurn,
+      activePlayerIndex: isMyTurn ? 0 : 1,
+      phase: initialPhase,
       player1: p1State,
       player2: p2State,
       config: MatchConfig(
