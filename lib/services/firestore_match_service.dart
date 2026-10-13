@@ -516,6 +516,12 @@ class FirestoreMatchService {
         timestamp: now,
       );
       await docRef.collection('messages').doc(newMsg.id).set(newMsg.toMap());
+      await docRef.update({
+        'updatedAt': now,
+        'lastChatSenderUid': shooterUid,
+        'lastChatTimestamp': now,
+        'lastChatText': optionalChatMessage.trim(),
+      });
     }
   }
 
@@ -530,9 +536,12 @@ class FirestoreMatchService {
   }) async {
     final docRef = _matchesRef.doc(matchId);
     await docRef.collection('messages').doc(message.id).set(message.toMap());
-    // Touch updatedAt on root to signal activity to inbox listeners
+    // Touch updatedAt and mirror lightweight chat metadata on root for notification badges
     await docRef.update({
       'updatedAt': DateTime.now().millisecondsSinceEpoch,
+      'lastChatSenderUid': message.senderUid,
+      'lastChatTimestamp': message.timestamp,
+      'lastChatText': message.text,
     });
   }
 
