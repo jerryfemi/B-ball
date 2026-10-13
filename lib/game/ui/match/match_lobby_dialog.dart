@@ -9,6 +9,7 @@ import '../../../models/friend_profile.dart';
 import '../../../providers/app_providers.dart';
 import '../../../services/firestore_match_service.dart';
 import '../common/app_avatar.dart';
+import '../common/app_colors.dart';
 import '../common/app_modal_dialog.dart';
 import 'components/match_lobby_vs_card.dart';
 
@@ -128,8 +129,8 @@ class MatchLobbyDialog extends HookConsumerWidget {
             ? Icons.sports_basketball_rounded
             : Icons.radar_rounded,
         color: isOpponentConnected
-            ? const Color(0xFF00FFCC)
-            : const Color(0xFF38BDF8),
+            ? AppColors.accentNeonCyan
+            : AppColors.accentElectricSky,
         size: 22.0,
       ),
       title: isOpponentConnected
@@ -173,7 +174,7 @@ class MatchLobbyDialog extends HookConsumerWidget {
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               border: Border.all(
-                                color: const Color(0xFF38BDF8).withValues(alpha: glow),
+                                color: AppColors.accentElectricSky.withValues(alpha: glow),
                                 width: 2.0,
                               ),
                             ),
@@ -182,7 +183,7 @@ class MatchLobbyDialog extends HookConsumerWidget {
                             avatar: challengedFriend?.avatarEmoji ??
                                 'assets/avatars/dunk_heads (2).webp',
                             size: 64.0,
-                            borderColor: const Color(0xFF38BDF8),
+                            borderColor: AppColors.accentElectricSky,
                             borderWidth: 2.0,
                           ),
                         ],
@@ -192,7 +193,7 @@ class MatchLobbyDialog extends HookConsumerWidget {
                 ),
                 const SizedBox(height: 16.0),
 
-                // Waiting Status Pill
+                // Waiting Status Pill (Scalable on narrow mobile)
                 Center(
                   child: Container(
                     padding: const EdgeInsets.symmetric(
@@ -200,9 +201,9 @@ class MatchLobbyDialog extends HookConsumerWidget {
                       vertical: 6.0,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1E2638),
+                      color: AppColors.surfaceTile,
                       borderRadius: BorderRadius.circular(20.0),
-                      border: Border.all(color: const Color(0xFF334155)),
+                      border: Border.all(color: AppColors.borderInput),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -212,18 +213,22 @@ class MatchLobbyDialog extends HookConsumerWidget {
                           height: 10.0,
                           child: CircularProgressIndicator(
                             strokeWidth: 2.0,
-                            color: Color(0xFF38BDF8),
+                            color: AppColors.accentElectricSky,
                           ),
                         ),
                         const SizedBox(width: 8.0),
-                        Text(
-                          challengedFriend != null
-                              ? 'Waiting for ${challengedFriend!.displayName}...'
-                              : 'Waiting for challenger...',
-                          style: const TextStyle(
-                            color: Color(0xFFCBD5E1),
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w700,
+                        Flexible(
+                          child: Text(
+                            challengedFriend != null
+                                ? 'Waiting for ${challengedFriend!.displayName}...'
+                                : 'Waiting for challenger...',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: AppColors.textPrimary,
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
                       ],
@@ -239,38 +244,44 @@ class MatchLobbyDialog extends HookConsumerWidget {
                     vertical: 12.0,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0F172A),
+                    color: AppColors.buttonDarkText,
                     borderRadius: BorderRadius.circular(14.0),
-                    border: Border.all(color: const Color(0xFF334155)),
+                    border: Border.all(color: AppColors.borderInput),
                   ),
                   child: Row(
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'ROOM JOIN CODE',
-                            style: TextStyle(
-                              color: Color(0xFF64748B),
-                              fontSize: 9.5,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 1.0,
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'ROOM JOIN CODE',
+                              style: TextStyle(
+                                color: AppColors.textSubtle,
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1.0,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 2.0),
-                          Text(
-                            currentMatch.joinCode,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 18.0,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 4.0,
-                              fontFamily: 'monospace',
+                            const SizedBox(height: 2.0),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                currentMatch.joinCode,
+                                style: const TextStyle(
+                                  color: AppColors.textPrimary,
+                                  fontSize: 18.0,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 4.0,
+                                  fontFamily: 'monospace',
+                                ),
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                      const Spacer(),
+                      const SizedBox(width: 8.0),
                       ElevatedButton.icon(
                         onPressed: copyCode,
                         icon: Icon(
@@ -288,9 +299,9 @@ class MatchLobbyDialog extends HookConsumerWidget {
                         ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: codeCopied.value
-                              ? const Color(0xFF10B981)
-                              : const Color(0xFF1E293B),
-                          foregroundColor: Colors.white,
+                              ? AppColors.accentEmerald
+                              : AppColors.surfaceTile,
+                          foregroundColor: AppColors.textPrimary,
                           padding: const EdgeInsets.symmetric(
                             horizontal: 12.0,
                             vertical: 8.0,
@@ -299,8 +310,8 @@ class MatchLobbyDialog extends HookConsumerWidget {
                             borderRadius: BorderRadius.circular(10.0),
                             side: BorderSide(
                               color: codeCopied.value
-                                  ? const Color(0xFF10B981)
-                                  : const Color(0xFF38BDF8),
+                                  ? AppColors.accentEmerald
+                                  : AppColors.accentElectricSky,
                             ),
                           ),
                         ),
@@ -319,16 +330,19 @@ class MatchLobbyDialog extends HookConsumerWidget {
                     },
                     icon: const Icon(
                       Icons.play_arrow_rounded,
-                      color: Color(0xFF38BDF8),
+                      color: AppColors.accentElectricSky,
                       size: 18.0,
                     ),
-                    label: const Text(
-                      'SHOOT ROUND 1 WHILE WAITING ➔',
-                      style: TextStyle(
-                        color: Color(0xFF38BDF8),
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.5,
+                    label: const FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        'SHOOT ROUND 1 WHILE WAITING ➔',
+                        style: TextStyle(
+                          color: AppColors.accentElectricSky,
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.5,
+                        ),
                       ),
                     ),
                   ),
@@ -339,7 +353,7 @@ class MatchLobbyDialog extends HookConsumerWidget {
                 OutlinedButton(
                   onPressed: handleCancel,
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFFEF4444),
+                    foregroundColor: AppColors.accentRed,
                     side: const BorderSide(color: Color(0xFF7F1D1D)),
                     padding: const EdgeInsets.symmetric(vertical: 10.0),
                     shape: RoundedRectangleBorder(
