@@ -366,7 +366,7 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     }
 
     // 2. Dynamic Backboard Glass Proximity Contact Shadow
-    // Cast on the transparent backboard when within ~35cm in front of the board (Z in 4.50m..4.85m)
+    // Cast on the transparent backboard when within ~35cm in front of the board (Z in 4.70m..5.05m)
     final double distToBoard =
         (BallPhysics3D.backboardZ - (physics.pos.z + physics.radius))
             .clamp(0.0, 0.35);
