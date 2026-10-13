@@ -6,6 +6,7 @@ import '../models/cloud_match.dart';
 import '../models/friend_profile.dart';
 import '../models/match_invite.dart';
 import '../services/auth_service.dart';
+import '../services/chat_read_receipt_service.dart';
 import '../services/firestore_match_service.dart';
 import '../services/friends_service.dart';
 
@@ -111,17 +112,74 @@ final incomingMatchChallengesProvider = StreamProvider.autoDispose<List<MatchInv
 // 5. Computed Notification Alerts Provider
 // ==========================================
 
-/// Computes the total pending action alerts (invites + turns waiting + unread banter)
-/// for displaying on player badges and hubs, excluding any actively displayed match.
-final userAlertsCountProvider = Provider.autoDispose.family<int, String?>((ref, activeMatchId) {
-  final user = ref.watch(currentUserProfileProvider).value;
-  if (user == null || user.uid.isEmpty) return 0;
+/// Local chat read receipts provider to trigger reactive unread badges.
+final chatReadReceiptServiceProvider = Provider<ChatReadReceiptService>((ref) {
+  final service = ChatReadReceiptService.instance;
+  void listener() => ref.invalidateSelf();
+  service.addListener(listener);
+  ref.onDispose(() => service.removeListener(listener));
+  return service;
+});
 
+/// Streams metadata for all direct conversations of the current user.
+final userDirectConversationsProvider =
+    StreamProvider.autoDispose<List<DirectConversationSummary>>((ref) {
+  final user = ref.watch(currentUserProfileProvider).value;
+  if (user == null || user.uid.isEmpty) {
+    return Stream.value(const <DirectConversationSummary>[]);
+  }
+  final friendsService = ref.watch(friendsServiceProvider);
+  return friendsService.streamUserConversations(user.uid);
+});
+
+/// Priority alert type for the top scoreboard player avatar.
+enum ScoreboardAlertType {
+  none,
+  turnWaiting,
+  challenge,
+  chat,
+}
+
+/// Comprehensive alert state detailing counts and current visual priority.
+class ScoreboardAlertState {
+  final ScoreboardAlertType alertType;
+  final int totalCount;
+  final int turnCount;
+  final int challengeCount;
+  final int chatCount;
+
+  const ScoreboardAlertState({
+    required this.alertType,
+    required this.totalCount,
+    required this.turnCount,
+    required this.challengeCount,
+    required this.chatCount,
+  });
+
+  static const empty = ScoreboardAlertState(
+    alertType: ScoreboardAlertType.none,
+    totalCount: 0,
+    turnCount: 0,
+    challengeCount: 0,
+    chatCount: 0,
+  );
+}
+
+/// Computes contextual alert breakdown with strict priority hierarchy:
+/// Gameplay Turn (Cyan) > Friend Challenge (Amber) > Unread Chat (Red).
+final scoreboardAlertStateProvider =
+    Provider.autoDispose.family<ScoreboardAlertState, String?>((ref, activeMatchId) {
+  final user = ref.watch(currentUserProfileProvider).value;
+  if (user == null || user.uid.isEmpty) return ScoreboardAlertState.empty;
+
+  final readReceipts = ref.watch(chatReadReceiptServiceProvider);
   final invites = ref.watch(incomingInvitesProvider).value ?? const [];
   final challenges = ref.watch(incomingMatchChallengesProvider).value ?? const [];
   final matches = ref.watch(userMatchesProvider).value ?? const [];
+  final conversations =
+      ref.watch(userDirectConversationsProvider).value ?? const [];
 
-  final turnsWaiting = matches
+  final turnCount = matches
       .where(
         (m) =>
             m.isMyTurn(user.uid) &&
@@ -130,14 +188,93 @@ final userAlertsCountProvider = Provider.autoDispose.family<int, String?>((ref, 
       )
       .length;
 
-  final chatAlerts = matches.where((m) {
+  final challengeCount = invites.length + challenges.length;
+
+  // Unread match banter
+  final unreadMatchChatCount = matches.where((m) {
     if (activeMatchId != null && m.id == activeMatchId) return false;
-    if (m.chat.isEmpty) return false;
-    final lastMsg = m.chat.last;
-    return lastMsg.senderUid != user.uid;
+    final lastRead = readReceipts.getMatchLastRead(m.id);
+    return m.hasUnreadChat(user.uid, lastRead);
   }).length;
 
-  return turnsWaiting + invites.length + challenges.length + chatAlerts;
+  // Unread direct banter
+  final unreadDirectChatCount = conversations.where((c) {
+    if (c.lastSenderUid == user.uid || c.friendUid.isEmpty) return false;
+    final lastRead = readReceipts.getFriendChatLastRead(c.friendUid);
+    return c.lastTimestamp > lastRead;
+  }).length;
+
+  final chatCount = unreadMatchChatCount + unreadDirectChatCount;
+  final totalCount = turnCount + challengeCount + chatCount;
+
+  ScoreboardAlertType alertType = ScoreboardAlertType.none;
+  if (turnCount > 0) {
+    alertType = ScoreboardAlertType.turnWaiting;
+  } else if (challengeCount > 0) {
+    alertType = ScoreboardAlertType.challenge;
+  } else if (chatCount > 0) {
+    alertType = ScoreboardAlertType.chat;
+  }
+
+  return ScoreboardAlertState(
+    alertType: alertType,
+    totalCount: totalCount,
+    turnCount: turnCount,
+    challengeCount: challengeCount,
+    chatCount: chatCount,
+  );
+});
+
+/// Computes the total pending action alerts (invites + turns waiting + unread banter)
+/// for displaying on player badges and hubs, excluding any actively displayed match.
+final userAlertsCountProvider =
+    Provider.autoDispose.family<int, String?>((ref, activeMatchId) {
+  return ref.watch(scoreboardAlertStateProvider(activeMatchId)).totalCount;
+});
+
+/// Total badge count for the FRIENDS button in MatchInboxSheet (invites + challenges + unread DMs).
+final friendsBadgeCountProvider = Provider.autoDispose<int>((ref) {
+  final user = ref.watch(currentUserProfileProvider).value;
+  if (user == null || user.uid.isEmpty) return 0;
+
+  final readReceipts = ref.watch(chatReadReceiptServiceProvider);
+  final invites = ref.watch(incomingInvitesProvider).value ?? const [];
+  final challenges = ref.watch(incomingMatchChallengesProvider).value ?? const [];
+  final conversations =
+      ref.watch(userDirectConversationsProvider).value ?? const [];
+
+  final unreadDirectChats = conversations.where((c) {
+    if (c.lastSenderUid == user.uid || c.friendUid.isEmpty) return false;
+    final lastRead = readReceipts.getFriendChatLastRead(c.friendUid);
+    return c.lastTimestamp > lastRead;
+  }).length;
+
+  return invites.length + challenges.length + unreadDirectChats;
+});
+
+/// Determines if a specific friend has sent an unread direct banter message.
+final friendHasUnreadMessageProvider =
+    Provider.autoDispose.family<bool, String>((ref, friendUid) {
+  final user = ref.watch(currentUserProfileProvider).value;
+  if (user == null || user.uid.isEmpty || friendUid.isEmpty) return false;
+
+  final readReceipts = ref.watch(chatReadReceiptServiceProvider);
+  final conversations =
+      ref.watch(userDirectConversationsProvider).value ?? const [];
+
+  final conv = conversations.firstWhere(
+    (c) => c.friendUid == friendUid,
+    orElse: () => const DirectConversationSummary(
+      id: '',
+      friendUid: '',
+      lastSenderUid: '',
+      lastTimestamp: 0,
+    ),
+  );
+
+  if (conv.id.isEmpty || conv.lastSenderUid == user.uid) return false;
+  final lastRead = readReceipts.getFriendChatLastRead(friendUid);
+  return conv.lastTimestamp > lastRead;
 });
 
 /// Streams a specific match by ID.
