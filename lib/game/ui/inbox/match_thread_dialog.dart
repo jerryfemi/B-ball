@@ -6,6 +6,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../../models/cloud_match.dart';
 import '../../../models/player_descriptor.dart';
 import '../../../providers/app_providers.dart';
+import '../../../services/chat_read_receipt_service.dart';
 import '../../../services/firestore_match_service.dart';
 import '../common/app_avatar.dart';
 import '../common/app_modal_sheet.dart';
@@ -58,6 +59,11 @@ class MatchThreadDialog extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final msgController = useTextEditingController();
     final scrollController = useScrollController();
+
+    useEffect(() {
+      ChatReadReceiptService.instance.markMatchRead(initialMatch.id);
+      return null;
+    }, [initialMatch.id]);
 
     Future<void> sendText(
       String matchId,
