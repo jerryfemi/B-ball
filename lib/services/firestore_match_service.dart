@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import '../game/match/match_config.dart';
 import '../game/telemetry/shot_telemetry.dart';
 import '../models/cloud_match.dart';
+import '../models/live_reaction_event.dart';
 import 'auth_service.dart';
 import 'friends_service.dart';
 
@@ -541,5 +542,118 @@ class FirestoreMatchService {
       _cachedUserMatches[userUid] = matches;
       return matches;
     });
+  }
+
+  /// Broadcasts a live shot impulse micro-packet to the `live_shots` subcollection.
+  ///
+  /// This micro-packet (~150 bytes) conveys launch coordinates, 3D velocity vectors,
+  /// backspin, and make metadata so spectators can simulate the deterministic trajectory locally.
+  Future<void> broadcastLiveShot({
+    required String matchId,
+    required RecordedShot shot,
+    required String shooterUid,
+    required int shotIndex,
+  }) async {
+    final cleanId = matchId.trim().toUpperCase();
+    final docRef = _matchesRef.doc(cleanId).collection('live_shots');
+    final shotId = '${shot.timestampMs}_${shooterUid}_$shotIndex';
+    try {
+      await docRef.doc(shotId).set({
+        'id': shotId,
+        'shooterUid': shooterUid,
+        'shotIndex': shotIndex,
+        'shot': shot.toJson(),
+        'timestamp': shot.timestampMs,
+        'createdAt': DateTime.now().millisecondsSinceEpoch,
+      });
+    } catch (e) {
+      debugPrint('[FirestoreMatchService] broadcastLiveShot error: $e');
+    }
+  }
+
+  /// Streams real-time live shots broadcast by the active shooter.
+  ///
+  /// Uses Firestore document changes (`DocumentChangeType.added`) filtered by timestamp
+  /// to ensure only newly launched shots are received and spawned as ghost balls.
+  Stream<RecordedShot> streamLiveShots(String matchId, {int? sinceTimestampMs}) {
+    if (matchId.isEmpty) return const Stream.empty();
+    final cleanId = matchId.trim().toUpperCase();
+    final start = sinceTimestampMs ?? (DateTime.now().millisecondsSinceEpoch - 1500);
+
+    return _matchesRef
+        .doc(cleanId)
+        .collection('live_shots')
+        .where('createdAt', isGreaterThanOrEqualTo: start)
+        .snapshots()
+        .expand((snap) => snap.docChanges)
+        .where((change) => change.type == DocumentChangeType.added)
+        .map((change) {
+          final data = change.doc.data();
+          final shotMap = data?['shot'] as Map<String, dynamic>?;
+          if (shotMap == null) return null;
+          return RecordedShot.fromJson(shotMap);
+        })
+        .where((shot) => shot != null)
+        .cast<RecordedShot>()
+        .handleError((e) {
+          debugPrint('[FirestoreMatchService] streamLiveShots error: $e');
+        });
+  }
+
+  /// Broadcasts a courtside reaction (floating emoji or text banter) to the `live_reactions` subcollection.
+  Future<void> sendLiveReaction({
+    required String matchId,
+    required LiveReactionEvent reaction,
+  }) async {
+    final cleanId = matchId.trim().toUpperCase();
+    try {
+      final docRef = _matchesRef.doc(cleanId).collection('live_reactions');
+      await docRef.doc(reaction.id).set(reaction.toMap());
+    } catch (e) {
+      debugPrint('[FirestoreMatchService] sendLiveReaction error: $e');
+    }
+  }
+
+  /// Streams real-time floating reactions & banter events occurring during the match.
+  Stream<LiveReactionEvent> streamLiveReactions(String matchId, {int? sinceTimestampMs}) {
+    if (matchId.isEmpty) return const Stream.empty();
+    final cleanId = matchId.trim().toUpperCase();
+    final start = sinceTimestampMs ?? (DateTime.now().millisecondsSinceEpoch - 2000);
+
+    return _matchesRef
+        .doc(cleanId)
+        .collection('live_reactions')
+        .where('timestamp', isGreaterThanOrEqualTo: start)
+        .snapshots()
+        .expand((snap) => snap.docChanges)
+        .where((change) => change.type == DocumentChangeType.added)
+        .map((change) {
+          final data = change.doc.data();
+          if (data == null) return null;
+          return LiveReactionEvent.fromMap(data, change.doc.id);
+        })
+        .where((reaction) => reaction != null)
+        .cast<LiveReactionEvent>()
+        .handleError((e) {
+          debugPrint('[FirestoreMatchService] streamLiveReactions error: $e');
+        });
+  }
+
+  /// Updates the live round score on the root match document so spectators see exact score agreement.
+  Future<void> updateLiveShooterScore({
+    required String matchId,
+    required int currentRoundScore,
+    required String shooterUid,
+  }) async {
+    final cleanId = matchId.trim().toUpperCase();
+    try {
+      await _matchesRef.doc(cleanId).update({
+        'liveShooterScore': currentRoundScore,
+        'liveShooterUid': shooterUid,
+        'updatedAt': DateTime.now().millisecondsSinceEpoch,
+      });
+    } catch (e) {
+      debugPrint('[FirestoreMatchService] updateLiveShooterScore error: $e');
+    }
   }
 }
