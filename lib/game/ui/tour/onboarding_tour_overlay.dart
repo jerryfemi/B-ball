@@ -205,15 +205,6 @@ class _OnboardingTourOverlayState extends State<OnboardingTourOverlay>
     double currentRadius,
   ) {
     final bool isBottomStep = _currentStep == 2;
-    final topCardPos = (currentTarget.dy + currentRadius + 18.0).clamp(
-      topPadding + 65.0,
-      size.height - 240.0,
-    );
-    final bottomCardPos =
-        ((size.height - currentTarget.dy) + currentRadius + 18.0).clamp(
-      120.0,
-      size.height - 240.0,
-    );
 
     final stepsData = [
       _TourStepData(
