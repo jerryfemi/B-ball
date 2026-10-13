@@ -254,6 +254,10 @@ class CloudMatch {
   /// Real-time chat banter feed stored inside the match document.
   final List<CloudChatMessage> chat;
 
+  /// Live round score of the currently active shooter in real-time.
+  final int? liveShooterScore;
+  final String? liveShooterUid;
+
   const CloudMatch({
     required this.id,
     required this.joinCode,
@@ -272,6 +276,8 @@ class CloudMatch {
     this.latestTelemetryRound,
     this.latestTelemetryShooterUid,
     this.chat = const [],
+    this.liveShooterScore,
+    this.liveShooterUid,
   });
 
   bool isMyTurn(String myUid) => activeTurnPlayerUid == myUid;
@@ -334,6 +340,8 @@ class CloudMatch {
     int? latestTelemetryRound,
     String? latestTelemetryShooterUid,
     List<CloudChatMessage>? chat,
+    int? liveShooterScore,
+    String? liveShooterUid,
   }) {
     return CloudMatch(
       id: id ?? this.id,
@@ -354,6 +362,8 @@ class CloudMatch {
       latestTelemetryShooterUid:
           latestTelemetryShooterUid ?? this.latestTelemetryShooterUid,
       chat: chat ?? this.chat,
+      liveShooterScore: liveShooterScore ?? this.liveShooterScore,
+      liveShooterUid: liveShooterUid ?? this.liveShooterUid,
     );
   }
 
@@ -419,6 +429,8 @@ class CloudMatch {
                 )
                 .toList() ??
             [],
+        liveShooterScore: (map['liveShooterScore'] as num?)?.toInt(),
+        liveShooterUid: map['liveShooterUid'] as String?,
       );
     } catch (e) {
       // Return safe fallback rather than crashing the inbox
