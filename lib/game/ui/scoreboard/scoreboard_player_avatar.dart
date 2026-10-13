@@ -5,9 +5,10 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../../providers/app_providers.dart';
 import '../common/app_avatar.dart';
+import '../common/app_colors.dart';
 
 /// Flanking circular player avatar with illuminated badge, "You" label,
-/// and live reactive inbox/turns notification pip.
+/// contextual bouncing badge (turn, challenge, chat), and reactive inbox pip.
 class ScoreboardPlayerAvatar extends HookConsumerWidget {
   final bool isActive;
   final String label;
@@ -26,14 +27,14 @@ class ScoreboardPlayerAvatar extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final alertsCount = ref.watch(userAlertsCountProvider(activeMatchId));
+    final alertState = ref.watch(scoreboardAlertStateProvider(activeMatchId));
     final chatMessages = (activeMatchId != null && activeMatchId!.isNotEmpty)
         ? ref.watch(matchChatProvider(activeMatchId!)).value ?? const []
         : const [];
     final user = ref.watch(currentUserProfileProvider).value;
 
     return _PulsingPlayerAvatar(
-      alertsCount: alertsCount,
+      alertState: alertState,
       recentMessageCount: chatMessages.length,
       lastMessageSenderUid:
           chatMessages.isNotEmpty ? chatMessages.last.senderUid : null,
@@ -47,7 +48,7 @@ class ScoreboardPlayerAvatar extends HookConsumerWidget {
 }
 
 class _PulsingPlayerAvatar extends HookWidget {
-  final int alertsCount;
+  final ScoreboardAlertState alertState;
   final int recentMessageCount;
   final String? lastMessageSenderUid;
   final String? myUid;
@@ -57,7 +58,7 @@ class _PulsingPlayerAvatar extends HookWidget {
   final VoidCallback? onTap;
 
   const _PulsingPlayerAvatar({
-    required this.alertsCount,
+    required this.alertState,
     this.recentMessageCount = 0,
     this.lastMessageSenderUid,
     this.myUid,
@@ -69,22 +70,51 @@ class _PulsingPlayerAvatar extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Continuous subtle breathing glow controller
     final pulseController = useAnimationController(
-      duration: const Duration(milliseconds: 750),
+      duration: const Duration(milliseconds: 800),
     );
 
-    final scaleAnimation = useMemoized(
-      () => Tween<double>(begin: 1.0, end: 1.15).animate(
+    // One-shot energetic elastic bounce controller on alert arrival
+    final bounceController = useAnimationController(
+      duration: const Duration(milliseconds: 700),
+    );
+
+    final pulseScaleAnimation = useMemoized(
+      () => Tween<double>(begin: 1.0, end: 1.10).animate(
         CurvedAnimation(parent: pulseController, curve: Curves.easeInOut),
       ),
       [pulseController],
     );
 
+    final bounceScaleAnimation = useMemoized(
+      () => TweenSequence<double>([
+        TweenSequenceItem(
+          tween: Tween<double>(begin: 1.0, end: 1.32)
+              .chain(CurveTween(curve: Curves.easeOutBack)),
+          weight: 45.0,
+        ),
+        TweenSequenceItem(
+          tween: Tween<double>(begin: 1.32, end: 0.94)
+              .chain(CurveTween(curve: Curves.easeInOut)),
+          weight: 25.0,
+        ),
+        TweenSequenceItem(
+          tween: Tween<double>(begin: 0.94, end: 1.0)
+              .chain(CurveTween(curve: Curves.elasticOut)),
+          weight: 30.0,
+        ),
+      ]).animate(bounceController),
+      [bounceController],
+    );
+
     final prevIsActiveRef = useRef<bool>(isActive);
     final prevMsgCountRef = useRef<int>(recentMessageCount);
-    final prevCountRef = useRef<int>(alertsCount);
+    final prevCountRef = useRef<int>(alertState.totalCount);
+    final prevTypeRef = useRef<ScoreboardAlertType>(alertState.alertType);
 
-    final shouldPulse = isActive || alertsCount > 0;
+    final hasAlerts = alertState.totalCount > 0;
+    final shouldPulse = isActive || hasAlerts;
 
     useEffect(() {
       if (shouldPulse) {
@@ -106,35 +136,63 @@ class _PulsingPlayerAvatar extends HookWidget {
           recentMessageCount > prevMsgCountRef.value &&
               lastMessageSenderUid != null &&
               lastMessageSenderUid != myUid;
-      final alertsIncreased = alertsCount > prevCountRef.value;
+      final alertsIncreased = alertState.totalCount > prevCountRef.value;
+      final alertTypeChanged =
+          alertState.alertType != prevTypeRef.value &&
+          alertState.alertType != ScoreboardAlertType.none;
 
-      if (turnJustBecameMine || newMessageFromOpponent || alertsIncreased) {
+      if (turnJustBecameMine ||
+          newMessageFromOpponent ||
+          alertsIncreased ||
+          alertTypeChanged) {
         HapticFeedback.mediumImpact();
-        pulseController.forward(from: 0.0).then((_) {
-          if (shouldPulse) {
-            pulseController.repeat(reverse: true);
-          }
-        });
+        bounceController.forward(from: 0.0);
       }
 
       prevIsActiveRef.value = isActive;
       prevMsgCountRef.value = recentMessageCount;
-      prevCountRef.value = alertsCount;
+      prevCountRef.value = alertState.totalCount;
+      prevTypeRef.value = alertState.alertType;
       return null;
-    }, [isActive, recentMessageCount, alertsCount]);
+    }, [isActive, recentMessageCount, alertState.totalCount, alertState.alertType]);
 
-    final hasAlerts = alertsCount > 0;
+    // Color and icon determination by strict hierarchy: Turn (Cyan) > Challenge (Amber) > Chat (Red)
+    final Color badgeColor;
+    final IconData badgeIcon;
+    final Color avatarGlowColor;
+
+    switch (alertState.alertType) {
+      case ScoreboardAlertType.turnWaiting:
+        badgeColor = AppColors.accentNeonCyan;
+        badgeIcon = Icons.sports_esports_rounded;
+        avatarGlowColor = AppColors.accentNeonCyan;
+      case ScoreboardAlertType.challenge:
+        badgeColor = AppColors.accentAmber;
+        badgeIcon = Icons.sports_basketball_rounded;
+        avatarGlowColor = AppColors.accentAmber;
+      case ScoreboardAlertType.chat:
+        badgeColor = AppColors.accentRed;
+        badgeIcon = Icons.chat_bubble_rounded;
+        avatarGlowColor = AppColors.accentRed;
+      case ScoreboardAlertType.none:
+        badgeColor = AppColors.accentAmber;
+        badgeIcon = Icons.circle;
+        avatarGlowColor = AppColors.accentEmerald;
+    }
 
     return AnimatedBuilder(
-      animation: pulseController,
+      animation: Listenable.merge([pulseController, bounceController]),
       builder: (context, _) {
-        final scale = (hasAlerts || isActive) ? scaleAnimation.value : 1.0;
-        final glowProgress = (hasAlerts || isActive) ? pulseController.value : 0.0;
+        final bounceMultiplier =
+            bounceController.isAnimating ? bounceScaleAnimation.value : 1.0;
+        final basePulse = shouldPulse ? pulseScaleAnimation.value : 1.0;
+        final totalScale = basePulse * bounceMultiplier;
+        final glowProgress = shouldPulse ? pulseController.value : 0.0;
 
         final Color borderColor = hasAlerts
             ? Color.lerp(
-                const Color(0xFFF59E0B),
-                const Color(0xFFFBBF24),
+                badgeColor,
+                badgeColor.withValues(alpha: 0.7),
                 glowProgress,
               )!
             : (isActive
@@ -145,17 +203,11 @@ class _PulsingPlayerAvatar extends HookWidget {
                   )!
                 : Colors.white.withValues(alpha: 0.8));
 
-        final Color glowColor = hasAlerts
-            ? const Color(0xFFF59E0B)
-            : const Color(0xFF22C55E);
-
-        final bool showGlow = hasAlerts || isActive;
-
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Transform.scale(
-              scale: scale,
+              scale: totalScale,
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
@@ -164,8 +216,8 @@ class _PulsingPlayerAvatar extends HookWidget {
                     size: 36.0,
                     borderColor: borderColor,
                     borderWidth: hasAlerts ? 2.4 : (isActive ? 2.2 : 1.5),
-                    showGlow: showGlow,
-                    glowColor: glowColor,
+                    showGlow: shouldPulse,
+                    glowColor: avatarGlowColor,
                     onTap: () {
                       if (onTap != null) {
                         HapticFeedback.lightImpact();
@@ -173,43 +225,59 @@ class _PulsingPlayerAvatar extends HookWidget {
                       }
                     },
                   ),
+
+                  // Contextual Badging Pip
                   if (hasAlerts)
                     Positioned(
-                      top: -2.0,
-                      right: -2.0,
+                      top: -4.0,
+                      right: -6.0,
                       child: Container(
                         constraints: const BoxConstraints(
-                          minWidth: 16.0,
-                          minHeight: 16.0,
+                          minWidth: 18.0,
+                          minHeight: 18.0,
                         ),
-                        padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 4.0,
+                          vertical: 1.5,
+                        ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF59E0B),
-                          borderRadius: BorderRadius.circular(9.0),
+                          color: badgeColor,
+                          borderRadius: BorderRadius.circular(10.0),
                           border: Border.all(
-                            color: const Color(0xFF0F172A),
+                            color: const Color(0xFF0A0F1D),
                             width: 1.5,
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(
-                                0xFFF59E0B,
-                              ).withValues(alpha: 0.6),
-                              blurRadius: 6.0,
+                              color: badgeColor.withValues(alpha: 0.7),
+                              blurRadius: 7.0,
                               spreadRadius: 1.0,
                             ),
                           ],
                         ),
-                        child: Center(
-                          child: Text(
-                            '$alertsCount',
-                            style: const TextStyle(
-                              color: Color(0xFF0F172A),
-                              fontSize: 9.0,
-                              fontWeight: FontWeight.w900,
-                              height: 1.0,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Icon(
+                              badgeIcon,
+                              size: 10.0,
+                              color: const Color(0xFF0F172A),
                             ),
-                          ),
+                            if (alertState.totalCount > 1) ...[
+                              const SizedBox(width: 2.0),
+                              Text(
+                                '${alertState.totalCount}',
+                                style: const TextStyle(
+                                  color: Color(0xFF0F172A),
+                                  fontSize: 9.0,
+                                  fontWeight: FontWeight.w900,
+                                  height: 1.0,
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                       ),
                     ),
@@ -221,7 +289,7 @@ class _PulsingPlayerAvatar extends HookWidget {
               label,
               style: TextStyle(
                 color: hasAlerts
-                    ? const Color(0xFFFBBF24)
+                    ? badgeColor
                     : (isActive
                         ? const Color(0xFF86EFAC)
                         : const Color(0xFF4ADE80)),
