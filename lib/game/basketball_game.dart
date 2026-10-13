@@ -425,8 +425,8 @@ class BasketballGame extends Forge2DGame {
          session.phase == MatchTurnPhase.watchingLiveOpponent);
 
     if (gameStateNotifier.value == GameModeState.replay || is1v1Spectating) {
-      if (is1v1Spectating) {
-        // Increment opponent's live scoreboard bay as each ghost basket is made
+      if (is1v1Spectating && session.phase == MatchTurnPhase.watchingOpponentReplay) {
+        // Increment opponent's scoreboard bay only during deterministic recorded replay
         if (session.activePlayerIndex == 1) {
           player2MatchScoreNotifier.value += points;
         } else {
@@ -771,14 +771,16 @@ class BasketballGame extends Forge2DGame {
     final myCloudPlayer = isP1 ? updatedMatch.player1 : updatedMatch.player2;
     final oppCloudPlayer = isP1 ? updatedMatch.player2 : updatedMatch.player1;
 
-    // Synchronize round scores from cloud match
-    if (myCloudPlayer != null && myCloudPlayer.roundScores.isNotEmpty) {
-      session.player1.roundScores.clear();
-      session.player1.roundScores.addAll(myCloudPlayer.roundScores);
+    // Synchronize round scores from cloud match unconditionally
+    if (myCloudPlayer != null) {
+      session.player1.roundScores
+        ..clear()
+        ..addAll(myCloudPlayer.roundScores);
     }
-    if (oppCloudPlayer != null && oppCloudPlayer.roundScores.isNotEmpty) {
-      session.player2.roundScores.clear();
-      session.player2.roundScores.addAll(oppCloudPlayer.roundScores);
+    if (oppCloudPlayer != null) {
+      session.player2.roundScores
+        ..clear()
+        ..addAll(oppCloudPlayer.roundScores);
     }
 
     // Check if match was completed
@@ -826,13 +828,9 @@ class BasketballGame extends Forge2DGame {
           session.opponentPlayer.scoreUpToRound(session.currentRoundIndex);
       final totalLive = oppBase + updatedMatch.liveShooterScore!;
       if (session.activePlayerIndex == 1) {
-        if (totalLive > player2MatchScoreNotifier.value) {
-          player2MatchScoreNotifier.value = totalLive;
-        }
+        player2MatchScoreNotifier.value = totalLive;
       } else {
-        if (totalLive > player1MatchScoreNotifier.value) {
-          player1MatchScoreNotifier.value = totalLive;
-        }
+        player1MatchScoreNotifier.value = totalLive;
       }
     }
   }
@@ -871,10 +869,14 @@ class BasketballGame extends Forge2DGame {
     player1MatchScoreNotifier.value = session.player1.totalScore;
     player2MatchScoreNotifier.value = session.player2.totalScore;
 
-    // Clear live player balls so screen is pure courtside
+    // Clear live player balls and residual ghost balls so screen is pure courtside
     final existingBalls = world.children.whereType<Basketball>().toList();
     for (final b in existingBalls) {
       b.removeFromParent();
+    }
+    final existingGhosts = world.children.whereType<GhostBasketball>().toList();
+    for (final g in existingGhosts) {
+      g.removeFromParent();
     }
 
     if (isPaused) {
@@ -895,6 +897,11 @@ class BasketballGame extends Forge2DGame {
   }
 
   void spawnLiveGhostShot(RecordedShot shot) {
+    // Cap concurrent ghost balls to max 2 in physics world to prevent clumping
+    final activeGhosts = world.children.whereType<GhostBasketball>().toList();
+    if (activeGhosts.length >= 2) {
+      activeGhosts.first.removeFromParent();
+    }
     final ghost = GhostBasketball(shot: shot);
     world.add(ghost);
   }
@@ -905,6 +912,12 @@ class BasketballGame extends Forge2DGame {
 
     _liveShotSubscription?.cancel();
     _liveShotSubscription = null;
+
+    // Purge any residual ghost balls from courtside
+    final existingGhosts = world.children.whereType<GhostBasketball>().toList();
+    for (final g in existingGhosts) {
+      g.removeFromParent();
+    }
 
     player1MatchScoreNotifier.value = session.player1.totalScore;
     player2MatchScoreNotifier.value = session.player2.totalScore;
