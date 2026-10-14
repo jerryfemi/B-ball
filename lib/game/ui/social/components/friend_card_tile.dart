@@ -4,6 +4,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../../../models/cloud_match.dart';
 import '../../../../models/friend_profile.dart';
 import '../../../../providers/app_providers.dart';
+import '../../../../services/chat_read_receipt_service.dart';
 import '../../common/app_avatar.dart';
 import '../../common/app_colors.dart';
 
@@ -28,7 +29,10 @@ class FriendCardTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final hasActiveMatch =
-        match != null && match!.status != MatchStatus.completed;
+        match != null &&
+        match!.status != MatchStatus.completed &&
+        match!.status != MatchStatus.abandoned &&
+        match!.status != MatchStatus.declined;
     final isMyTurn = hasActiveMatch && match!.isMyTurn(myUid);
     final hasUnreadMessage =
         ref.watch(friendHasUnreadMessageProvider(friend.uid));
@@ -49,7 +53,10 @@ class FriendCardTile extends ConsumerWidget {
       clipBehavior: Clip.antiAlias,
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-        onTap: onTap,
+        onTap: () {
+          ChatReadReceiptService.instance.markFriendChatRead(friend.uid);
+          onTap();
+        },
         leading: Stack(
           clipBehavior: Clip.none,
           children: [

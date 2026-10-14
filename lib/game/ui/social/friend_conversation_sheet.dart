@@ -78,7 +78,12 @@ class FriendConversationSheet extends HookConsumerWidget {
       if (activeMatch != null) {
         ChatReadReceiptService.instance.markMatchRead(activeMatch!.id);
       }
-      return null;
+      return () {
+        ChatReadReceiptService.instance.markFriendChatRead(friend.uid);
+        if (activeMatch != null) {
+          ChatReadReceiptService.instance.markMatchRead(activeMatch!.id);
+        }
+      };
     }, [friend.uid, activeMatch?.id]);
 
     void scrollToBottom() {
@@ -205,6 +210,24 @@ class FriendConversationSheet extends HookConsumerWidget {
     final sortedChat = allChat.values.toList()
       ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
+    // When chat messages update or exist in the sheet, ensure read receipts mark through the highest message timestamp
+    useEffect(() {
+      if (sortedChat.isNotEmpty) {
+        final latestMs = sortedChat.last.timestamp;
+        ChatReadReceiptService.instance.markFriendChatRead(
+          friend.uid,
+          atTimestamp: latestMs + 100,
+        );
+        if (effectiveMatch != null) {
+          ChatReadReceiptService.instance.markMatchRead(
+            effectiveMatch.id,
+            atTimestamp: latestMs + 100,
+          );
+        }
+      }
+      return null;
+    }, [sortedChat.length, sortedChat.isNotEmpty ? sortedChat.last.id : '']);
+
     return AppModalSheet(
       heightFactor: 0.88,
       header: _buildHeader(context),
@@ -291,7 +314,10 @@ class FriendConversationSheet extends HookConsumerWidget {
     CloudMatch? match,
     VoidCallback onCreateChallenge,
   ) {
-    if (match == null) {
+    if (match == null ||
+        match.status == MatchStatus.completed ||
+        match.status == MatchStatus.abandoned ||
+        match.status == MatchStatus.declined) {
       return Container(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),

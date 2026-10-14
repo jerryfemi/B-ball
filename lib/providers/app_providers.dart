@@ -114,11 +114,25 @@ final incomingMatchChallengesProvider = StreamProvider.autoDispose<List<MatchInv
 
 /// Local chat read receipts provider to trigger reactive unread badges.
 final chatReadReceiptServiceProvider = Provider<ChatReadReceiptService>((ref) {
-  final service = ChatReadReceiptService.instance;
-  void listener() => ref.invalidateSelf();
-  service.addListener(listener);
-  ref.onDispose(() => service.removeListener(listener));
-  return service;
+  return ChatReadReceiptService.instance;
+});
+
+/// Reactive stream that increments on any read receipt update, forcing consumers to re-evaluate.
+final chatReadVersionProvider = StreamProvider<int>((ref) {
+  final controller = StreamController<int>();
+  int version = 0;
+  void listener() {
+    version++;
+    if (!controller.isClosed) {
+      controller.add(version);
+    }
+  }
+  ChatReadReceiptService.instance.addListener(listener);
+  ref.onDispose(() {
+    ChatReadReceiptService.instance.removeListener(listener);
+    controller.close();
+  });
+  return controller.stream;
 });
 
 /// Streams metadata for all direct conversations of the current user.
@@ -169,6 +183,7 @@ class ScoreboardAlertState {
 /// Gameplay Turn (Cyan) > Friend Challenge (Amber) > Unread Chat (Red).
 final scoreboardAlertStateProvider =
     Provider.autoDispose.family<ScoreboardAlertState, String?>((ref, activeMatchId) {
+  ref.watch(chatReadVersionProvider);
   final user = ref.watch(currentUserProfileProvider).value;
   if (user == null || user.uid.isEmpty) return ScoreboardAlertState.empty;
 
@@ -182,8 +197,8 @@ final scoreboardAlertStateProvider =
   final turnCount = matches
       .where(
         (m) =>
+            m.status == MatchStatus.active &&
             m.isMyTurn(user.uid) &&
-            m.status != MatchStatus.completed &&
             (activeMatchId == null || m.id != activeMatchId),
       )
       .length;
@@ -234,6 +249,7 @@ final userAlertsCountProvider =
 
 /// Total badge count for the FRIENDS button in MatchInboxSheet (invites + challenges + unread DMs).
 final friendsBadgeCountProvider = Provider.autoDispose<int>((ref) {
+  ref.watch(chatReadVersionProvider);
   final user = ref.watch(currentUserProfileProvider).value;
   if (user == null || user.uid.isEmpty) return 0;
 
@@ -255,6 +271,7 @@ final friendsBadgeCountProvider = Provider.autoDispose<int>((ref) {
 /// Determines if a specific friend has sent an unread direct banter message.
 final friendHasUnreadMessageProvider =
     Provider.autoDispose.family<bool, String>((ref, friendUid) {
+  ref.watch(chatReadVersionProvider);
   final user = ref.watch(currentUserProfileProvider).value;
   if (user == null || user.uid.isEmpty || friendUid.isEmpty) return false;
 

@@ -38,15 +38,18 @@ class ChatReadReceiptService extends ChangeNotifier {
   }
 
   /// Marks a match chat as read up to the current timestamp.
-  Future<void> markMatchRead(String matchId) async {
+  Future<void> markMatchRead(String matchId, {int? atTimestamp}) async {
     if (matchId.isEmpty) return;
-    final now = DateTime.now().millisecondsSinceEpoch;
+    final now = atTimestamp ?? DateTime.now().millisecondsSinceEpoch;
     final key = _matchKey(matchId);
-    _cache[key] = now;
-    notifyListeners();
+    final current = _cache[key] ?? 0;
+    if (now >= current) {
+      _cache[key] = now;
+      notifyListeners();
 
-    _prefs ??= await SharedPreferences.getInstance();
-    await _prefs?.setInt(key, now);
+      _prefs ??= await SharedPreferences.getInstance();
+      await _prefs?.setInt(key, now);
+    }
   }
 
   /// Returns the millisecond timestamp when direct chat with a friend was last read.
@@ -59,14 +62,17 @@ class ChatReadReceiptService extends ChangeNotifier {
   }
 
   /// Marks direct conversation with a friend as read up to the current timestamp.
-  Future<void> markFriendChatRead(String friendUid) async {
+  Future<void> markFriendChatRead(String friendUid, {int? atTimestamp}) async {
     if (friendUid.isEmpty) return;
-    final now = DateTime.now().millisecondsSinceEpoch;
+    final now = atTimestamp ?? DateTime.now().millisecondsSinceEpoch;
     final key = _friendKey(friendUid);
-    _cache[key] = now;
-    notifyListeners();
+    final current = _cache[key] ?? 0;
+    if (now >= current) {
+      _cache[key] = now;
+      notifyListeners();
 
-    _prefs ??= await SharedPreferences.getInstance();
-    await _prefs?.setInt(key, now);
+      _prefs ??= await SharedPreferences.getInstance();
+      await _prefs?.setInt(key, now);
+    }
   }
 }
