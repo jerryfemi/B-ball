@@ -222,8 +222,7 @@ class CloudChatMessage {
         senderUid: map['senderUid'] as String? ?? '',
         senderName: map['senderName'] as String? ?? 'Player',
         senderAvatar:
-            map['senderAvatar'] as String? ??
-            PlayerDescriptor.defaultAvatar,
+            map['senderAvatar'] as String? ?? PlayerDescriptor.defaultAvatar,
         text: map['text'] as String? ?? '',
         timestamp: (map['timestamp'] as num?)?.toInt() ?? 0,
       );
