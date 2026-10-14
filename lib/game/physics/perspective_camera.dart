@@ -82,7 +82,22 @@ class PerspectiveCamera3D {
   Offset projectCoords(double x, double y, double z) {
     final s = scaleAtDepth(z);
     final screenX = (screenWidth / 2.0) + (x * pixelsPerMeter * s);
-    final screenY = horizonScreenY + ((eyeHeightInMeters - y) * pixelsPerMeter * s);
+
+    // Natural 2.5D camera pitch elevation adjustment:
+    // Aligns 3D perspective depth with the tilted 2.5D visual hoop and backboard plane.
+    // Near the floor (y <= 0.8), weight is 0.0 (preserving ground baseline & foul line).
+    // Near and above rim height (y >= 2.5, z >= 2.0), smoothly rotates the depth plane
+    // to match the 2D visual rim ellipse (front rim at Forge2D Y=5.075, rear rim at Forge2D Y=4.925).
+    final heightWeight = ((y - 0.8) / 1.7).clamp(0.0, 1.0);
+    final depthWeight = ((z - 2.0) / 2.2).clamp(0.0, 1.0);
+    final elevationCorrectionForge2D =
+        -0.805 * (z - 4.50) * heightWeight * depthWeight;
+    final elevationCorrectionPx =
+        elevationCorrectionForge2D * (screenHeight / 20.0);
+
+    final screenY = horizonScreenY +
+        ((eyeHeightInMeters - y) * pixelsPerMeter * s) +
+        elevationCorrectionPx;
     return Offset(screenX, screenY);
   }
 
