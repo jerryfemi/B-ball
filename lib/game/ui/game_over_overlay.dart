@@ -6,7 +6,7 @@ import 'game_over/game_over_header.dart';
 import 'game_over/game_over_stats_grid.dart';
 import 'game_over/play_again_button.dart';
 import 'game_over/see_replay_button.dart';
-import 'match/match_setup_dialog.dart';
+import 'inbox/match_inbox_sheet.dart';
 
 /// Celebratory Game Over recap modal shown when the 60-second round clock expires.
 class GameOverOverlay extends HookWidget {
@@ -115,15 +115,10 @@ class GameOverOverlay extends HookWidget {
                           SizedBox(
                             width: double.infinity,
                             child: OutlinedButton(
-                              onPressed: () async {
-                                final config = await MatchSetupDialog.show(
-                                  context,
-                                  initialConfig: game.currentMatchConfig,
-                                );
-                                if (config != null) {
-                                  game.startPassAndPlayMatch(config: config);
-                                }
-                              },
+                              onPressed: () => MatchInboxSheet.openWithGame(
+                                context,
+                                game: game,
+                              ),
                               style: OutlinedButton.styleFrom(
                                 backgroundColor: const Color(0x180284C7),
                                 foregroundColor: const Color(0xFF38BDF8),
@@ -142,7 +137,7 @@ class GameOverOverlay extends HookWidget {
                                   Icon(Icons.sports_basketball_rounded, size: 20.0),
                                   SizedBox(width: 8.0),
                                   Text(
-                                    '1V1 PASS & PLAY MATCH',
+                                    '1V1 ONLINE SHOWDOWN',
                                     style: TextStyle(
                                       fontSize: 13.5,
                                       fontWeight: FontWeight.w800,
@@ -150,7 +145,7 @@ class GameOverOverlay extends HookWidget {
                                     ),
                                   ),
                                   SizedBox(width: 6.0),
-                                  Icon(Icons.tune_rounded, size: 16.0),
+                                  Icon(Icons.arrow_forward_rounded, size: 16.0),
                                 ],
                               ),
                             ),
