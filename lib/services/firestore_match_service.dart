@@ -626,6 +626,24 @@ class FirestoreMatchService {
     }
   }
 
+  /// Atomically marks a match completed and records winnerUid when opponent abandons or times out.
+  Future<void> claimForfeitVictory({
+    required String matchId,
+    required String winnerUid,
+  }) async {
+    final clean = matchId.trim().toUpperCase();
+    try {
+      await _matchesRef.doc(clean).update({
+        'status': MatchStatus.completed.key,
+        'winnerUid': winnerUid,
+        'updatedAt': DateTime.now().millisecondsSinceEpoch,
+      });
+      debugPrint('[FirestoreMatchService] Forfeit victory claimed for $clean by $winnerUid');
+    } catch (e) {
+      debugPrint('[FirestoreMatchService] Error claiming forfeit victory for $clean: $e');
+    }
+  }
+
   final Map<String, List<CloudMatch>> _cachedUserMatches = {};
 
   /// Retrieves the most recent memory-cached matches for instant zero-latency UI rendering.
