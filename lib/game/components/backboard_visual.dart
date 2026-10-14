@@ -19,6 +19,11 @@ class BackboardVisual extends PositionComponent {
   double _currentSway = 0.0;
   double _swayVelocity = 0.0;
 
+  // Shared getters for FrontRimVisual synchronization
+  double get currentNetDepth => _currentNetDepth;
+  double get currentBottomWidth => _currentBottomWidth;
+  double get currentSway => _currentSway;
+
   BackboardVisual({
     required Vector2 position,
     this.hoopWidth = 1.8,
