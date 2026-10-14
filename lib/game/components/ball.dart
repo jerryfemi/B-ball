@@ -91,6 +91,9 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
   bool isEntering = false;
   double enterProgress = 0.0;
 
+  // Monotonic stopwatch for zero-allocation touch timestamping
+  static final Stopwatch _touchClock = Stopwatch()..start();
+
   // Rolling touch history for release velocity estimation
   final List<_TouchSample> _touchSamples = [];
   bool _streakEvaluated = false;
@@ -561,7 +564,7 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
       _touchSamples.add(
         _TouchSample(
           event.canvasPosition,
-          DateTime.now().millisecondsSinceEpoch,
+          _touchClock.elapsedMilliseconds,
         ),
       );
     }
@@ -571,7 +574,7 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
   void onDragUpdate(DragUpdateEvent event) {
     super.onDragUpdate(event);
     if (!isLaunched && !isEntering) {
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = _touchClock.elapsedMilliseconds;
       _touchSamples.add(_TouchSample(event.canvasEndPosition, now));
 
       // Keep sample buffer compact (retain last ~150ms)
@@ -588,13 +591,15 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
 
     if (isLaunched || isEntering || _touchSamples.isEmpty) return;
 
-    final now = DateTime.now().millisecondsSinceEpoch;
+    final now = _touchClock.elapsedMilliseconds;
     final lastSample = _touchSamples.last;
 
     // 1. Resting finger cancel:
-    // If the finger rested/paused for >80ms before lifting, cancel the throw
-    // so players can comfortably abort or pause without launching wild shots.
-    if (now - lastSample.timestampMs > 80) {
+    // Web browsers & iOS Safari PWA inject slight gesture recognition delays (100-140ms),
+    // so we provide a more generous 160ms window on web/PWA to ensure flick shots register seamlessly,
+    // while maintaining a crisp 100ms cancel window on native mobile.
+    final restingThresholdMs = kIsWeb ? 160 : 100;
+    if (now - lastSample.timestampMs > restingThresholdMs) {
       _touchSamples.clear();
       return;
     }
