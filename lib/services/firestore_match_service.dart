@@ -356,6 +356,7 @@ class FirestoreMatchService {
   Future<void> declineMatchChallenge({
     required String myUid,
     required String matchId,
+    String? hostUid,
   }) async {
     try {
       await _usersRef
@@ -365,6 +366,22 @@ class FirestoreMatchService {
           .update({
         'status': MatchInviteStatus.declined.key,
       });
+
+      // Mark the match itself as explicitly declined
+      await _matchesRef.doc(matchId).update({
+        'status': MatchStatus.declined.key,
+        'updatedAt': DateTime.now().millisecondsSinceEpoch,
+      });
+
+      if (hostUid != null && hostUid.isNotEmpty) {
+        try {
+          await _effectiveFriendsService.updateFriendMatch(
+            myUid: myUid,
+            friendUid: hostUid,
+            matchId: null,
+          );
+        } catch (_) {}
+      }
     } catch (e) {
       debugPrint('[FirestoreMatchService] Error declining match challenge: $e');
     }

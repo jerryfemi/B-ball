@@ -18,6 +18,9 @@ enum MatchStatus {
   /// Cancelled or expired.
   abandoned,
 
+  /// Recipient explicitly declined the challenge.
+  declined,
+
   /// Fallback for forward compatibility with newer clients.
   unknown;
 
@@ -288,7 +291,8 @@ class CloudMatch {
     this.lastChatText,
   });
 
-  bool isMyTurn(String myUid) => activeTurnPlayerUid == myUid;
+  bool isMyTurn(String myUid) =>
+      status == MatchStatus.active && activeTurnPlayerUid == myUid;
   bool isParticipant(String myUid) => playerIds.contains(myUid);
 
   CloudPlayer? myPlayer(String myUid) {

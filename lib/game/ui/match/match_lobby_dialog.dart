@@ -60,6 +60,7 @@ class MatchLobbyDialog extends HookConsumerWidget {
     final streamedMatch = ref.watch(singleMatchProvider(initialMatch.id)).value;
     final currentMatch = streamedMatch ?? initialMatch;
     final isOpponentConnected = currentMatch.player2 != null;
+    final isDeclined = currentMatch.status == MatchStatus.declined;
 
     // 2. Pulse radar animation for waiting state
     final radarController = useAnimationController(
@@ -70,6 +71,21 @@ class MatchLobbyDialog extends HookConsumerWidget {
       radarController.repeat(reverse: true);
       return null;
     }, const []);
+
+    // Handle opponent declining challenge
+    useEffect(() {
+      if (isDeclined) {
+        HapticFeedback.mediumImpact();
+        final timer = Timer(const Duration(milliseconds: 2200), () {
+          if (context.mounted) {
+            Navigator.of(context).pop();
+            onCancel?.call();
+          }
+        });
+        return timer.cancel;
+      }
+      return null;
+    }, [isDeclined]);
 
     // 3. Auto-start countdown state when opponent joins
     final autoStartSeconds = useState(3);
@@ -126,25 +142,67 @@ class MatchLobbyDialog extends HookConsumerWidget {
     return AppModalDialog(
       maxWidth: 390.0,
       iconWidget: Icon(
-        isOpponentConnected
-            ? Icons.sports_basketball_rounded
-            : Icons.radar_rounded,
-        color: isOpponentConnected
-            ? AppColors.accentNeonCyan
-            : AppColors.accentElectricSky,
+        isDeclined
+            ? Icons.cancel_outlined
+            : (isOpponentConnected
+                ? Icons.sports_basketball_rounded
+                : Icons.radar_rounded),
+        color: isDeclined
+            ? AppColors.accentRed
+            : (isOpponentConnected
+                ? AppColors.accentNeonCyan
+                : AppColors.accentElectricSky),
         size: 22.0,
       ),
-      title: isOpponentConnected
-          ? 'MATCHUP CONFIRMED'
-          : (challengedFriend != null ? 'CHALLENGE DISPATCHED' : 'MATCH LOBBY'),
-      subtitle: isOpponentConnected
-          ? 'Opponent entered the room'
-          : (challengedFriend != null
-                ? 'Waiting for ${challengedFriend!.displayName} to accept'
-                : 'Share 6-digit code or wait for challenger'),
+      title: isDeclined
+          ? 'CHALLENGE DECLINED'
+          : (isOpponentConnected
+              ? 'MATCHUP CONFIRMED'
+              : (challengedFriend != null ? 'CHALLENGE DISPATCHED' : 'MATCH LOBBY')),
+      subtitle: isDeclined
+          ? '${challengedFriend?.displayName ?? 'Opponent'} declined the match challenge'
+          : (isOpponentConnected
+              ? 'Opponent entered the room'
+              : (challengedFriend != null
+                    ? 'Waiting for ${challengedFriend!.displayName} to accept'
+                    : 'Share 6-digit code or wait for challenger')),
       showCloseButton: true,
       onClose: handleCancel,
-      child: isOpponentConnected
+      child: isDeclined
+          ? Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20.0),
+              child: Container(
+                padding: const EdgeInsets.all(16.0),
+                decoration: BoxDecoration(
+                  color: AppColors.accentRed.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14.0),
+                  border: Border.all(
+                    color: AppColors.accentRed.withValues(alpha: 0.35),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.cancel_rounded,
+                      color: AppColors.accentRed,
+                      size: 24.0,
+                    ),
+                    const SizedBox(width: 14.0),
+                    Expanded(
+                      child: Text(
+                        '${challengedFriend?.displayName ?? 'Friend'} declined this challenge.',
+                        style: const TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : isOpponentConnected
           ? MatchLobbyVsCard(
               match: currentMatch,
               autoStartSeconds: autoStartSeconds.value,

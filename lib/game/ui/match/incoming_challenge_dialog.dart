@@ -82,6 +82,7 @@ class IncomingChallengeDialog extends HookConsumerWidget {
         await FirestoreMatchService.instance.declineMatchChallenge(
           myUid: user.uid,
           matchId: invite.matchId,
+          hostUid: invite.hostUid,
         );
       }
       if (context.mounted) {
