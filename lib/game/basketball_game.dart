@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flame/components.dart';
 import 'package:flame_forge2d/flame_forge2d.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/cloud_match.dart';
@@ -43,6 +44,15 @@ enum GameModeState {
   playing,
   gameOver,
   replay,
+}
+
+/// Connection and grace period states while spectating an opponent in live 1v1 showdowns.
+enum SpectatorConnectionStatus {
+  connected,
+  aimingOrIdle,
+  reconnecting,
+  finalizingTurn,
+  opponentAbandoned,
 }
 
 /// Detailed shooting metrics compiled at the conclusion of a 60-second round.
@@ -174,6 +184,20 @@ class BasketballGame extends Forge2DGame {
   final ValueNotifier<int> player2MatchScoreNotifier = ValueNotifier<int>(0);
   final ValueNotifier<LiveTransitionData?> liveTransitionNotifier =
       ValueNotifier<LiveTransitionData?>(null);
+
+  // Live spectator connection & grace guard
+  final ValueNotifier<SpectatorConnectionStatus> spectatorStatusNotifier =
+      ValueNotifier<SpectatorConnectionStatus>(
+        SpectatorConnectionStatus.connected,
+      );
+  final ValueNotifier<int> spectatorGraceSecondsNotifier = ValueNotifier<int>(
+    15,
+  );
+  DateTime? _lastLiveShotReceivedAt;
+  double _zeroClockGraceElapsed = 0.0;
+  static const double spectatorAimingThresholdSeconds = 6.0;
+  static const double spectatorReconnectingThresholdSeconds = 12.0;
+  static const double spectatorZeroClockGraceLimitSeconds = 15.0;
 
   StreamSubscription<RecordedShot>? _liveShotSubscription;
   StreamSubscription<CloudMatch?>? _liveMatchSubscription;
@@ -348,6 +372,16 @@ class BasketballGame extends Forge2DGame {
   void update(double dt) {
     super.update(dt);
 
+    final session = matchSessionNotifier.value;
+    final isSpectatingLive = session != null &&
+        session.phase == MatchTurnPhase.watchingLiveOpponent &&
+        gameStateNotifier.value == GameModeState.playing &&
+        !isPaused;
+
+    if (isSpectatingLive) {
+      _updateLiveSpectatorStatus(dt);
+    }
+
     if (gameStateNotifier.value == GameModeState.playing &&
         !isPaused &&
         timeRemainingNotifier.value > 0) {
@@ -360,7 +394,6 @@ class BasketballGame extends Forge2DGame {
         final nextTime = timeRemainingNotifier.value - 1;
         timeRemainingNotifier.value = nextTime;
         if (nextTime <= 0) {
-          final session = matchSessionNotifier.value;
           if (session != null &&
               session.phase == MatchTurnPhase.watchingLiveOpponent) {
             // Live spectator clock reached zero; wait for opponent's turn submission via Firestore
@@ -393,6 +426,64 @@ class BasketballGame extends Forge2DGame {
         if (activeReplayBalls.isEmpty &&
             _roundElapsedSeconds >= lastShotTimeSec + 2.5) {
           _onReplayFinished();
+        }
+      }
+    }
+  }
+
+  void _updateLiveSpectatorStatus(double dt) {
+    if (spectatorStatusNotifier.value ==
+        SpectatorConnectionStatus.opponentAbandoned) {
+      return;
+    }
+
+    if (timeRemainingNotifier.value > 0) {
+      final now = DateTime.now();
+      final lastShot = _lastLiveShotReceivedAt;
+      final idleSeconds = lastShot != null
+          ? now.difference(lastShot).inMilliseconds / 1000.0
+          : _roundElapsedSeconds;
+
+      if (idleSeconds >= spectatorReconnectingThresholdSeconds) {
+        if (spectatorStatusNotifier.value !=
+            SpectatorConnectionStatus.reconnecting) {
+          spectatorStatusNotifier.value =
+              SpectatorConnectionStatus.reconnecting;
+        }
+      } else if (idleSeconds >= spectatorAimingThresholdSeconds) {
+        if (spectatorStatusNotifier.value !=
+            SpectatorConnectionStatus.aimingOrIdle) {
+          spectatorStatusNotifier.value =
+              SpectatorConnectionStatus.aimingOrIdle;
+        }
+      } else {
+        if (spectatorStatusNotifier.value !=
+            SpectatorConnectionStatus.connected) {
+          spectatorStatusNotifier.value =
+              SpectatorConnectionStatus.connected;
+        }
+      }
+    } else {
+      _zeroClockGraceElapsed += dt;
+      final remainingGrace =
+          (spectatorZeroClockGraceLimitSeconds - _zeroClockGraceElapsed)
+              .clamp(0.0, spectatorZeroClockGraceLimitSeconds)
+              .ceil();
+      if (spectatorGraceSecondsNotifier.value != remainingGrace) {
+        spectatorGraceSecondsNotifier.value = remainingGrace;
+      }
+
+      if (_zeroClockGraceElapsed >= spectatorZeroClockGraceLimitSeconds) {
+        if (spectatorStatusNotifier.value !=
+            SpectatorConnectionStatus.opponentAbandoned) {
+          spectatorStatusNotifier.value =
+              SpectatorConnectionStatus.opponentAbandoned;
+        }
+      } else {
+        if (spectatorStatusNotifier.value !=
+            SpectatorConnectionStatus.finalizingTurn) {
+          spectatorStatusNotifier.value =
+              SpectatorConnectionStatus.finalizingTurn;
         }
       }
     }
@@ -785,6 +876,14 @@ class BasketballGame extends Forge2DGame {
 
     // Check if match was completed
     if (updatedMatch.status == MatchStatus.completed) {
+      if (updatedMatch.winnerUid != null && updatedMatch.winnerUid!.isNotEmpty) {
+        if (updatedMatch.winnerUid == session.player1.id) {
+          session.forfeitWinner = session.player1;
+        } else if (updatedMatch.winnerUid == session.player2.id) {
+          session.forfeitWinner = session.player2;
+        }
+      }
+      spectatorStatusNotifier.value = SpectatorConnectionStatus.connected;
       session.phase = MatchTurnPhase.matchComplete;
       gameStateNotifier.value = GameModeState.gameOver;
       player1MatchScoreNotifier.value = session.player1.totalScore;
@@ -803,6 +902,10 @@ class BasketballGame extends Forge2DGame {
         updatedMatch.activeTurnPlayerUid.isNotEmpty) {
       session.currentRoundIndex =
           (updatedMatch.currentRound - 1).clamp(0, session.totalRounds - 1);
+      spectatorStatusNotifier.value = SpectatorConnectionStatus.connected;
+      _zeroClockGraceElapsed = 0.0;
+      spectatorGraceSecondsNotifier.value = 15;
+      _lastLiveShotReceivedAt = null;
 
       // Trigger interstitial countdown
       _triggerLiveTurnTransition(
@@ -864,6 +967,10 @@ class BasketballGame extends Forge2DGame {
 
     _roundElapsedSeconds = 0.0;
     _secondAccumulator = 0.0;
+    _zeroClockGraceElapsed = 0.0;
+    _lastLiveShotReceivedAt = DateTime.now();
+    spectatorStatusNotifier.value = SpectatorConnectionStatus.connected;
+    spectatorGraceSecondsNotifier.value = 15;
     timeRemainingNotifier.value = currentRoundDurationSeconds;
 
     player1MatchScoreNotifier.value = session.player1.totalScore;
@@ -890,13 +997,37 @@ class BasketballGame extends Forge2DGame {
     if (session.cloudMatchId != null) {
       _liveShotSubscription = FirestoreMatchService.instance
           .streamLiveShots(session.cloudMatchId!)
-          .listen((shot) {
-        spawnLiveGhostShot(shot);
-      });
+          .listen(
+        (shot) {
+          _lastLiveShotReceivedAt = DateTime.now();
+          if (timeRemainingNotifier.value > 0 &&
+              spectatorStatusNotifier.value !=
+                  SpectatorConnectionStatus.connected) {
+            spectatorStatusNotifier.value =
+                SpectatorConnectionStatus.connected;
+          }
+          spawnLiveGhostShot(shot);
+        },
+        onError: (err) {
+          debugPrint('[BasketballGame] Live shot stream error: $err');
+          if (matchSessionNotifier.value?.phase ==
+                  MatchTurnPhase.watchingLiveOpponent &&
+              spectatorStatusNotifier.value !=
+                  SpectatorConnectionStatus.opponentAbandoned) {
+            spectatorStatusNotifier.value =
+                SpectatorConnectionStatus.reconnecting;
+          }
+        },
+      );
     }
   }
 
   void spawnLiveGhostShot(RecordedShot shot) {
+    _lastLiveShotReceivedAt = DateTime.now();
+    if (timeRemainingNotifier.value > 0 &&
+        spectatorStatusNotifier.value != SpectatorConnectionStatus.connected) {
+      spectatorStatusNotifier.value = SpectatorConnectionStatus.connected;
+    }
     // Cap concurrent ghost balls to max 2 in physics world to prevent clumping
     final activeGhosts = world.children.whereType<GhostBasketball>().toList();
     if (activeGhosts.length >= 2) {
@@ -912,6 +1043,10 @@ class BasketballGame extends Forge2DGame {
 
     _liveShotSubscription?.cancel();
     _liveShotSubscription = null;
+    spectatorStatusNotifier.value = SpectatorConnectionStatus.connected;
+    _zeroClockGraceElapsed = 0.0;
+    spectatorGraceSecondsNotifier.value = 15;
+    _lastLiveShotReceivedAt = null;
 
     // Purge any residual ghost balls from courtside
     final existingGhosts = world.children.whereType<GhostBasketball>().toList();
@@ -1034,12 +1169,60 @@ class BasketballGame extends Forge2DGame {
     _currentActiveTurnUid = null;
     liveTransitionNotifier.value = null;
 
+    spectatorStatusNotifier.value = SpectatorConnectionStatus.connected;
+    _zeroClockGraceElapsed = 0.0;
+    spectatorGraceSecondsNotifier.value = 15;
+    _lastLiveShotReceivedAt = null;
+
     currentRoundDurationSeconds = roundDurationSeconds;
     matchSessionNotifier.value = null;
     player1MatchScoreNotifier.value = 0;
     player2MatchScoreNotifier.value = 0;
     activeGhostTelemetry = null;
     restartRound(resetToSolo: true);
+  }
+
+  /// Awards forfeit victory to the local spectator when an opponent abandons the match.
+  void claimAbandonedVictory() {
+    HapticFeedback.heavyImpact();
+    spectatorStatusNotifier.value = SpectatorConnectionStatus.connected;
+
+    final session = matchSessionNotifier.value;
+    if (session == null) {
+      exitToSoloMode();
+      return;
+    }
+
+    session.forfeitWinner = session.player1;
+    session.phase = MatchTurnPhase.matchComplete;
+    gameStateNotifier.value = GameModeState.gameOver;
+
+    _liveShotSubscription?.cancel();
+    _liveShotSubscription = null;
+    _liveMatchSubscription?.cancel();
+    _liveMatchSubscription = null;
+
+    AudioEngine.playSwish();
+
+    final matchId = session.cloudMatchId;
+    final myUid = AuthService.instance.currentUser?.uid ?? session.player1.id;
+    if (matchId != null) {
+      unawaited(
+        FirestoreMatchService.instance.claimForfeitVictory(
+          matchId: matchId,
+          winnerUid: myUid,
+        ),
+      );
+    }
+
+    matchSessionNotifier.notify();
+  }
+
+  /// Exits an abandoned match cleanly back to solo shootaround.
+  void exitAbandonedMatch() {
+    HapticFeedback.mediumImpact();
+    spectatorStatusNotifier.value = SpectatorConnectionStatus.connected;
+    exitToSoloMode();
   }
 
   void _prepareTurn() {
@@ -1258,6 +1441,8 @@ class BasketballGame extends Forge2DGame {
     matchSessionNotifier.dispose();
     player1MatchScoreNotifier.dispose();
     player2MatchScoreNotifier.dispose();
+    spectatorStatusNotifier.dispose();
+    spectatorGraceSecondsNotifier.dispose();
     super.onRemove();
   }
 }
