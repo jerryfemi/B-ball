@@ -209,10 +209,7 @@ class BallPhysics3D {
     // 5. Backboard Plane Collision Detection & Response
     _checkBackboardCollision();
 
-    // 6. Solid Steel Mounting Neck Collision (blocks 19cm gap behind rim)
-    _checkMountingNeckCollision();
-
-    // 7. Score Detection & Net Damping
+    // 6. Score Detection & Net Damping
     _checkScoreAndNet(prevY, dt);
 
     // 7. Cylindrical Pole Collision Detection & Response
@@ -362,63 +359,6 @@ class BallPhysics3D {
           onBackboardImpact?.call(impactSpeed);
         }
       }
-    }
-  }
-
-  /// Solid steel mounting neck & bracket collider connecting the rear of the rim
-  /// (Z = 4.77m) to the backboard faceplate (Z = 4.96m).
-  ///
-  /// Physically closes the 19cm gap behind the rim so balls can never fall
-  /// between the backboard and the rim.
-  void _checkMountingNeckCollision() {
-    const neckMinX = -0.28;
-    const neckMaxX = 0.28;
-    const neckMinY = 2.90;
-    const neckMaxY = 3.18;
-    const neckMinZ = 4.70; // From rear rim metal to backboard plane
-    const neckMaxZ = backboardZ;
-
-    // AABB check with ball radius
-    if (pos.x + radius >= neckMinX &&
-        pos.x - radius <= neckMaxX &&
-        pos.y + radius >= neckMinY &&
-        pos.y - radius <= neckMaxY &&
-        pos.z + radius >= neckMinZ &&
-        pos.z - radius <= neckMaxZ) {
-      // Find penetration depth along each axis to determine collision normal
-      final dxLeft = (pos.x + radius) - neckMinX;
-      final dxRight = neckMaxX - (pos.x - radius);
-      final dyBottom = (pos.y + radius) - neckMinY;
-      final dyTop = neckMaxY - (pos.y - radius);
-      final dzFront = (pos.z + radius) - neckMinZ;
-
-      // Smallest penetration is the collision normal
-      final minPen = [dxLeft, dxRight, dyBottom, dyTop, dzFront].reduce(math.min);
-
-      Vector3 n = Vector3(0.0, 1.0, 0.0);
-      if (minPen == dyTop) {
-        // Impacting top of mounting neck: slanted gusset plate deflects ball forward towards rim/court
-        pos.y = neckMaxY + radius + 0.001;
-        n = Vector3(0.0, 0.85, -0.52).normalized();
-      } else if (minPen == dzFront) {
-        // Impacting front of mounting neck
-        pos.z = neckMinZ - radius - 0.001;
-        n = Vector3(0.0, 0.0, -1.0);
-      } else if (minPen == dxLeft) {
-        pos.x = neckMinX - radius - 0.001;
-        n = Vector3(-1.0, 0.0, 0.0);
-      } else if (minPen == dxRight) {
-        pos.x = neckMaxX + radius + 0.001;
-        n = Vector3(1.0, 0.0, 0.0);
-      } else {
-        pos.y = neckMinY - radius - 0.001;
-        n = Vector3(0.0, -1.0, 0.0);
-      }
-
-      final impactSpeed = vel.length;
-      _contact(n, e: 0.45, mu: 0.25);
-      hasClankedRim = true;
-      onRimImpact?.call(impactSpeed);
     }
   }
 
