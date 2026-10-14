@@ -233,10 +233,11 @@ class AudioEngine {
       }
       final track = _playlist[_shuffledIndices[_currentShufflePos]];
 
-      // Stream music track in chunks from disk/assets to conserve 80-100MB of RAM
+      // Pre-decode active music track into RAM buffer (LoadMode.memory) for zero-latency,
+      // glitch-free playback without real-time disk streaming or CPU buffer underruns.
       final source = await SoLoud.instance.loadAsset(
         track.assetPath,
-        mode: LoadMode.disk,
+        mode: LoadMode.memory,
       );
 
       // Race guard: if another track was requested while loading, discard this one
