@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
@@ -106,8 +105,6 @@ class BackboardVisual extends PositionComponent {
     _renderWallDropShadow(canvas);
     _renderPole(canvas);
     _renderScoopedBackboard(canvas);
-    _renderRearRim(canvas);
-    _renderRearNet(canvas);
 
     canvas.restore();
   }
@@ -412,67 +409,5 @@ class BackboardVisual extends PositionComponent {
     path.close();
 
     return path;
-  }
-
-  void _renderRearRim(Canvas canvas) {
-    final rimRect = Rect.fromCenter(
-      center: Offset.zero,
-      width: hoopWidth,
-      height: hoopDepth,
-    );
-
-    // Top half of rim ellipse (from pi to 2*pi): curves upwards/away
-    final rearRimPaint = Paint()
-      ..color =
-          const Color(0xFF751117) // Shaded deep iron crimson
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeWidth = 0.08;
-
-    canvas.drawArc(rimRect, math.pi, math.pi, false, rearRimPaint);
-  }
-
-  void _renderRearNet(Canvas canvas) {
-    final rearNetPaint = Paint()
-      ..color =
-          const Color(0x5094A3B8) // Translucent rear cords
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.025;
-
-    const cordCount = 7;
-    final netDepth = _currentNetDepth;
-    final bottomWidthRatio = _currentBottomWidth;
-
-    // Draw rear vertical cords tapering downwards
-    for (int i = 0; i <= cordCount; i++) {
-      final t = i / cordCount;
-      final angle = math.pi + t * math.pi;
-      final topX = (hoopWidth / 2) * math.cos(angle);
-      final topY = (hoopDepth / 2) * math.sin(angle);
-
-      final bottomX = topX * bottomWidthRatio + _currentSway;
-      final bottomY = netDepth;
-
-      canvas.drawLine(
-        Offset(topX, topY),
-        Offset(bottomX, bottomY),
-        rearNetPaint,
-      );
-    }
-
-    // Rear horizontal ribs
-    for (double yFrac = 0.25; yFrac <= 0.85; yFrac += 0.25) {
-      final curY = netDepth * yFrac;
-      final curWidth = hoopWidth * (1.0 - (1.0 - bottomWidthRatio) * yFrac);
-      final curDepth = hoopDepth * (1.0 - (1.0 - bottomWidthRatio) * yFrac);
-
-      final ribRect = Rect.fromCenter(
-        center: Offset(_currentSway * yFrac, curY),
-        width: curWidth,
-        height: curDepth,
-      );
-
-      canvas.drawArc(ribRect, math.pi, math.pi, false, rearNetPaint);
-    }
   }
 }
