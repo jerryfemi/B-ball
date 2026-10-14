@@ -234,7 +234,7 @@ export const Stage3D: React.FC<Stage3DProps> = ({
                 boxShadow: "0 0 10px #00e5ff",
               }}
             />
-            ARCADE B-BALL
+            DUNKVERSE
           </div>
         )}
       </div>

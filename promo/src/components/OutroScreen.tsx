@@ -186,7 +186,7 @@ export const OutroScreen: React.FC<OutroScreenProps> = ({
                 textTransform: "uppercase",
               }}
             >
-              ARCADE B-BALL
+              DUNKVERSE
             </div>
             <div
               style={{

@@ -45,9 +45,9 @@ class ShareTurnSheet extends HookWidget {
   Widget build(BuildContext context) {
     final copied = useState(false);
 
-    final matchUrl = 'https://bball-arcade.web.app/#/join?code=$joinCode';
+    final matchUrl = 'https://dunkverse.web.app/#/join?code=$joinCode';
     final shareText =
-        '🏀 I just scored $roundScore in B-Ball Round $roundIndex! Can you beat it? Tap to shoot: $matchUrl';
+        '🏀 I just scored $roundScore in DunkVerse Round $roundIndex! Can you beat it? Tap to shoot: $matchUrl';
 
     Future<void> copyToClipboard() async {
       await Clipboard.setData(ClipboardData(text: matchUrl));
@@ -63,7 +63,7 @@ class ShareTurnSheet extends HookWidget {
       await SharePlus.instance.share(
         ShareParams(
           text: shareText,
-          subject: '🏀 B-Ball 1v1 Challenge',
+          subject: '🏀 DunkVerse 1v1 Challenge',
         ),
       );
     }

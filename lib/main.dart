@@ -73,7 +73,7 @@ class _BasketballAppState extends State<BasketballApp>
       behavior: HitTestBehavior.translucent,
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
-        title: 'B-Ball',
+        title: 'DunkVerse',
         theme: ThemeData.dark(),
         home: Scaffold(
           body: GameWidget<BasketballGame>(
