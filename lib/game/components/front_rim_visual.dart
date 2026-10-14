@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 
 import 'backboard_visual.dart';
 
-/// Renders the front half of the metal rim, mounting bracket, and front net cords.
-/// Configured with priority = 3 so it renders in front of the basketball (priority = 2),
+/// Renders the front half of the metal rim and front net cords.
+/// Configured with priority = 5 so it renders in front of the basketball inside the net (priority = 4),
 /// completing the 2.5D immersion when the ball drops into the hoop.
 ///
 /// Highly optimized: Synchronizes net dynamics directly from [BackboardVisual]
@@ -28,7 +28,7 @@ class FrontRimVisual extends PositionComponent {
           position: position,
           size: Vector2(4.0, 4.0),
           anchor: Anchor.center,
-          priority: 3,
+          priority: 5,
         );
 
   @override
@@ -51,43 +51,10 @@ class FrontRimVisual extends PositionComponent {
     // Shift origin so (0, 0) corresponds to the hoop center
     canvas.translate(size.x / 2, size.y / 2);
 
-    _renderMountingBracket(canvas);
     _renderFrontNet(canvas);
     _renderFrontRim(canvas);
 
     canvas.restore();
-  }
-
-  void _renderMountingBracket(Canvas canvas) {
-    final bracketPaint = Paint()
-      ..color = const Color(0xFF7F1319) // Burnished iron crimson
-      ..style = PaintingStyle.fill;
-
-    // Small mounting flange connecting rim to backboard faceplate and vertical pole
-    final bracketRect = Rect.fromCenter(
-      center: const Offset(0, -0.10),
-      width: 0.28,
-      height: 0.16,
-    );
-    canvas.drawRect(bracketRect, bracketPaint);
-
-    // Top crest metallic highlight
-    final highlightPaint = Paint()
-      ..color = const Color(0xFFEF4444)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.02;
-    canvas.drawLine(
-      const Offset(-0.13, -0.17),
-      const Offset(0.13, -0.17),
-      highlightPaint,
-    );
-
-    // Heavy mounting bolts
-    final boltPaint = Paint()
-      ..color = const Color(0xFF1E293B)
-      ..style = PaintingStyle.fill;
-    canvas.drawCircle(const Offset(-0.08, -0.10), 0.024, boltPaint);
-    canvas.drawCircle(const Offset(0.08, -0.10), 0.024, boltPaint);
   }
 
   void _renderFrontRim(Canvas canvas) {
