@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flame/components.dart';
 import 'package:flame_forge2d/flame_forge2d.dart';
@@ -39,12 +40,7 @@ class ScoreEvent {
 }
 
 /// State of the 60-second basketball challenge.
-enum GameModeState {
-  ready,
-  playing,
-  gameOver,
-  replay,
-}
+enum GameModeState { ready, playing, gameOver, replay }
 
 /// Connection and grace period states while spectating an opponent in live 1v1 showdowns.
 enum SpectatorConnectionStatus {
@@ -158,8 +154,9 @@ class BasketballGame extends Forge2DGame {
   // Reactive ValueNotifiers for zero-overhead Flutter UI binding
   final ValueNotifier<int> scoreNotifier = ValueNotifier<int>(0);
   final ValueNotifier<int> streakNotifier = ValueNotifier<int>(0);
-  final ValueNotifier<int> timeRemainingNotifier =
-      ValueNotifier<int>(roundDurationSeconds);
+  final ValueNotifier<int> timeRemainingNotifier = ValueNotifier<int>(
+    roundDurationSeconds,
+  );
   final ValueNotifier<int> bestScoreNotifier = ValueNotifier<int>(0);
   final ValueNotifier<bool> isTourActiveNotifier = ValueNotifier<bool>(false);
 
@@ -178,8 +175,7 @@ class BasketballGame extends Forge2DGame {
       ValueNotifier<ScoreEvent?>(null);
 
   // Match Mode & 1v1 turn progression
-  final MatchSessionNotifier matchSessionNotifier =
-      MatchSessionNotifier(null);
+  final MatchSessionNotifier matchSessionNotifier = MatchSessionNotifier(null);
   final ValueNotifier<int> player1MatchScoreNotifier = ValueNotifier<int>(0);
   final ValueNotifier<int> player2MatchScoreNotifier = ValueNotifier<int>(0);
   final ValueNotifier<LiveTransitionData?> liveTransitionNotifier =
@@ -282,12 +278,14 @@ class BasketballGame extends Forge2DGame {
         session.cloudMatchId != null &&
         session.phase == MatchTurnPhase.playingTurn) {
       final myUid = AuthService.instance.currentUser?.uid ?? '';
-      unawaited(FirestoreMatchService.instance.broadcastLiveShot(
-        matchId: session.cloudMatchId!,
-        shot: shot,
-        shooterUid: myUid,
-        shotIndex: _currentRoundShots.length,
-      ));
+      unawaited(
+        FirestoreMatchService.instance.broadcastLiveShot(
+          matchId: session.cloudMatchId!,
+          shot: shot,
+          shooterUid: myUid,
+          shotIndex: _currentRoundShots.length,
+        ),
+      );
     }
   }
 
@@ -336,7 +334,8 @@ class BasketballGame extends Forge2DGame {
     onScoreEvent?.call(event);
 
     final session = matchSessionNotifier.value;
-    if (session != null && session.phase != MatchTurnPhase.waitingForOpponentTurn) {
+    if (session != null &&
+        session.phase != MatchTurnPhase.waitingForOpponentTurn) {
       if (session.activePlayerIndex == 0) {
         player1MatchScoreNotifier.value =
             session.player1.scoreUpToRound(session.currentRoundIndex) + score;
@@ -349,11 +348,13 @@ class BasketballGame extends Forge2DGame {
           session.cloudMatchId != null &&
           session.phase == MatchTurnPhase.playingTurn) {
         final myUid = AuthService.instance.currentUser?.uid ?? '';
-        unawaited(FirestoreMatchService.instance.updateLiveShooterScore(
-          matchId: session.cloudMatchId!,
-          currentRoundScore: score,
-          shooterUid: myUid,
-        ));
+        unawaited(
+          FirestoreMatchService.instance.updateLiveShooterScore(
+            matchId: session.cloudMatchId!,
+            currentRoundScore: score,
+            shooterUid: myUid,
+          ),
+        );
       }
     }
 
@@ -373,7 +374,8 @@ class BasketballGame extends Forge2DGame {
     super.update(dt);
 
     final session = matchSessionNotifier.value;
-    final isSpectatingLive = session != null &&
+    final isSpectatingLive =
+        session != null &&
         session.phase == MatchTurnPhase.watchingLiveOpponent &&
         !isPaused;
 
@@ -458,8 +460,7 @@ class BasketballGame extends Forge2DGame {
       } else {
         if (spectatorStatusNotifier.value !=
             SpectatorConnectionStatus.connected) {
-          spectatorStatusNotifier.value =
-              SpectatorConnectionStatus.connected;
+          spectatorStatusNotifier.value = SpectatorConnectionStatus.connected;
         }
       }
     } else {
@@ -510,12 +511,14 @@ class BasketballGame extends Forge2DGame {
     required bool isBankShot,
   }) {
     final session = matchSessionNotifier.value;
-    final is1v1Spectating = session != null &&
+    final is1v1Spectating =
+        session != null &&
         (session.phase == MatchTurnPhase.watchingOpponentReplay ||
-         session.phase == MatchTurnPhase.watchingLiveOpponent);
+            session.phase == MatchTurnPhase.watchingLiveOpponent);
 
     if (gameStateNotifier.value == GameModeState.replay || is1v1Spectating) {
-      if (is1v1Spectating && session.phase == MatchTurnPhase.watchingOpponentReplay) {
+      if (is1v1Spectating &&
+          session.phase == MatchTurnPhase.watchingOpponentReplay) {
         // Increment opponent's scoreboard bay only during deterministic recorded replay
         if (session.activePlayerIndex == 1) {
           player2MatchScoreNotifier.value += points;
@@ -581,16 +584,19 @@ class BasketballGame extends Forge2DGame {
         lastRoundTelemetry != null) {
       final user = AuthService.instance.currentUser;
       if (user != null) {
-        unawaited(FirestoreMatchService.instance.submitTurn(
-          matchId: session.cloudMatchId!,
-          shooterUid: user.uid,
-          roundIndex: session.currentRoundNumber,
-          telemetry: lastRoundTelemetry!,
-        ));
+        unawaited(
+          FirestoreMatchService.instance.submitTurn(
+            matchId: session.cloudMatchId!,
+            shooterUid: user.uid,
+            roundIndex: session.currentRoundNumber,
+            telemetry: lastRoundTelemetry!,
+          ),
+        );
       }
     }
 
-    final isBothFinished = session.isFinalRound &&
+    final isBothFinished =
+        session.isFinalRound &&
         (session.mode == MatchGameMode.onlineCloud1v1
             ? session.player2.roundScores.length >= session.totalRounds
             : session.activePlayerIndex == 1);
@@ -634,9 +640,9 @@ class BasketballGame extends Forge2DGame {
               .collection('users')
               .doc(user.uid)
               .set({
-            'highScore': newBest,
-            'updatedAt': DateTime.now().millisecondsSinceEpoch,
-          }, SetOptions(merge: true));
+                'highScore': newBest,
+                'updatedAt': DateTime.now().millisecondsSinceEpoch,
+              }, SetOptions(merge: true));
         }
       } catch (e) {
         debugPrint('[BasketballGame] Error saving best score: $e');
@@ -780,7 +786,9 @@ class BasketballGame extends Forge2DGame {
     if (config != null) {
       currentMatchConfig = config;
     } else if (totalRounds != null) {
-      currentMatchConfig = currentMatchConfig.copyWith(totalRounds: totalRounds);
+      currentMatchConfig = currentMatchConfig.copyWith(
+        totalRounds: totalRounds,
+      );
     }
     currentRoundDurationSeconds = currentMatchConfig.roundDurationSeconds;
 
@@ -821,7 +829,8 @@ class BasketballGame extends Forge2DGame {
   }
 
   void _setupCloudMatchSync(CloudMatch match, String myUid) {
-    if (_currentSubscribedMatchId == match.id && _liveMatchSubscription != null) {
+    if (_currentSubscribedMatchId == match.id &&
+        _liveMatchSubscription != null) {
       return;
     }
     _currentSubscribedMatchId = match.id;
@@ -831,8 +840,8 @@ class BasketballGame extends Forge2DGame {
     _liveMatchSubscription = FirestoreMatchService.instance
         .streamMatch(match.id)
         .listen((updatedMatch) {
-      _onCloudMatchUpdated(updatedMatch, myUid);
-    });
+          _onCloudMatchUpdated(updatedMatch, myUid);
+        });
   }
 
   void _onCloudMatchUpdated(CloudMatch? updatedMatch, String myUid) {
@@ -875,7 +884,8 @@ class BasketballGame extends Forge2DGame {
 
     // Check if match was completed
     if (updatedMatch.status == MatchStatus.completed) {
-      if (updatedMatch.winnerUid != null && updatedMatch.winnerUid!.isNotEmpty) {
+      if (updatedMatch.winnerUid != null &&
+          updatedMatch.winnerUid!.isNotEmpty) {
         if (updatedMatch.winnerUid == session.player1.id) {
           session.forfeitWinner = session.player1;
         } else if (updatedMatch.winnerUid == session.player2.id) {
@@ -899,8 +909,10 @@ class BasketballGame extends Forge2DGame {
     if (previousTurnUid != null &&
         previousTurnUid != updatedMatch.activeTurnPlayerUid &&
         updatedMatch.activeTurnPlayerUid.isNotEmpty) {
-      session.currentRoundIndex =
-          (updatedMatch.currentRound - 1).clamp(0, session.totalRounds - 1);
+      session.currentRoundIndex = (updatedMatch.currentRound - 1).clamp(
+        0,
+        session.totalRounds - 1,
+      );
       spectatorStatusNotifier.value = SpectatorConnectionStatus.connected;
       _zeroClockGraceElapsed = 0.0;
       spectatorGraceSecondsNotifier.value = 15;
@@ -926,8 +938,9 @@ class BasketballGame extends Forge2DGame {
     // Sync live scoreboard ticks if opponent is shooting and we are spectating
     if (session.phase == MatchTurnPhase.watchingLiveOpponent &&
         updatedMatch.liveShooterScore != null) {
-      final oppBase =
-          session.opponentPlayer.scoreUpToRound(session.currentRoundIndex);
+      final oppBase = session.opponentPlayer.scoreUpToRound(
+        session.currentRoundIndex,
+      );
       final totalLive = oppBase + updatedMatch.liveShooterScore!;
       if (session.activePlayerIndex == 1) {
         player2MatchScoreNotifier.value = totalLive;
@@ -998,27 +1011,27 @@ class BasketballGame extends Forge2DGame {
       _liveShotSubscription = FirestoreMatchService.instance
           .streamLiveShots(session.cloudMatchId!)
           .listen(
-        (shot) {
-          _lastLiveShotReceivedAt = DateTime.now();
-          if (timeRemainingNotifier.value > 0 &&
-              spectatorStatusNotifier.value !=
-                  SpectatorConnectionStatus.connected) {
-            spectatorStatusNotifier.value =
-                SpectatorConnectionStatus.connected;
-          }
-          spawnLiveGhostShot(shot);
-        },
-        onError: (err) {
-          debugPrint('[BasketballGame] Live shot stream error: $err');
-          if (matchSessionNotifier.value?.phase ==
-                  MatchTurnPhase.watchingLiveOpponent &&
-              spectatorStatusNotifier.value !=
-                  SpectatorConnectionStatus.opponentAbandoned) {
-            spectatorStatusNotifier.value =
-                SpectatorConnectionStatus.reconnecting;
-          }
-        },
-      );
+            (shot) {
+              _lastLiveShotReceivedAt = DateTime.now();
+              if (timeRemainingNotifier.value > 0 &&
+                  spectatorStatusNotifier.value !=
+                      SpectatorConnectionStatus.connected) {
+                spectatorStatusNotifier.value =
+                    SpectatorConnectionStatus.connected;
+              }
+              spawnLiveGhostShot(shot);
+            },
+            onError: (err) {
+              debugPrint('[BasketballGame] Live shot stream error: $err');
+              if (matchSessionNotifier.value?.phase ==
+                      MatchTurnPhase.watchingLiveOpponent &&
+                  spectatorStatusNotifier.value !=
+                      SpectatorConnectionStatus.opponentAbandoned) {
+                spectatorStatusNotifier.value =
+                    SpectatorConnectionStatus.reconnecting;
+              }
+            },
+          );
     }
   }
 
@@ -1084,8 +1097,10 @@ class BasketballGame extends Forge2DGame {
 
     // Start opponent score at baseline strictly prior to the round being replayed
     final opponent = session.opponentPlayer;
-    final replayedRoundIndex =
-        (opponent.roundTelemetries.length - 1).clamp(0, session.totalRounds - 1);
+    final replayedRoundIndex = (opponent.roundTelemetries.length - 1).clamp(
+      0,
+      session.totalRounds - 1,
+    );
     final opponentBaseline = opponent.scoreUpToRound(replayedRoundIndex);
     if (session.activePlayerIndex == 1) {
       // Opponent is Player 1 (YOU bay)
@@ -1273,10 +1288,7 @@ class BasketballGame extends Forge2DGame {
   @override
   Future<void> onLoad() async {
     await super.onLoad();
-    await Future.wait([
-      AudioEngine.init(),
-      Basketball.loadProgram(),
-    ]);
+    await Future.wait([AudioEngine.init(), Basketball.loadProgram()]);
 
     // Asynchronously restore high score and check onboarding tour status
     unawaited(() async {
@@ -1373,8 +1385,9 @@ class BasketballGame extends Forge2DGame {
   double _pickNextSpawnX() {
     // Diverse shooting positions along the bottom baseline (in Forge2D meters)
     const candidates = [-1.4, -0.7, 0.0, 0.7, 1.4];
-    final options =
-        candidates.where((x) => (x - _lastSpawnX).abs() >= 0.5).toList();
+    final options = candidates
+        .where((x) => (x - _lastSpawnX).abs() >= 0.5)
+        .toList();
     final chosen = options[_rng.nextInt(options.length)];
     _lastSpawnX = chosen;
     return chosen;
@@ -1384,7 +1397,8 @@ class BasketballGame extends Forge2DGame {
     if (gameStateNotifier.value == GameModeState.gameOver) return;
 
     final session = matchSessionNotifier.value;
-    if (session != null && session.phase == MatchTurnPhase.watchingLiveOpponent) {
+    if (session != null &&
+        session.phase == MatchTurnPhase.watchingLiveOpponent) {
       return; // Do not spawn interactive balls when spectating live
     }
 
