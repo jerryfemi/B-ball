@@ -262,8 +262,12 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
         game.resetStreak();
       }
 
-      // 2. Lifecycle cleanup: 3s visible + 2s fade = 5s total court lifetime
-      if (physics.timeSinceLaunch > 5.0) {
+      // 2. Lifecycle cleanup:
+      // Active in-flight balls get up to 4.0s full flight time.
+      // Once settled on the floor or after 2+ bounces, retire within 2.5s to prevent ball pileup.
+      final double maxLifetime =
+          (physics.isSettled || physics.bounceCount >= 2) ? 2.5 : 4.0;
+      if (physics.timeSinceLaunch > maxLifetime) {
         removeFromParent();
         return;
       }
@@ -313,9 +317,12 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
 
   @override
   void render(Canvas canvas) {
-    // 3 seconds solid, then smooth 2-second fade out (5s total)
-    final double fadeOut = physics.timeSinceLaunch > 3.0
-        ? (1.0 - (physics.timeSinceLaunch - 3.0) / 2.0).clamp(0.0, 1.0)
+    // Dynamic fade out over the final 0.8s of the ball's lifetime
+    final double maxLifetime =
+        (physics.isSettled || physics.bounceCount >= 2) ? 2.5 : 4.0;
+    final double fadeOutStart = maxLifetime - 0.8;
+    final double fadeOut = physics.timeSinceLaunch > fadeOutStart
+        ? (1.0 - (physics.timeSinceLaunch - fadeOutStart) / 0.8).clamp(0.0, 1.0)
         : 1.0;
 
     final double effectiveOpacity = (baseOpacity * fadeOut).clamp(0.0, 1.0);
@@ -365,120 +372,122 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
       }
     }
 
-    // 2. Dynamic Backboard Acrylic Contact Shadow (Convergence Depth Cue)
-    // Cast on the white acrylic backboard as the ball approaches within ~1.20m (Z >= 3.76m).
-    // An arena spotlight angle casts the shadow slightly down and to the side,
-    // ensuring it is fully visible outside the ball's silhouette. As the ball approaches,
-    // the shadow sharpens, darkens, and smoothly converges to the exact contact point.
-    final double distToBoard =
-        (BallPhysics3D.backboardZ - (physics.pos.z + physics.radius))
-            .clamp(0.0, 1.20);
-    final double boardProximity = (1.0 - (distToBoard / 1.20)).clamp(0.0, 1.0);
+    // ── High Performance Guard ──
+    // Only an actively in-flight ball heading toward the hoop (before floor bounce or netting)
+    // evaluates or renders vertical plane shadows (backboard and back wall).
+    // Bounced, rolling, or scored balls strictly skip this to eliminate GPU fill-rate waste.
+    final bool canCastVerticalShadows = isLaunched &&
+        !physics.isSettled &&
+        physics.bounceCount == 0 &&
+        !physics.passedThroughRim &&
+        physics.pos.z >= 3.40;
 
-    if (distToBoard < 1.20 &&
-        physics.pos.z <= BallPhysics3D.backboardZ + 0.05 &&
-        shadowImage != null) {
-      // Offset shrinks from (dx = 0.14m, dy = -0.24m) at 1.2m away down to (0, 0) at contact
-      final double offsetX = (1.0 - boardProximity) * 0.14;
-      final double offsetY = -(1.0 - boardProximity) * 0.24;
-      final double shadowWorldX = physics.pos.x + offsetX;
-      final double shadowWorldY = physics.pos.y + offsetY;
+    if (canCastVerticalShadows) {
+      // 2. Dynamic Backboard Acrylic Contact Shadow (Convergence Depth Cue)
+      // Cast on the white acrylic backboard as the ball approaches within ~1.20m (Z >= 3.76m).
+      final double distToBoard =
+          (BallPhysics3D.backboardZ - (physics.pos.z + physics.radius))
+              .clamp(0.0, 1.20);
+      final double boardProximity =
+          (1.0 - (distToBoard / 1.20)).clamp(0.0, 1.0);
 
-      final bool inBoardBounds =
-          shadowWorldX.abs() <= BallPhysics3D.backboardMaxX + 0.12 &&
-          shadowWorldY >= BallPhysics3D.backboardMinY - 0.15 &&
-          shadowWorldY <= BallPhysics3D.backboardMaxY + 0.15;
+      if (distToBoard < 1.20 &&
+          physics.pos.z <= BallPhysics3D.backboardZ + 0.05 &&
+          shadowImage != null) {
+        final double offsetX = (1.0 - boardProximity) * 0.14;
+        final double offsetY = -(1.0 - boardProximity) * 0.24;
+        final double shadowWorldX = physics.pos.x + offsetX;
+        final double shadowWorldY = physics.pos.y + offsetY;
 
-      if (inBoardBounds) {
-        // Opacity smoothly increases up to 0.65 as ball closes in
-        final double boardShadowAlpha =
-            (math.pow(boardProximity, 0.6) * 0.65 * opacity).clamp(0.0, 0.65);
+        final bool inBoardBounds =
+            shadowWorldX.abs() <= BallPhysics3D.backboardMaxX + 0.12 &&
+            shadowWorldY >= BallPhysics3D.backboardMinY - 0.15 &&
+            shadowWorldY <= BallPhysics3D.backboardMaxY + 0.15;
 
-        if (boardShadowAlpha > 0.02) {
-          final boardF2D = camera3D.projectToForge2D(
-            shadowWorldX,
-            shadowWorldY,
-            BallPhysics3D.backboardZ,
+        if (inBoardBounds) {
+          final double boardShadowAlpha =
+              (math.pow(boardProximity, 0.6) * 0.65 * opacity).clamp(0.0, 0.65);
+
+          if (boardShadowAlpha > 0.02) {
+            final boardF2D = camera3D.projectToForge2D(
+              shadowWorldX,
+              shadowWorldY,
+              BallPhysics3D.backboardZ,
+            );
+            final boardShadowOffset = Offset(
+              boardF2D.dx - body.position.x,
+              boardF2D.dy - body.position.y,
+            );
+
+            final boardZScale = camera3D.scaleAtDepth(BallPhysics3D.backboardZ);
+            final boardVisualRadius = radius * boardZScale * 1.38;
+            final shadowSpread = 1.0 + (1.0 - boardProximity) * 0.55;
+
+            final boardShadowRect = Rect.fromCenter(
+              center: boardShadowOffset,
+              width: boardVisualRadius * 2.0 * shadowSpread,
+              height: boardVisualRadius * 2.0 * shadowSpread,
+            );
+            canvas.drawImageRect(
+              shadowImage,
+              _shadowSrcRect,
+              boardShadowRect,
+              _sharedShadowPaint
+                ..color = Color.fromRGBO(0, 0, 0, boardShadowAlpha),
+            );
+          }
+        }
+      }
+
+      // 3. Dynamic Brick Back Wall Proximity Contact Shadow
+      final double distToWall =
+          (BallPhysics3D.wallZ - (physics.pos.z + physics.radius)).clamp(
+            0.0,
+            0.70,
           );
-          final boardShadowOffset = Offset(
-            boardF2D.dx - body.position.x,
-            boardF2D.dy - body.position.y,
+      if (distToWall < 0.70 && physics.pos.x.abs() <= BallPhysics3D.halfWidth) {
+        final double wallProximity = 1.0 - (distToWall / 0.70);
+        final double wallShadowAlpha = (wallProximity * 0.60 * opacity).clamp(
+          0.0,
+          0.60,
+        );
+
+        final bool inBackboardFrame =
+            physics.pos.x.abs() <= BallPhysics3D.backboardMaxX &&
+            physics.pos.y >= BallPhysics3D.backboardMinY &&
+            physics.pos.y <= BallPhysics3D.backboardMaxY;
+        final bool occludedByBoard =
+            inBackboardFrame && physics.pos.z < BallPhysics3D.backboardZ;
+
+        if (!occludedByBoard && wallShadowAlpha > 0.01 && shadowImage != null) {
+          final double shadowY = physics.pos.y - (0.04 + distToWall * 0.08);
+          final wallF2D = camera3D.projectToForge2D(
+            physics.pos.x,
+            shadowY,
+            BallPhysics3D.wallZ,
+          );
+          final wallShadowOffset = Offset(
+            wallF2D.dx - body.position.x,
+            wallF2D.dy - body.position.y,
           );
 
-          final boardZScale = camera3D.scaleAtDepth(BallPhysics3D.backboardZ);
-          final boardVisualRadius = radius * boardZScale * 1.38;
-          // Diffuse spread shrinks from 1.55x down to 1.0x contact sharpness
-          final shadowSpread = 1.0 + (1.0 - boardProximity) * 0.55;
+          final wallZScale = camera3D.scaleAtDepth(BallPhysics3D.wallZ);
+          final wallVisualRadius = radius * wallZScale * 1.38;
+          final shadowSpread = 1.0 + (1.0 - wallProximity) * 0.35;
 
-          final boardShadowRect = Rect.fromCenter(
-            center: boardShadowOffset,
-            width: boardVisualRadius * 2.0 * shadowSpread,
-            height: boardVisualRadius * 2.0 * shadowSpread,
+          final wallShadowRect = Rect.fromCenter(
+            center: wallShadowOffset,
+            width: wallVisualRadius * 2.0 * shadowSpread,
+            height: wallVisualRadius * 2.0 * shadowSpread,
           );
           canvas.drawImageRect(
             shadowImage,
             _shadowSrcRect,
-            boardShadowRect,
+            wallShadowRect,
             _sharedShadowPaint
-              ..color = Color.fromRGBO(0, 0, 0, boardShadowAlpha),
+              ..color = Color.fromRGBO(0, 0, 0, wallShadowAlpha),
           );
         }
-      }
-    }
-
-    // 3. Dynamic Brick Back Wall Proximity Contact Shadow
-    // Cast when the ball gets within ~0.70m of the back wall plane (wallZ = 5.25m)
-    final double distToWall =
-        (BallPhysics3D.wallZ - (physics.pos.z + physics.radius)).clamp(
-          0.0,
-          0.70,
-        );
-    if (distToWall < 0.70 && physics.pos.x.abs() <= BallPhysics3D.halfWidth) {
-      final double wallProximity = 1.0 - (distToWall / 0.70);
-      final double wallShadowAlpha = (wallProximity * 0.60 * opacity).clamp(
-        0.0,
-        0.60,
-      );
-
-      // Check if wall shadow is occluded by the backboard:
-      // If the ball is in front of the board (Z < backboardZ) within the backboard frame,
-      // the solid board occludes the wall shadow so it does not bleed across the glass.
-      final bool inBackboardFrame =
-          physics.pos.x.abs() <= BallPhysics3D.backboardMaxX &&
-          physics.pos.y >= BallPhysics3D.backboardMinY &&
-          physics.pos.y <= BallPhysics3D.backboardMaxY;
-      final bool occludedByBoard =
-          inBackboardFrame && physics.pos.z < BallPhysics3D.backboardZ;
-
-      if (!occludedByBoard && wallShadowAlpha > 0.01 && shadowImage != null) {
-        // Overhead arena spotlight: casts shadow slightly downward on the vertical wall
-        final double shadowY = physics.pos.y - (0.04 + distToWall * 0.08);
-        final wallF2D = camera3D.projectToForge2D(
-          physics.pos.x,
-          shadowY,
-          BallPhysics3D.wallZ,
-        );
-        final wallShadowOffset = Offset(
-          wallF2D.dx - body.position.x,
-          wallF2D.dy - body.position.y,
-        );
-
-        final wallZScale = camera3D.scaleAtDepth(BallPhysics3D.wallZ);
-        final wallVisualRadius = radius * wallZScale * 1.38;
-        final shadowSpread = 1.0 + (1.0 - wallProximity) * 0.35;
-
-        final wallShadowRect = Rect.fromCenter(
-          center: wallShadowOffset,
-          width: wallVisualRadius * 2.0 * shadowSpread,
-          height: wallVisualRadius * 2.0 * shadowSpread,
-        );
-        canvas.drawImageRect(
-          shadowImage,
-          _shadowSrcRect,
-          wallShadowRect,
-          _sharedShadowPaint
-            ..color = Color.fromRGBO(0, 0, 0, wallShadowAlpha),
-        );
       }
     }
 
