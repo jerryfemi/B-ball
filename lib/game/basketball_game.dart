@@ -206,7 +206,7 @@ class BasketballGame extends Forge2DGame {
 
   /// Difficulty preset for solo play (configurable in the pause menu).
   final ValueNotifier<ShotDifficulty> soloDifficultyNotifier =
-      ValueNotifier<ShotDifficulty>(ShotDifficulty.medium);
+      ValueNotifier<ShotDifficulty>(ShotDifficulty.easy);
 
   /// Active difficulty preset derived from the current match room, or soloDifficultyNotifier in solo play.
   ShotDifficulty get currentDifficulty =>

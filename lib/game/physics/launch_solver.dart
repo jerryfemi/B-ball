@@ -57,7 +57,7 @@ class LaunchSolver {
   /// or deep (back iron/bank) trajectories.
   static double flickToPower(
     double speedPxPerSec, {
-    ShotDifficulty difficulty = ShotDifficulty.medium,
+    ShotDifficulty difficulty = ShotDifficulty.easy,
   }) {
     const double ref = 720.0;
     final double plateau = difficulty.plateau;
@@ -75,7 +75,7 @@ class LaunchSolver {
   /// Transitions smoothly from soft assist up to 1.0x unassisted raw aim at |aimRatio| >= 0.25.
   static double calculateAimAssist(
     double aimRatio, {
-    ShotDifficulty difficulty = ShotDifficulty.medium,
+    ShotDifficulty difficulty = ShotDifficulty.easy,
   }) {
     if (aimRatio.abs() < difficulty.aimDeadzone) return 0.0;
     final double r = aimRatio.clamp(-0.80, 0.80);
@@ -93,7 +93,7 @@ class LaunchSolver {
     required double aimRatio,
     Vector3? from,
     Vector3? target,
-    ShotDifficulty difficulty = ShotDifficulty.medium,
+    ShotDifficulty difficulty = ShotDifficulty.easy,
   }) {
     final ref = solveReferenceVelocity(from: from, target: target);
 

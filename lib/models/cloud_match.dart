@@ -274,7 +274,7 @@ class CloudMatch {
     this.player2,
     required this.totalRounds,
     required this.roundDurationSeconds,
-    this.difficulty = ShotDifficulty.medium,
+    this.difficulty = ShotDifficulty.easy,
     required this.currentRound,
     required this.activeTurnPlayerUid,
     this.latestTelemetry,
@@ -435,7 +435,7 @@ class CloudMatch {
             (map['roundDurationSeconds'] as num?)?.toInt() ?? 60,
         difficulty: ShotDifficulty.values.firstWhere(
           (d) => d.name == map['difficulty'],
-          orElse: () => ShotDifficulty.medium,
+          orElse: () => ShotDifficulty.easy,
         ),
         currentRound: (map['currentRound'] as num?)?.toInt() ?? 1,
         activeTurnPlayerUid: map['activeTurnPlayerUid'] as String? ?? '',

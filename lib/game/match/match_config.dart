@@ -38,7 +38,7 @@ class MatchConfig {
   const MatchConfig({
     this.totalRounds = 2,
     this.roundDurationSeconds = 60,
-    this.difficulty = ShotDifficulty.medium,
+    this.difficulty = ShotDifficulty.easy,
     this.player1Name = 'You',
     this.player2Name = 'Them',
     this.player1Avatar = PlayerDescriptor.defaultAvatar,
