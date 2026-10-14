@@ -14,6 +14,7 @@ import '../services/firestore_match_service.dart';
 import 'audio/audio_engine.dart';
 import 'components/background.dart';
 import 'components/backboard_visual.dart';
+import 'components/rear_rim_visual.dart';
 import 'components/front_rim_visual.dart';
 import 'components/hoop_physics.dart';
 import 'components/ball.dart';
@@ -1351,9 +1352,17 @@ class BasketballGame extends Forge2DGame {
     const hoopWidthInMeters = 1.8; // Increased from 1.4 to make hoop bigger
 
     // 5. 2.5D Layering Pipeline:
-    // Priority 1: Backboard, wall mounts, rear rim half, and rear net mesh
+    // Priority 1: Backboard, pole, glass plate, target rectangle, wall shadows
     world.add(
       BackboardVisual(
+        position: hoopCenterInMeters,
+        hoopWidth: hoopWidthInMeters,
+      ),
+    );
+
+    // Priority 3: Rear rim arc, mounting bracket flange, and rear net mesh
+    world.add(
+      RearRimVisual(
         position: hoopCenterInMeters,
         hoopWidth: hoopWidthInMeters,
       ),
@@ -1367,10 +1376,14 @@ class BasketballGame extends Forge2DGame {
       ),
     );
 
-    // Priority 2: Basketball (passes over backboard, behind front rim)
+    // Dynamic Basketball:
+    // Priority 0: Behind backboard glass (Z > 4.96)
+    // Priority 2: In front of glass, behind rear rim & neck (4.70 <= Z <= 4.96)
+    // Priority 4: Inside hoop cylinder / net (4.23 <= Z < 4.70)
+    // Priority 6: Foreground in front of hoop (Z < 4.23)
     _spawnReadyBall();
 
-    // Priority 3: Front rim half and front net cords
+    // Priority 5: Front rim half, metallic highlight, and front net cords
     world.add(
       FrontRimVisual(
         position: hoopCenterInMeters,
