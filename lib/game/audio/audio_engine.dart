@@ -234,10 +234,10 @@ class AudioEngine {
       }
       final track = _playlist[_shuffledIndices[_currentShufflePos]];
 
-      // Load music track
+      // Load music track into RAM for zero-latency, zero-disk streaming
       final source = await SoLoud.instance.loadAsset(
         track.assetPath,
-        mode: LoadMode.disk,
+        mode: LoadMode.memory,
       );
 
       // Race guard: if another track was requested while loading, discard this one
