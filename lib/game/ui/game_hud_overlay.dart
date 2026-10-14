@@ -2,10 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-import '../../models/player_descriptor.dart';
 import '../../providers/app_providers.dart';
 import '../../services/auth_service.dart';
-import '../../services/firestore_match_service.dart';
 import '../basketball_game.dart';
 import '../match/match_session.dart';
 import '../../services/update/update_service.dart';
@@ -16,8 +14,6 @@ import 'floating_score_toast.dart';
 import 'game_over_overlay.dart';
 import 'game_rules_dialog.dart';
 import 'match/incoming_challenge_dialog.dart';
-import 'match/match_lobby_dialog.dart';
-import 'match/match_setup_dialog.dart';
 import 'match/match_winner_podium_overlay.dart';
 import 'match/round_intermission_overlay.dart';
 import 'pause_overlay.dart';
@@ -45,64 +41,8 @@ class GameHudOverlay extends StatelessWidget {
     }
   }
 
-  Future<void> _handleInboxTapped(BuildContext context) async {
-    final wasPlaying = game.gameStateNotifier.value == GameModeState.playing;
-    if (wasPlaying) {
-      game.pauseGame(manual: true);
-    }
-    await MatchInboxSheet.show(
-      context,
-      onPlayMatch: (match) {
-        final myUid = AuthService.instance.currentUser?.uid ?? '';
-        game.startCloudMatch(match, myUid);
-      },
-      onCreateMatch: () async {
-        final config = await MatchSetupDialog.show(
-          context,
-          initialConfig: game.currentMatchConfig,
-        );
-        if (config != null && context.mounted) {
-          final user = await AuthService.instance.ensureAuthenticated();
-          final profile =
-              AuthService.instance.currentUser ??
-              UserProfile(
-                uid: user.uid,
-                displayName: user.displayName ?? 'Player',
-                avatarEmoji: PlayerDescriptor.defaultAvatar,
-              );
-          final newMatch = config.precreatedMatch ??
-              await FirestoreMatchService.instance.createMatch(
-                config: config,
-                player1Profile: profile,
-              );
-
-          if (context.mounted) {
-            MatchLobbyDialog.show(
-              context: context,
-              match: newMatch,
-              challengedFriend: config.opponentFriend,
-              onPlaySoloWhileWaiting: () {
-                game.startCloudMatch(newMatch, profile.uid);
-              },
-              onEnterArena: (confirmedMatch) {
-                game.startCloudMatch(confirmedMatch, profile.uid);
-              },
-            );
-          }
-        }
-      },
-      onViewPodium: (match) {
-        final myUid = AuthService.instance.currentUser?.uid ?? '';
-        final session = MatchSession.fromCloudMatch(match, myUid);
-        session.phase = MatchTurnPhase.matchComplete;
-        game.matchSessionNotifier.value = session;
-        game.gameStateNotifier.value = GameModeState.gameOver;
-      },
-    );
-    if (wasPlaying && game.isPaused) {
-      game.resumeGame();
-    }
-  }
+  Future<void> _handleInboxTapped(BuildContext context) =>
+      MatchInboxSheet.openWithGame(context, game: game);
 
   @override
   Widget build(BuildContext context) {
