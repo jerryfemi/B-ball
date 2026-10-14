@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import 'update_platform.dart';
 
@@ -10,18 +11,23 @@ class UpdateService {
   UpdateService._();
   static final UpdateService instance = UpdateService._();
 
-  /// The compiled build version of this client release (matches pubspec.yaml).
-  static const String currentVersion = '1.0.0';
-  static const String currentBuildNumber = '2';
-
   static final ValueNotifier<bool> isUpdateAvailable =
       ValueNotifier<bool>(false);
 
+  String? _localBuildNumber;
   Timer? _checkTimer;
   bool _dismissed = false;
 
   /// Initializes the update monitor and starts background polling.
   Future<void> initialize() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      _localBuildNumber = info.buildNumber;
+      debugPrint('[UpdateService] Initialized with local build: $_localBuildNumber');
+    } catch (e) {
+      debugPrint('[UpdateService] Could not read PackageInfo: $e');
+    }
+
     // Check once shortly after launch (10 seconds)
     Future.delayed(const Duration(seconds: 10), checkForUpdates);
 
@@ -46,9 +52,12 @@ class UpdateService {
         final String remoteBuild = (data['build_number'] ?? '').toString();
         final String remoteVersion = (data['version'] ?? '').toString();
 
-        if (remoteBuild.isNotEmpty && remoteBuild != currentBuildNumber) {
+        if (remoteBuild.isNotEmpty &&
+            _localBuildNumber != null &&
+            _localBuildNumber!.isNotEmpty &&
+            remoteBuild != _localBuildNumber) {
           debugPrint(
-            '[UpdateService] ⚡ New version on server: $remoteVersion+$remoteBuild (current: $currentVersion+$currentBuildNumber)',
+            '[UpdateService] ⚡ New version on server: $remoteVersion+$remoteBuild (local build: $_localBuildNumber)',
           );
           isUpdateAvailable.value = true;
         }
