@@ -371,11 +371,11 @@ class BallPhysics3D {
   /// Physically closes the 19cm gap behind the rim so balls can never fall
   /// between the backboard and the rim.
   void _checkMountingNeckCollision() {
-    const neckMinX = -0.15;
-    const neckMaxX = 0.15;
-    const neckMinY = 2.92;
-    const neckMaxY = 3.16;
-    const neckMinZ = 4.72; // From rear rim metal to backboard plane
+    const neckMinX = -0.28;
+    const neckMaxX = 0.28;
+    const neckMinY = 2.90;
+    const neckMaxY = 3.18;
+    const neckMinZ = 4.70; // From rear rim metal to backboard plane
     const neckMaxZ = backboardZ;
 
     // AABB check with ball radius
@@ -397,9 +397,9 @@ class BallPhysics3D {
 
       Vector3 n = Vector3(0.0, 1.0, 0.0);
       if (minPen == dyTop) {
-        // Impacting top of mounting neck (bounces upwards/away)
+        // Impacting top of mounting neck: slanted gusset plate deflects ball forward towards rim/court
         pos.y = neckMaxY + radius + 0.001;
-        n = Vector3(0.0, 1.0, 0.0);
+        n = Vector3(0.0, 0.85, -0.52).normalized();
       } else if (minPen == dzFront) {
         // Impacting front of mounting neck
         pos.z = neckMinZ - radius - 0.001;
