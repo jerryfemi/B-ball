@@ -375,7 +375,6 @@ class BasketballGame extends Forge2DGame {
     final session = matchSessionNotifier.value;
     final isSpectatingLive = session != null &&
         session.phase == MatchTurnPhase.watchingLiveOpponent &&
-        gameStateNotifier.value == GameModeState.playing &&
         !isPaused;
 
     if (isSpectatingLive) {
@@ -990,7 +989,8 @@ class BasketballGame extends Forge2DGame {
       resumeGame();
     }
 
-    gameStateNotifier.value = GameModeState.playing;
+    // Initialize in ready mode sitting at full clock (01:00); starts ticking when shooter's first shot fires
+    gameStateNotifier.value = GameModeState.ready;
 
     // Connect real-time live shot listener
     _liveShotSubscription?.cancel();
@@ -1023,6 +1023,10 @@ class BasketballGame extends Forge2DGame {
   }
 
   void spawnLiveGhostShot(RecordedShot shot) {
+    // When the first shot is received, start the spectator's round timer in sync with shooter
+    if (gameStateNotifier.value == GameModeState.ready) {
+      gameStateNotifier.value = GameModeState.playing;
+    }
     _lastLiveShotReceivedAt = DateTime.now();
     if (timeRemainingNotifier.value > 0 &&
         spectatorStatusNotifier.value != SpectatorConnectionStatus.connected) {
