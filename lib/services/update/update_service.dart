@@ -1,6 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 
 import 'update_platform.dart';
 
@@ -10,23 +10,20 @@ class UpdateService {
   UpdateService._();
   static final UpdateService instance = UpdateService._();
 
-  static final ValueNotifier<bool> isUpdateAvailable = ValueNotifier<bool>(false);
+  /// The compiled build version of this client release (matches pubspec.yaml).
+  static const String currentVersion = '1.0.0';
+  static const String currentBuildNumber = '2';
 
-  String? _localVersionString;
+  static final ValueNotifier<bool> isUpdateAvailable =
+      ValueNotifier<bool>(false);
+
   Timer? _checkTimer;
   bool _dismissed = false;
 
   /// Initializes the update monitor and starts background polling.
   Future<void> initialize() async {
-    try {
-      _localVersionString = await rootBundle.loadString('version.json');
-    } catch (_) {
-      // In development mode version.json may not exist yet
-      _localVersionString = null;
-    }
-
-    // Check once shortly after launch
-    Future.delayed(const Duration(seconds: 8), checkForUpdates);
+    // Check once shortly after launch (10 seconds)
+    Future.delayed(const Duration(seconds: 10), checkForUpdates);
 
     // Poll periodically every 10 minutes
     _checkTimer?.cancel();
@@ -43,10 +40,16 @@ class UpdateService {
       final remoteString = await fetchRemoteVersion();
       if (remoteString != null &&
           remoteString.trim().isNotEmpty &&
-          _localVersionString != null &&
-          _localVersionString!.trim().isNotEmpty) {
-        if (remoteString.trim() != _localVersionString!.trim()) {
-          debugPrint('[UpdateService] ⚡ New version detected on server!');
+          remoteString.trim().startsWith('{')) {
+        final Map<String, dynamic> data =
+            jsonDecode(remoteString) as Map<String, dynamic>;
+        final String remoteBuild = (data['build_number'] ?? '').toString();
+        final String remoteVersion = (data['version'] ?? '').toString();
+
+        if (remoteBuild.isNotEmpty && remoteBuild != currentBuildNumber) {
+          debugPrint(
+            '[UpdateService] ⚡ New version on server: $remoteVersion+$remoteBuild (current: $currentVersion+$currentBuildNumber)',
+          );
           isUpdateAvailable.value = true;
         }
       }
@@ -63,6 +66,8 @@ class UpdateService {
 
   /// Reloads the web page to immediately execute the new release.
   void reload() {
+    _dismissed = true;
+    isUpdateAvailable.value = false;
     reloadPage();
   }
 

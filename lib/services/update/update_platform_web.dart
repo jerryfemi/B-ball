@@ -2,6 +2,13 @@
 import 'dart:html' as html;
 
 void reloadPage() {
+  try {
+    html.window.navigator.serviceWorker?.getRegistrations().then((registrations) {
+      for (final reg in registrations) {
+        reg.update();
+      }
+    });
+  } catch (_) {}
   html.window.location.reload();
 }
 
