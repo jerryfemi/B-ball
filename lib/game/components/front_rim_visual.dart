@@ -2,21 +2,23 @@ import 'dart:math' as math;
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 
-import 'ball.dart';
+import 'backboard_visual.dart';
 
 /// Renders the front half of the metal rim, mounting bracket, and front net cords.
 /// Configured with priority = 3 so it renders in front of the basketball (priority = 2),
 /// completing the 2.5D immersion when the ball drops into the hoop.
+///
+/// Highly optimized: Synchronizes net dynamics directly from [BackboardVisual]
+/// rather than redundantly scanning world children and solving duplicate springs.
 class FrontRimVisual extends PositionComponent {
   final double hoopWidth;
   final double hoopDepth;
 
   double _currentNetDepth = 0.9;
   double _currentBottomWidth = 0.55;
-  double _netDepthVelocity = 0.0;
-  double _netWidthVelocity = 0.0;
   double _currentSway = 0.0;
-  double _swayVelocity = 0.0;
+
+  BackboardVisual? _cachedBackboard;
 
   FrontRimVisual({
     required Vector2 position,
@@ -32,61 +34,12 @@ class FrontRimVisual extends PositionComponent {
   @override
   void update(double dt) {
     super.update(dt);
-    
-    final balls = parent?.children.whereType<Basketball>() ?? [];
-    bool ballInNet = false;
-    double maxDepth = 0.9;
-    double targetWidth = 0.55;
 
-    for (final ball in balls) {
-      // Only stretch when a ball that reached the rim is moving downwards through the hoop
-      if (ball.passedThroughRim &&
-          ball.body.position.y >= 4.9 &&
-          ball.body.position.y <= 6.2 &&
-          ball.body.linearVelocity.y > 0) {
-        // Must be horizontally close to the center
-        if (ball.body.position.x.abs() < hoopWidth * 0.45) {
-          ballInNet = true;
-          double stretchDepth = ball.body.position.y - 5.0 + ball.radius * 0.7;
-          if (stretchDepth > maxDepth) maxDepth = stretchDepth;
-          targetWidth = 0.85; // Widen bottom to let ball through
-
-          // Impart lateral sway from ball horizontal speed
-          _swayVelocity = (ball.body.linearVelocity.x * 0.35).clamp(-2.0, 2.0);
-          _currentSway = (ball.body.position.x * 0.25).clamp(-0.20, 0.20);
-        }
-      }
-    }
-
-    if (ballInNet) {
-      _currentNetDepth = maxDepth.clamp(0.85, 1.35);
-      _currentBottomWidth = targetWidth.clamp(0.55, 0.85);
-      _netDepthVelocity = 1.8; // Spring release momentum when ball leaves
-      _netWidthVelocity = -1.2;
-    } else {
-      // Numerical stability: clamp timestep
-      final clampedDt = dt.clamp(0.001, 0.02);
-      // Under-damped spring values for a fast, loose, non-viscous wobbly net
-      const double kStiffness = 120.0;
-      const double kDamping = 3.5;
-
-      double depthForce =
-          kStiffness * (0.9 - _currentNetDepth) - kDamping * _netDepthVelocity;
-      _netDepthVelocity += depthForce * clampedDt;
-      _currentNetDepth += _netDepthVelocity * clampedDt;
-      _currentNetDepth = _currentNetDepth.clamp(0.70, 1.45);
-
-      double widthForce =
-          kStiffness * (0.55 - _currentBottomWidth) - kDamping * _netWidthVelocity;
-      _netWidthVelocity += widthForce * clampedDt;
-      _currentBottomWidth += _netWidthVelocity * clampedDt;
-      _currentBottomWidth = _currentBottomWidth.clamp(0.38, 0.92);
-
-      // Lateral harmonic sway jiggle (fast and loose)
-      double swayForce = 90.0 * (0.0 - _currentSway) - 2.8 * _swayVelocity;
-      _swayVelocity += swayForce * clampedDt;
-      _currentSway += _swayVelocity * clampedDt;
-      _currentSway = _currentSway.clamp(-0.25, 0.25);
+    _cachedBackboard ??= parent?.children.whereType<BackboardVisual>().firstOrNull;
+    if (_cachedBackboard != null) {
+      _currentNetDepth = _cachedBackboard!.currentNetDepth;
+      _currentBottomWidth = _cachedBackboard!.currentBottomWidth;
+      _currentSway = _cachedBackboard!.currentSway;
     }
   }
 
