@@ -69,39 +69,39 @@ class AudioEngine {
   static AudioSource? _bounceSource;
   static AudioSource? _buzzerSource;
 
-  // ── Background Music Jukebox (10 MB Compressed Offline Soundtrack) ──
-  static const MusicTrack _bundledOfflineTrack = MusicTrack(
-    title: 'Test The Sound - Mr. Scruff',
-    assetPath: 'assets/music/Mr Scruff - Test The Sound - Ninja Tune.mp3',
-  );
-
+  // ── Background Music Jukebox (Afrobeats / Naija Soundtrack) ──
   static final List<MusicTrack> _playlist = [
-    _bundledOfflineTrack,
     const MusicTrack(
-      title: 'Get On Down - Mr. Scruff',
-      assetPath: 'assets/music/Get On Down - Mr. Scruff.mp3',
+      title: '5 Star - Adekunle Gold',
+      assetPath: 'assets/music/Adekunle Gold - 5 Star [Official Audio] - Adekunle Gold.mp3',
     ),
     const MusicTrack(
-      title: 'Bang The Floor - Mr. Scruff',
-      assetPath: 'assets/music/Mr Scruff - Bang The Floor - Ninja Tune.mp3',
+      title: 'Never Stopped - Bnxn (Buju)',
+      assetPath: 'assets/music/Buju - Never Stopped (Audio) - Bnxn TYE.mp3',
     ),
     const MusicTrack(
-      title: 'Hairy Bumpercress - Mr. Scruff',
-      assetPath: 'assets/music/Mr Scruff - Hairy Bumpercress - Ninja Tune.mp3',
+      title: 'Fountains - Drake ft. Tems',
+      assetPath: 'assets/music/Drake - Fountains (Audio) ft. Tems - DrakeVEVO.mp3',
     ),
     const MusicTrack(
-      title: 'Music Takes Me Up - Mr. Scruff',
-      assetPath:
-          'assets/music/Mr Scruff - Music Takes Me Up - JoeStephens78.mp3',
+      title: 'Masculine - J Hus ft. Burna Boy',
+      assetPath: 'assets/music/J Hus - Masculine (Official Audio) ft. Burna Boy - JHusVEVO.mp3',
     ),
     const MusicTrack(
-      title: 'Whiplash - Mr. Scruff',
-      assetPath: 'assets/music/Mr Scruff - Whiplash - Ninja Tune.mp3',
+      title: 'Green Light - Olamide',
+      assetPath: 'assets/music/Olamide - Green Light [Audio] - Miziki.mp3',
     ),
     const MusicTrack(
-      title: 'Kalimba - Mr. Scruff',
-      assetPath:
-          'assets/music/Mr Scruff- Kalimba (Ninja Tuna) - Calum White.mp3',
+      title: 'Infinity - Olamide ft. Omah Lay',
+      assetPath: 'assets/music/Olamide feat. Omah Lay -  Infinity (Audio) - Olamide.mp3',
+    ),
+    const MusicTrack(
+      title: 'Ozumba Mbadiwe - Reekado Banks',
+      assetPath: 'assets/music/Reekado Banks - Ozumba Mbadiwe (Official Audio) - Reekado Banks.mp3',
+    ),
+    const MusicTrack(
+      title: 'Free Mind - Tems',
+      assetPath: 'assets/music/Tems - Free Mind (Lyrics) - life + lyrics.mp3',
     ),
   ];
 
@@ -187,6 +187,14 @@ class AudioEngine {
     }
     _audioUnlocked = true;
 
+    // Immediately trigger a 0-volume ping to tell Web Audio context to transition from suspended to running
+    if (_bounceSource != null) {
+      try {
+        final dummyHandle = SoLoud.instance.play(_bounceSource!, volume: 0.0);
+        SoLoud.instance.stop(dummyHandle);
+      } catch (_) {}
+    }
+
     if (!_musicStarted) {
       _startMusic();
     } else if (_musicHandle != null && !isMuted) {
@@ -203,20 +211,11 @@ class AudioEngine {
     _currentShufflePos = 0;
   }
 
-  /// Starts the background music jukebox, guaranteeing the instant-start track plays first.
+  /// Starts the background music jukebox with a fresh, random shuffle of all tracks.
   static void _startMusic() {
     if (_playlist.isEmpty || !SoLoud.instance.isInitialized) return;
     _musicStarted = true;
     _reshufflePlaylist();
-
-    // Place the lightweight offline track at index 0 on startup
-    final bundledIdx = _playlist.indexOf(_bundledOfflineTrack);
-    if (bundledIdx != -1) {
-      _shuffledIndices.remove(bundledIdx);
-      _shuffledIndices.insert(0, bundledIdx);
-    }
-    _currentShufflePos = 0;
-
     _playCurrentTrack();
   }
 
@@ -234,10 +233,10 @@ class AudioEngine {
       }
       final track = _playlist[_shuffledIndices[_currentShufflePos]];
 
-      // Load music track into RAM for zero-latency, zero-disk streaming
+      // Stream music track in chunks from disk/assets to conserve 80-100MB of RAM
       final source = await SoLoud.instance.loadAsset(
         track.assetPath,
-        mode: LoadMode.memory,
+        mode: LoadMode.disk,
       );
 
       // Race guard: if another track was requested while loading, discard this one
