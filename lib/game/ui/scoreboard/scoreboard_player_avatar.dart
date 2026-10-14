@@ -121,7 +121,9 @@ class _PulsingPlayerAvatar extends HookWidget {
     final prevTypeRef = useRef<ScoreboardAlertType>(alertState.alertType);
 
     final hasAlerts = alertState.totalCount > 0;
-    final shouldPulse = isActive || hasAlerts;
+    // Only pulse continuously when there are active unread alerts waiting.
+    // Standard active play displays a crisp static ring with zero frame rebuilds.
+    final shouldPulse = hasAlerts;
 
     useEffect(() {
       if (shouldPulse) {
