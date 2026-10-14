@@ -119,7 +119,7 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     this.onLaunched,
     this.animateEntrance = false,
     Vector3? initialPos3D,
-  }) : super(priority: 5) {
+  }) : super(priority: 6) {
     physics = BallPhysics3D(
       initialPos: initialPos3D ??
           Vector3(
@@ -295,26 +295,27 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
   }
 
   void _updateRenderPriority() {
-    final bool inRimZone =
-        physics.pos.z >=
-            (BallPhysics3D.rimCenter.z - BallPhysics3D.rimRadius) &&
-        physics.pos.y <= (BallPhysics3D.rimCenter.y + 0.50) &&
-        physics.pos.y >= (BallPhysics3D.rimCenter.y - 0.50);
-
     if (physics.pos.z > BallPhysics3D.backboardZ) {
-      // Behind the backboard
+      // 1. Completely behind backboard glass (bouncing off back gym wall)
+      // Priority 0: Behind BackboardVisual (priority 1)
       priority = 0;
-    } else if (physics.pos.z > BallPhysics3D.rimCenter.z ||
-        inRimZone ||
+    } else if (physics.pos.z >= 4.70) {
+      // 2. Bank shot / bouncing off backboard / resting on rear mounting neck:
+      // In front of Backboard glass (1), but BEHIND Rear Rim & mounting bracket (3) and Front Rim (5)
+      // Priority 2: BackboardVisual (1) < Ball (2) < RearRimVisual (3) < FrontRimVisual (5)
+      priority = 2;
+    } else if (physics.pos.z >= (BallPhysics3D.rimCenter.z - BallPhysics3D.rimRadius) ||
         (physics.passedThroughRim &&
             physics.pos.y <= BallPhysics3D.rimCenter.y &&
             physics.pos.y >= BallPhysics3D.netBottomY)) {
-      // Behind front rim / inside net cylinder:
-      // backboard (priority 1) < ball (priority 2) < front rim & net (priority 3)
-      priority = 2;
+      // 3. Inside hoop cylinder / dropping through net (4.23 <= Z < 4.70):
+      // In front of RearRimVisual (3) and Backboard (1), but BEHIND FrontRimVisual (5)
+      // Priority 4: RearRimVisual (3) < Ball (4) < FrontRimVisual (5)
+      priority = 4;
     } else {
-      // In foreground / in front of hoop & front rim
-      priority = 5;
+      // 4. In foreground (Z < 4.23): in front of all hoop visuals
+      // Priority 6: Ball (6) > FrontRimVisual (5)
+      priority = 6;
     }
   }
 
