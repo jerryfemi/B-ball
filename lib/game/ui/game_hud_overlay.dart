@@ -21,6 +21,7 @@ import 'replay_hud_overlay.dart';
 import 'inbox/match_inbox_sheet.dart';
 import 'stadium_scoreboard.dart';
 import 'tour/onboarding_tour_overlay.dart';
+import 'match/live_spectator_status_pill.dart';
 import 'match/live_turn_transition_overlay.dart';
 import 'reactions/live_floating_reactions_overlay.dart';
 
@@ -179,6 +180,14 @@ class GameHudOverlay extends StatelessWidget {
               ),
             );
           },
+        ),
+
+        // 1d. Live Spectator Connection & Grace Guard Pill
+        Positioned(
+          top: MediaQuery.of(context).padding.top + 76.0,
+          left: 16.0,
+          right: 16.0,
+          child: LiveSpectatorStatusPill(game: game),
         ),
 
         // 2. Floating Score Toast Spawner (Centered around hoop plane, non-blocking)
