@@ -4,9 +4,14 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../../models/cloud_match.dart';
+import '../../../models/player_descriptor.dart';
 import '../../../providers/app_providers.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/firestore_match_service.dart';
+import '../../basketball_game.dart';
+import '../../match/match_session.dart';
+import '../match/match_lobby_dialog.dart';
+import '../match/match_setup_dialog.dart';
 import 'join_match_dialog.dart';
 import 'match_inbox_card.dart';
 import 'match_thread_dialog.dart';
@@ -43,6 +48,70 @@ class MatchInboxSheet extends HookConsumerWidget {
         onViewPodium: onViewPodium,
       ),
     );
+  }
+
+  /// Convenience coordinator to open the Match Inbox and wire all cloud match actions
+  /// (joining, creating lobby, playing, viewing podium) directly to the [BasketballGame].
+  static Future<void> openWithGame(
+    BuildContext context, {
+    required BasketballGame game,
+  }) async {
+    final wasPlaying = game.gameStateNotifier.value == GameModeState.playing;
+    if (wasPlaying) {
+      game.pauseGame(manual: true);
+    }
+    await show(
+      context,
+      onPlayMatch: (match) {
+        final myUid = AuthService.instance.currentUser?.uid ?? '';
+        game.startCloudMatch(match, myUid);
+      },
+      onCreateMatch: () async {
+        final config = await MatchSetupDialog.show(
+          context,
+          initialConfig: game.currentMatchConfig,
+        );
+        if (config != null && context.mounted) {
+          final user = await AuthService.instance.ensureAuthenticated();
+          final profile =
+              AuthService.instance.currentUser ??
+              UserProfile(
+                uid: user.uid,
+                displayName: user.displayName ?? 'Player',
+                avatarEmoji: PlayerDescriptor.defaultAvatar,
+              );
+          final newMatch = config.precreatedMatch ??
+              await FirestoreMatchService.instance.createMatch(
+                config: config,
+                player1Profile: profile,
+              );
+
+          if (context.mounted) {
+            MatchLobbyDialog.show(
+              context: context,
+              match: newMatch,
+              challengedFriend: config.opponentFriend,
+              onPlaySoloWhileWaiting: () {
+                game.startCloudMatch(newMatch, profile.uid);
+              },
+              onEnterArena: (confirmedMatch) {
+                game.startCloudMatch(confirmedMatch, profile.uid);
+              },
+            );
+          }
+        }
+      },
+      onViewPodium: (match) {
+        final myUid = AuthService.instance.currentUser?.uid ?? '';
+        final session = MatchSession.fromCloudMatch(match, myUid);
+        session.phase = MatchTurnPhase.matchComplete;
+        game.matchSessionNotifier.value = session;
+        game.gameStateNotifier.value = GameModeState.gameOver;
+      },
+    );
+    if (wasPlaying && game.isPaused) {
+      game.resumeGame();
+    }
   }
 
   @override
