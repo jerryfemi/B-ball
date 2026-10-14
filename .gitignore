@@ -13,6 +13,9 @@
 migrate_working_dir/
 scratch/
 assets/audios/
+promo/node_modules/
+promo/out/
+promo/.remotion/
 
 # IntelliJ related
 *.iml
