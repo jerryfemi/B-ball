@@ -209,7 +209,10 @@ class BallPhysics3D {
     // 5. Backboard Plane Collision Detection & Response
     _checkBackboardCollision();
 
-    // 6. Score Detection & Net Damping
+    // 6. Solid Steel Mounting Neck Collision (blocks 19cm gap behind rim)
+    _checkMountingNeckCollision();
+
+    // 7. Score Detection & Net Damping
     _checkScoreAndNet(prevY, dt);
 
     // 7. Cylindrical Pole Collision Detection & Response
@@ -313,17 +316,40 @@ class BallPhysics3D {
           onBackboardImpact?.call(impactSpeed);
 
           if (isBankZone) {
-            // Dynamic Bank Shot Guidance:
+            // Kinematic Parabolic Bank Guidance:
+            // Calculate the exact forward velocity (vz) needed to carry the ball
+            // from the backboard plane (Z=4.835m) to the sweet spot inside the rim (Z=4.44m).
+            //
+            // Using Newtonian free-fall:
+            // dy = pos.y - rimCenter.y (height above rim plane at contact)
+            // If the ball hits above the rim (dy > 0), gravity will pull it down:
+            // t_drop = (vy + sqrt(vy^2 + 2 * g * dy)) / g
+            // vz = -dz / t_drop
+            final dy = math.max(0.04, pos.y - (rimCenter.y + radius));
+            final g = LaunchSolver.gravity; // 30.0 m/s^2 Forge2D gravity
+            final vVertical = vel.y.clamp(-1.5, 0.4);
+
+            // Compute time until ball reaches rim plane
+            final discriminant = vVertical * vVertical + 2.0 * g * dy;
+            final tDrop = (vVertical + math.sqrt(math.max(0.01, discriminant))) / g;
+
+            // Target landing zone in the rim: Z in [4.38, 4.46] (comfortably inside cylinder)
+            const targetZ = 4.42;
+            final distZToTarget = pos.z - targetZ; // ~0.415m
+            final requiredVz = -distZToTarget / math.max(0.08, tDrop);
+
             // 1. Proportional lateral centering nudge
-            vel.x -= pos.x * 1.5;
-            // 2. Controlled vertical descent arc (prevents aggressive downward plummet)
-            if (vel.y > 0.1) {
-              vel.y = math.min(vel.y * 0.35, 0.05);
+            vel.x -= pos.x * 2.2;
+
+            // 2. Controlled vertical rebound arc
+            if (vel.y > 0.05) {
+              vel.y = math.min(vel.y * 0.25, 0.05);
             } else {
-              vel.y = math.max(vel.y - 0.15, -1.1);
+              vel.y = math.max(vel.y - 0.10, -0.90);
             }
-            // 3. Forward propulsion toward the hoop center (Z = 4.50m)
-            vel.z = math.min(vel.z, -1.65);
+
+            // 3. Exact kinematic forward velocity toward the basket cylinder center
+            vel.z = math.min(vel.z, requiredVz.clamp(-3.2, -1.85));
           }
         } else if (vel.z < 0) {
           // Rear-face collision (ball is behind the backboard returning forward)
@@ -339,6 +365,63 @@ class BallPhysics3D {
     }
   }
 
+  /// Solid steel mounting neck & bracket collider connecting the rear of the rim
+  /// (Z = 4.77m) to the backboard faceplate (Z = 4.96m).
+  ///
+  /// Physically closes the 19cm gap behind the rim so balls can never fall
+  /// between the backboard and the rim.
+  void _checkMountingNeckCollision() {
+    const neckMinX = -0.15;
+    const neckMaxX = 0.15;
+    const neckMinY = 2.92;
+    const neckMaxY = 3.16;
+    const neckMinZ = 4.72; // From rear rim metal to backboard plane
+    const neckMaxZ = backboardZ;
+
+    // AABB check with ball radius
+    if (pos.x + radius >= neckMinX &&
+        pos.x - radius <= neckMaxX &&
+        pos.y + radius >= neckMinY &&
+        pos.y - radius <= neckMaxY &&
+        pos.z + radius >= neckMinZ &&
+        pos.z - radius <= neckMaxZ) {
+      // Find penetration depth along each axis to determine collision normal
+      final dxLeft = (pos.x + radius) - neckMinX;
+      final dxRight = neckMaxX - (pos.x - radius);
+      final dyBottom = (pos.y + radius) - neckMinY;
+      final dyTop = neckMaxY - (pos.y - radius);
+      final dzFront = (pos.z + radius) - neckMinZ;
+
+      // Smallest penetration is the collision normal
+      final minPen = [dxLeft, dxRight, dyBottom, dyTop, dzFront].reduce(math.min);
+
+      Vector3 n = Vector3(0.0, 1.0, 0.0);
+      if (minPen == dyTop) {
+        // Impacting top of mounting neck (bounces upwards/away)
+        pos.y = neckMaxY + radius + 0.001;
+        n = Vector3(0.0, 1.0, 0.0);
+      } else if (minPen == dzFront) {
+        // Impacting front of mounting neck
+        pos.z = neckMinZ - radius - 0.001;
+        n = Vector3(0.0, 0.0, -1.0);
+      } else if (minPen == dxLeft) {
+        pos.x = neckMinX - radius - 0.001;
+        n = Vector3(-1.0, 0.0, 0.0);
+      } else if (minPen == dxRight) {
+        pos.x = neckMaxX + radius + 0.001;
+        n = Vector3(1.0, 0.0, 0.0);
+      } else {
+        pos.y = neckMinY - radius - 0.001;
+        n = Vector3(0.0, -1.0, 0.0);
+      }
+
+      final impactSpeed = vel.length;
+      _contact(n, e: 0.45, mu: 0.25);
+      hasClankedRim = true;
+      onRimImpact?.call(impactSpeed);
+    }
+  }
+
   /// Scoring detection and frame-rate-independent nylon net descent damping.
   /// Exponential decay replaces per-substep multiplication for identical
   /// behavior at any framerate (60Hz, 120Hz, variable).
@@ -348,12 +431,14 @@ class BallPhysics3D {
     final dXZ = math.sqrt(dx * dx + dz * dz);
 
     // Score recorded when ball descends through rim plane within inner opening.
-    // Disallowed if ball is dead (e.g. rebounded off gym back wall or rear of backboard).
+    // Disallowed if ball is dead, or if behind the rim cylinder (Z > 4.70m).
+    // The cylinder opening is strictly dXZ < 0.23m (ensures ball center is well inside ring).
     if (!passedThroughRim &&
         !isDeadBall &&
         prevY > rimCenter.y &&
         pos.y <= rimCenter.y &&
-        dXZ < rimRadius + 0.02 &&
+        pos.z <= 4.70 &&
+        dXZ < rimRadius - 0.04 &&
         vel.y < 0) {
       passedThroughRim = true;
       final bool isSwish = !hasClankedRim && !hasBankedBackboard;
