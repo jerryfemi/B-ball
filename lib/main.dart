@@ -69,6 +69,7 @@ class _BasketballAppState extends State<BasketballApp>
   @override
   Widget build(BuildContext context) {
     return Listener(
+      onPointerDown: (_) => AudioEngine.unlockAudio(),
       onPointerUp: (_) => AudioEngine.unlockAudio(),
       behavior: HitTestBehavior.translucent,
       child: MaterialApp(
