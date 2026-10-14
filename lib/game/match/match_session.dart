@@ -135,6 +135,9 @@ class MatchSession {
   PlayerMatchState player1;
   PlayerMatchState player2;
   MatchTurnPhase phase;
+  PlayerMatchState? forfeitWinner;
+
+  bool get isForfeit => forfeitWinner != null;
 
   MatchSession({
     this.mode = MatchGameMode.passAndPlay1v1,
@@ -148,6 +151,7 @@ class MatchSession {
     PlayerMatchState? player1,
     PlayerMatchState? player2,
     this.phase = MatchTurnPhase.playingTurn,
+    this.forfeitWinner,
   }) : config = config ?? const MatchConfig(),
        totalRounds = totalRounds ?? (config?.totalRounds ?? 2),
        player1 =
@@ -275,10 +279,12 @@ class MatchSession {
 
   /// Returns the winning player, or null if the match is tied.
   PlayerMatchState? get overallWinner {
+    if (forfeitWinner != null) return forfeitWinner;
     if (player1.totalScore > player2.totalScore) return player1;
     if (player2.totalScore > player1.totalScore) return player2;
     return null;
   }
 
-  bool get isTie => player1.totalScore == player2.totalScore;
+  bool get isTie =>
+      forfeitWinner == null && player1.totalScore == player2.totalScore;
 }
