@@ -39,10 +39,7 @@ dependencies:
   flame_riverpod: ^5.5.5
   flutter_hooks: ^0.21.2
   hooks_riverpod: ^3.4.3
-  flame_audio: ^2.12.2
   flutter_soloud: ^5.2.0
-  flame_texturepacker: ^5.1.2
-  flame_fire_atlas: ^1.8.18
   forge2d: ^0.15.2
   vector_math: ^2.1.4
   firebase_core: ^4.15.0
