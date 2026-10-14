@@ -1,20 +1,24 @@
 import 'dart:async';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flame/game.dart';
 import 'package:flame_forge2d/flame_forge2d.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+
 import 'firebase_options.dart';
 import 'game/audio/audio_engine.dart';
 import 'game/basketball_game.dart';
 import 'game/ui/game_hud_overlay.dart';
 import 'services/auth_service.dart';
+import 'services/chat_read_receipt_service.dart';
 import 'services/update/update_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   unawaited(AudioEngine.init());
   unawaited(UpdateService.instance.initialize());
+  unawaited(ChatReadReceiptService.instance.init());
   await initializeForge2D();
   try {
     if (Firebase.apps.isEmpty) {

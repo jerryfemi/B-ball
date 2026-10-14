@@ -46,8 +46,8 @@ class BallPhysics3D {
   static const double rimRadius = 0.27; // Calibrated to match drawn front rim art (~0.32m in Forge units)
   static const double rimTubeRadius = 0.02; // 20mm steel tube
 
-  // Backboard vertical plane in meters (matched 1:1 to visual art)
-  static const double backboardZ = 4.85;
+  // Backboard vertical plane in meters (matched 1:1 to visual art, 4.96m gives 19cm clearance behind rim)
+  static const double backboardZ = 4.96;
   static const double backboardMinX = -0.72;
   static const double backboardMaxX = 0.72;
   static const double backboardMinY = 2.95;
@@ -57,6 +57,11 @@ class BallPhysics3D {
   static const double shootersSquareHalfWidth = 0.175;
   static const double shootersSquareMinY = 3.18;
   static const double shootersSquareMaxY = 3.42;
+
+  // Generous backboard bank funnel target bounds (covers central bank area: 84cm wide, Y=3.08m..3.65m)
+  static const double bankZoneHalfWidth = 0.42;
+  static const double bankZoneMinY = 3.08;
+  static const double bankZoneMaxY = 3.65;
 
   // Nylon net bounds
   static const double netBottomY = 2.60;
@@ -68,7 +73,7 @@ class BallPhysics3D {
 
   // Cylindrical free-standing pole bounds
   static const double poleX = 0.0;
-  static const double poleZ = 4.85;
+  static const double poleZ = 4.96;
   static const double poleRadius = 0.04;
   static const double poleMaxY = 3.05;
 
@@ -255,13 +260,22 @@ class BallPhysics3D {
       pos.y = qy + ny * (contactRadius + 0.001);
       pos.z = qz + nz * (contactRadius + 0.001);
 
-      // Unified contact: steel rim (e=0.60, μ=0.25)
+      // Unified contact: soft shock-absorbing rim (e=0.44, μ=0.28)
       // Backspin "kiss and drop" on back rim emerges naturally from friction coupling.
       // Front rim grazes that should roll in DO roll in — the normal handles it.
       // Side rattles produce unique bounces based on contact geometry.
       final impactSpeed = vel.length;
       final n = Vector3(nx, ny, nz);
-      _contact(n, e: 0.60, mu: 0.25);
+      _contact(n, e: 0.44, mu: 0.28);
+
+      // Shooter's Touch: soft grazes lose excess upward velocity and roll inward toward the cylinder
+      if (impactSpeed < 3.2 && pos.y >= rimCenter.y - 0.05) {
+        vel.y = math.min(vel.y, 0.22);
+        final toCenter = (rimCenter - pos)..y = 0.0;
+        if (toCenter.length > 1e-4) {
+          vel.addScaled(toCenter.normalized(), 0.38);
+        }
+      }
 
       hasClankedRim = true;
       onRimImpact?.call(impactSpeed);
@@ -286,21 +300,28 @@ class BallPhysics3D {
           hasBankedBackboard = true;
           final impactSpeed = vel.length;
 
-          // Check if hitting inside the regulation shooter's square
-          final isShootersSquare = pos.x.abs() <= shootersSquareHalfWidth &&
-              pos.y >= shootersSquareMinY &&
-              pos.y <= shootersSquareMaxY;
+          // Check if hitting inside the central backboard bank zone
+          final isBankZone = pos.x.abs() <= bankZoneHalfWidth &&
+              pos.y >= bankZoneMinY &&
+              pos.y <= bankZoneMaxY;
 
           // Physical tempered-glass impulse contact (e=0.62, μ=0.12)
           final n = Vector3(0.0, 0.0, -1.0);
           _contact(n, e: 0.62, mu: 0.12);
           onBackboardImpact?.call(impactSpeed);
 
-          if (isShootersSquare) {
+          if (isBankZone) {
             // Dynamic Bank Shot Guidance:
-            // Proportional soft nudges centering lateral offset and soft downward velocity
+            // 1. Proportional lateral centering nudge
             vel.x -= pos.x * 1.5;
-            vel.y -= 0.35;
+            // 2. Controlled vertical descent arc (prevents aggressive downward plummet)
+            if (vel.y > 0.1) {
+              vel.y = math.min(vel.y * 0.35, 0.05);
+            } else {
+              vel.y = math.max(vel.y - 0.15, -1.1);
+            }
+            // 3. Forward propulsion toward the hoop center (Z = 4.50m)
+            vel.z = math.min(vel.z, -1.65);
           }
         } else if (vel.z < 0) {
           // Rear-face collision (ball is behind the backboard returning forward)

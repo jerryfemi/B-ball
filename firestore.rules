@@ -28,6 +28,15 @@ service cloud.firestore {
         // The recipient can read, accept, or decline/delete the invite
         allow read, write: if isUser(userId);
       }
+
+      match /match_invites/{matchInviteId} {
+        // Any authenticated host can send a match challenge to this user
+        allow create: if isAuthenticated() && request.resource.data.hostUid == request.auth.uid;
+        // The recipient can read, update (to accept or decline), or delete
+        allow read, write: if isUser(userId);
+        // The host can read or update (to cancel)
+        allow read, update: if isAuthenticated() && (resource == null || resource.data.hostUid == request.auth.uid);
+      }
     }
 
     // Direct Friend Conversations
@@ -79,7 +88,12 @@ service cloud.firestore {
 
       function isTouchingTimestamp() {
         return isParticipant() &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['updatedAt']);
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'updatedAt',
+            'lastChatSenderUid',
+            'lastChatTimestamp',
+            'lastChatText'
+          ]);
       }
 
       // Read allowed if player is authenticated (non-existent codes return cleanly)
@@ -103,6 +117,22 @@ service cloud.firestore {
 
       // Lightweight real-time chat messages subcollection
       match /messages/{messageId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated() &&
+          request.resource.data.senderUid == request.auth.uid;
+        allow update, delete: if false;
+      }
+
+      // Real-time live shot streaming subcollection
+      match /live_shots/{shotId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated() &&
+          request.resource.data.shooterUid == request.auth.uid;
+        allow update, delete: if false;
+      }
+
+      // Real-time live floating reactions & banter subcollection
+      match /live_reactions/{reactionId} {
         allow read: if isAuthenticated();
         allow create: if isAuthenticated() &&
           request.resource.data.senderUid == request.auth.uid;

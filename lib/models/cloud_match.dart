@@ -254,6 +254,15 @@ class CloudMatch {
   /// Real-time chat banter feed stored inside the match document.
   final List<CloudChatMessage> chat;
 
+  /// Live round score of the currently active shooter in real-time.
+  final int? liveShooterScore;
+  final String? liveShooterUid;
+
+  /// Lightweight latest chat metadata mirrored on root doc for inbox/badge counters.
+  final String? lastChatSenderUid;
+  final int? lastChatTimestamp;
+  final String? lastChatText;
+
   const CloudMatch({
     required this.id,
     required this.joinCode,
@@ -272,6 +281,11 @@ class CloudMatch {
     this.latestTelemetryRound,
     this.latestTelemetryShooterUid,
     this.chat = const [],
+    this.liveShooterScore,
+    this.liveShooterUid,
+    this.lastChatSenderUid,
+    this.lastChatTimestamp,
+    this.lastChatText,
   });
 
   bool isMyTurn(String myUid) => activeTurnPlayerUid == myUid;
@@ -287,6 +301,13 @@ class CloudMatch {
     if (player1.uid == myUid) return player2;
     if (player2?.uid == myUid) return player1;
     return null;
+  }
+
+  /// Returns whether this match has an unread chat message for [myUid] relative to [lastReadMs].
+  bool hasUnreadChat(String myUid, int lastReadMs) {
+    if (lastChatSenderUid == null || lastChatSenderUid == myUid) return false;
+    final msgTimestamp = lastChatTimestamp ?? 0;
+    return msgTimestamp > lastReadMs;
   }
 
   /// Evaluates overall match outcome with explicit enum support.
@@ -334,6 +355,11 @@ class CloudMatch {
     int? latestTelemetryRound,
     String? latestTelemetryShooterUid,
     List<CloudChatMessage>? chat,
+    int? liveShooterScore,
+    String? liveShooterUid,
+    String? lastChatSenderUid,
+    int? lastChatTimestamp,
+    String? lastChatText,
   }) {
     return CloudMatch(
       id: id ?? this.id,
@@ -354,6 +380,11 @@ class CloudMatch {
       latestTelemetryShooterUid:
           latestTelemetryShooterUid ?? this.latestTelemetryShooterUid,
       chat: chat ?? this.chat,
+      liveShooterScore: liveShooterScore ?? this.liveShooterScore,
+      liveShooterUid: liveShooterUid ?? this.liveShooterUid,
+      lastChatSenderUid: lastChatSenderUid ?? this.lastChatSenderUid,
+      lastChatTimestamp: lastChatTimestamp ?? this.lastChatTimestamp,
+      lastChatText: lastChatText ?? this.lastChatText,
     );
   }
 
@@ -374,6 +405,9 @@ class CloudMatch {
     'latestTelemetryRound': latestTelemetryRound,
     'latestTelemetryShooterUid': latestTelemetryShooterUid,
     'chat': chat.map((c) => c.toMap()).toList(),
+    if (lastChatSenderUid != null) 'lastChatSenderUid': lastChatSenderUid,
+    if (lastChatTimestamp != null) 'lastChatTimestamp': lastChatTimestamp,
+    if (lastChatText != null) 'lastChatText': lastChatText,
   };
 
   /// Safely deserializes document map, resilient against corrupted or partial documents.
@@ -419,6 +453,11 @@ class CloudMatch {
                 )
                 .toList() ??
             [],
+        liveShooterScore: (map['liveShooterScore'] as num?)?.toInt(),
+        liveShooterUid: map['liveShooterUid'] as String?,
+        lastChatSenderUid: map['lastChatSenderUid'] as String?,
+        lastChatTimestamp: (map['lastChatTimestamp'] as num?)?.toInt(),
+        lastChatText: map['lastChatText'] as String?,
       );
     } catch (e) {
       // Return safe fallback rather than crashing the inbox

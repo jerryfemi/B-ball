@@ -18,6 +18,9 @@ enum MatchTurnPhase {
   /// Spectating the opponent's recorded round trajectory before shooting.
   watchingOpponentReplay,
 
+  /// Spectating the opponent shooting in real time via live ghost telemetry.
+  watchingLiveOpponent,
+
   /// Intermission between turns/rounds (shows stats & turn handoff).
   turnComplete,
 
@@ -51,6 +54,24 @@ class PlayerMatchState implements PlayerDescriptor {
     List<RoundTelemetry>? roundTelemetries,
   }) : roundScores = roundScores ?? [],
        roundTelemetries = roundTelemetries ?? [];
+
+  PlayerMatchState copyWith({
+    String? id,
+    String? name,
+    String? avatar,
+    Color? accentColor,
+    List<int>? roundScores,
+    List<RoundTelemetry>? roundTelemetries,
+  }) {
+    return PlayerMatchState(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      avatar: avatar ?? this.avatar,
+      accentColor: accentColor ?? this.accentColor,
+      roundScores: roundScores ?? this.roundScores,
+      roundTelemetries: roundTelemetries ?? this.roundTelemetries,
+    );
+  }
 
   int get totalScore => roundScores.fold(0, (acc, s) => acc + s);
 
@@ -104,16 +125,19 @@ class PlayerMatchState implements PlayerDescriptor {
 /// Orchestrates multi-round 1v1 turn progression and match telemetry.
 class MatchSession {
   final MatchGameMode mode;
-  final MatchConfig config;
+  MatchConfig config;
   final int totalRounds;
   final String? cloudMatchId;
   final String? joinCode;
-  final bool isWaitingForOpponent;
+  bool isWaitingForOpponent;
   int currentRoundIndex; // 0-indexed (0 = Round 1, 1 = Round 2)
   int activePlayerIndex; // 0 = Player 1 ("YOU"), 1 = Player 2 ("THEM")
-  final PlayerMatchState player1;
-  final PlayerMatchState player2;
+  PlayerMatchState player1;
+  PlayerMatchState player2;
   MatchTurnPhase phase;
+  PlayerMatchState? forfeitWinner;
+
+  bool get isForfeit => forfeitWinner != null;
 
   MatchSession({
     this.mode = MatchGameMode.passAndPlay1v1,
@@ -127,6 +151,7 @@ class MatchSession {
     PlayerMatchState? player1,
     PlayerMatchState? player2,
     this.phase = MatchTurnPhase.playingTurn,
+    this.forfeitWinner,
   }) : config = config ?? const MatchConfig(),
        totalRounds = totalRounds ?? (config?.totalRounds ?? 2),
        player1 =
@@ -198,6 +223,24 @@ class MatchSession {
     );
 
     final isWaiting = isP1 && cloudMatch.player2 == null;
+    final isMyTurn = cloudMatch.isMyTurn(myUid);
+
+    final MatchTurnPhase initialPhase;
+    if (cloudMatch.status == MatchStatus.completed) {
+      initialPhase = MatchTurnPhase.matchComplete;
+    } else if (isMyTurn) {
+      if (hasOpponentTelemetry) {
+        initialPhase = MatchTurnPhase.watchingOpponentReplay;
+      } else {
+        initialPhase = MatchTurnPhase.playingTurn;
+      }
+    } else {
+      if (isWaiting) {
+        initialPhase = MatchTurnPhase.waitingForOpponentTurn;
+      } else {
+        initialPhase = MatchTurnPhase.watchingLiveOpponent;
+      }
+    }
 
     return MatchSession(
       mode: MatchGameMode.onlineCloud1v1,
@@ -209,10 +252,8 @@ class MatchSession {
         0,
         cloudMatch.totalRounds - 1,
       ),
-      activePlayerIndex: 0,
-      phase: hasOpponentTelemetry
-          ? MatchTurnPhase.watchingOpponentReplay
-          : MatchTurnPhase.playingTurn,
+      activePlayerIndex: isMyTurn ? 0 : 1,
+      phase: initialPhase,
       player1: p1State,
       player2: p2State,
       config: MatchConfig(
@@ -238,10 +279,12 @@ class MatchSession {
 
   /// Returns the winning player, or null if the match is tied.
   PlayerMatchState? get overallWinner {
+    if (forfeitWinner != null) return forfeitWinner;
     if (player1.totalScore > player2.totalScore) return player1;
     if (player2.totalScore > player1.totalScore) return player2;
     return null;
   }
 
-  bool get isTie => player1.totalScore == player2.totalScore;
+  bool get isTie =>
+      forfeitWinner == null && player1.totalScore == player2.totalScore;
 }

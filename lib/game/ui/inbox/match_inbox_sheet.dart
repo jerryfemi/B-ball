@@ -4,13 +4,19 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../../models/cloud_match.dart';
+import '../../../models/player_descriptor.dart';
 import '../../../providers/app_providers.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/firestore_match_service.dart';
+import '../../basketball_game.dart';
+import '../../match/match_session.dart';
+import '../match/match_lobby_dialog.dart';
+import '../match/match_setup_dialog.dart';
 import 'join_match_dialog.dart';
 import 'match_inbox_card.dart';
 import 'match_thread_dialog.dart';
 import '../common/app_avatar.dart';
+import '../common/app_colors.dart';
 import '../common/app_modal_sheet.dart';
 import '../social/friends_hub_sheet.dart';
 
@@ -42,6 +48,70 @@ class MatchInboxSheet extends HookConsumerWidget {
         onViewPodium: onViewPodium,
       ),
     );
+  }
+
+  /// Convenience coordinator to open the Match Inbox and wire all cloud match actions
+  /// (joining, creating lobby, playing, viewing podium) directly to the [BasketballGame].
+  static Future<void> openWithGame(
+    BuildContext context, {
+    required BasketballGame game,
+  }) async {
+    final wasPlaying = game.gameStateNotifier.value == GameModeState.playing;
+    if (wasPlaying) {
+      game.pauseGame(manual: true);
+    }
+    await show(
+      context,
+      onPlayMatch: (match) {
+        final myUid = AuthService.instance.currentUser?.uid ?? '';
+        game.startCloudMatch(match, myUid);
+      },
+      onCreateMatch: () async {
+        final config = await MatchSetupDialog.show(
+          context,
+          initialConfig: game.currentMatchConfig,
+        );
+        if (config != null && context.mounted) {
+          final user = await AuthService.instance.ensureAuthenticated();
+          final profile =
+              AuthService.instance.currentUser ??
+              UserProfile(
+                uid: user.uid,
+                displayName: user.displayName ?? 'Player',
+                avatarEmoji: PlayerDescriptor.defaultAvatar,
+              );
+          final newMatch = config.precreatedMatch ??
+              await FirestoreMatchService.instance.createMatch(
+                config: config,
+                player1Profile: profile,
+              );
+
+          if (context.mounted) {
+            MatchLobbyDialog.show(
+              context: context,
+              match: newMatch,
+              challengedFriend: config.opponentFriend,
+              onPlaySoloWhileWaiting: () {
+                game.startCloudMatch(newMatch, profile.uid);
+              },
+              onEnterArena: (confirmedMatch) {
+                game.startCloudMatch(confirmedMatch, profile.uid);
+              },
+            );
+          }
+        }
+      },
+      onViewPodium: (match) {
+        final myUid = AuthService.instance.currentUser?.uid ?? '';
+        final session = MatchSession.fromCloudMatch(match, myUid);
+        session.phase = MatchTurnPhase.matchComplete;
+        game.matchSessionNotifier.value = session;
+        game.gameStateNotifier.value = GameModeState.gameOver;
+      },
+    );
+    if (wasPlaying && game.isPaused) {
+      game.resumeGame();
+    }
   }
 
   @override
@@ -351,47 +421,103 @@ class MatchInboxSheet extends HookConsumerWidget {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      Expanded(
-                        flex: 8,
-                        child: OutlinedButton.icon(
-                          onPressed: () async {
-                            await FriendsHubSheet.show(
-                              context,
-                              onPlayMatch: (m) {
-                                Navigator.of(context).pop();
-                                onPlayMatch(m);
-                              },
-                              onCreateMatch: () {
-                                Navigator.of(context).pop();
-                                onCreateMatch();
-                              },
-                              onViewPodium: (m) {
-                                Navigator.of(context).pop();
-                                onViewPodium?.call(m);
-                              },
-                            );
-                          },
-                          icon: const Icon(Icons.people_alt_rounded, size: 14),
-                          label: const Text(
-                            'FRIENDS',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0.4,
+                      Consumer(
+                        builder: (context, ref, _) {
+                          final friendsBadgeCount =
+                              ref.watch(friendsBadgeCountProvider);
+                          return Expanded(
+                            flex: 8,
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: OutlinedButton.icon(
+                                    onPressed: () async {
+                                      await FriendsHubSheet.show(
+                                        context,
+                                        onPlayMatch: (m) {
+                                          Navigator.of(context).pop();
+                                          onPlayMatch(m);
+                                        },
+                                        onCreateMatch: () {
+                                          Navigator.of(context).pop();
+                                          onCreateMatch();
+                                        },
+                                        onViewPodium: (m) {
+                                          Navigator.of(context).pop();
+                                          onViewPodium?.call(m);
+                                        },
+                                      );
+                                    },
+                                    icon: const Icon(Icons.people_alt_rounded, size: 14),
+                                    label: const Text(
+                                      'FRIENDS',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: 0.4,
+                                      ),
+                                    ),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: const Color(0xFF818CF8),
+                                      side: const BorderSide(
+                                        color: Color(0xFF6366F1),
+                                        width: 1.2,
+                                      ),
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                if (friendsBadgeCount > 0)
+                                  Positioned(
+                                    top: -4.0,
+                                    right: -4.0,
+                                    child: Container(
+                                      constraints: const BoxConstraints(
+                                        minWidth: 18.0,
+                                        minHeight: 18.0,
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 5.0,
+                                        vertical: 1.0,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.accentRed,
+                                        borderRadius: BorderRadius.circular(10.0),
+                                        border: Border.all(
+                                          color: const Color(0xFF0F1420),
+                                          width: 1.5,
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: AppColors.accentRed
+                                                .withValues(alpha: 0.6),
+                                            blurRadius: 6.0,
+                                            spreadRadius: 1.0,
+                                          ),
+                                        ],
+                                      ),
+                                      child: Center(
+                                        child: Text(
+                                          '$friendsBadgeCount',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 9.5,
+                                            fontWeight: FontWeight.w900,
+                                            height: 1.0,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: const Color(0xFF818CF8),
-                            side: const BorderSide(
-                              color: Color(0xFF6366F1),
-                              width: 1.2,
-                            ),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                        ),
+                          );
+                        },
                       ),
                     ],
                   ),

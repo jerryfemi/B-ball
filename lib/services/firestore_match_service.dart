@@ -6,6 +6,9 @@ import 'package:flutter/foundation.dart';
 import '../game/match/match_config.dart';
 import '../game/telemetry/shot_telemetry.dart';
 import '../models/cloud_match.dart';
+import '../models/friend_profile.dart';
+import '../models/live_reaction_event.dart';
+import '../models/match_invite.dart';
 import 'auth_service.dart';
 import 'friends_service.dart';
 
@@ -98,6 +101,8 @@ class FirestoreMatchService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   CollectionReference<Map<String, dynamic>> get _matchesRef =>
       _firestore.collection('matches');
+  CollectionReference<Map<String, dynamic>> get _usersRef =>
+      _firestore.collection('users');
 
   /// Generates a cryptographically secure 6-character alphanumeric join code (e.g. "B8K29A").
   /// Excludes visually ambiguous characters (0/O, 1/I).
@@ -142,38 +147,22 @@ class FirestoreMatchService {
     );
 
     final friend = config.opponentFriend;
-    final CloudPlayer? player2 = friend != null
-        ? CloudPlayer(
-            uid: friend.uid,
-            displayName: friend.displayName,
-            avatarEmoji: friend.avatarEmoji,
-            roundScores: const [],
-            roundSummaries: const [],
-          )
-        : null;
-
-    final playerIds = [
-      player1Profile.uid,
-      if (friend != null) friend.uid,
-    ];
 
     final match = CloudMatch(
       id: joinCode,
       joinCode: joinCode,
-      status: friend != null ? MatchStatus.active : MatchStatus.waitingForOpponent,
+      status: MatchStatus.waitingForOpponent,
       createdAt: now,
       updatedAt: now,
-      playerIds: playerIds,
+      playerIds: [player1Profile.uid],
       player1: player1,
-      player2: player2,
+      player2: null,
       totalRounds: config.totalRounds,
       roundDurationSeconds: config.roundDurationSeconds,
       difficulty: config.difficulty,
       currentRound: 1,
       // If Player 1 already shot, active turn awaits Player 2 upon joining/challenge
-      activeTurnPlayerUid: hasCompletedFirstTurn
-          ? (friend != null ? friend.uid : '')
-          : player1Profile.uid,
+      activeTurnPlayerUid: player1Profile.uid,
       latestTelemetry: initialRoundTelemetry,
       latestTelemetryRound: hasCompletedFirstTurn ? 1 : null,
       latestTelemetryShooterUid:
@@ -199,13 +188,13 @@ class FirestoreMatchService {
 
     if (friend != null) {
       try {
-        await _effectiveFriendsService.updateFriendMatch(
-          myUid: player1Profile.uid,
-          friendUid: friend.uid,
-          matchId: match.id,
+        await sendMatchChallenge(
+          match: match,
+          hostProfile: player1Profile,
+          friend: friend,
         );
       } catch (e) {
-        debugPrint('[FirestoreMatchService] Failed to link friend match: $e');
+        debugPrint('[FirestoreMatchService] Failed to dispatch friend match challenge: $e');
       }
     }
 
@@ -278,6 +267,125 @@ class FirestoreMatchService {
         updatedAt: now,
       );
     });
+  }
+
+  /// Dispatches a real-time match challenge to [friend]'s incoming invites subcollection.
+  Future<MatchInvite> sendMatchChallenge({
+    required CloudMatch match,
+    required UserProfile hostProfile,
+    required FriendProfile friend,
+  }) async {
+    final invite = MatchInvite(
+      matchId: match.id,
+      hostUid: hostProfile.uid,
+      hostName: hostProfile.displayName,
+      hostAvatar: hostProfile.avatarEmoji,
+      recipientUid: friend.uid,
+      recipientName: friend.displayName,
+      recipientAvatar: friend.avatarEmoji,
+      totalRounds: match.totalRounds,
+      roundDurationSeconds: match.roundDurationSeconds,
+      difficulty: match.difficulty.name,
+      status: MatchInviteStatus.pending,
+      createdAt: DateTime.now().millisecondsSinceEpoch,
+    );
+
+    await _usersRef
+        .doc(friend.uid)
+        .collection('match_invites')
+        .doc(match.id)
+        .set(invite.toMap());
+
+    try {
+      await _effectiveFriendsService.updateFriendMatch(
+        myUid: hostProfile.uid,
+        friendUid: friend.uid,
+        matchId: match.id,
+      );
+    } catch (_) {}
+
+    debugPrint('[FirestoreMatchService] Dispatched match challenge ${match.id} to ${friend.uid}');
+    return invite;
+  }
+
+  /// Streams real-time list of pending match challenges received by [myUid].
+  Stream<List<MatchInvite>> streamIncomingMatchChallenges(String myUid) {
+    if (myUid.isEmpty) return Stream.value(const []);
+    return _usersRef
+        .doc(myUid)
+        .collection('match_invites')
+        .snapshots()
+        .map((snap) {
+          final list = snap.docs
+              .map((d) => MatchInvite.fromFirestore(d))
+              .where((inv) => inv.isPending)
+              .toList();
+          list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          return list;
+        })
+        .handleError((error) {
+          debugPrint('[FirestoreMatchService] Stream incoming challenges error: $error');
+          return const <MatchInvite>[];
+        });
+  }
+
+  /// Accepts a match challenge, marks the invite accepted, and atomically joins the room.
+  Future<CloudMatch> acceptMatchChallenge({
+    required MatchInvite invite,
+    required UserProfile recipientProfile,
+  }) async {
+    try {
+      await _usersRef
+          .doc(recipientProfile.uid)
+          .collection('match_invites')
+          .doc(invite.matchId)
+          .update({
+        'status': MatchInviteStatus.accepted.key,
+      });
+    } catch (e) {
+      debugPrint('[FirestoreMatchService] Notice: could not mark invite accepted: $e');
+    }
+
+    return await joinMatchByCode(
+      joinCode: invite.matchId,
+      player2Profile: recipientProfile,
+    );
+  }
+
+  /// Declines an incoming match challenge.
+  Future<void> declineMatchChallenge({
+    required String myUid,
+    required String matchId,
+  }) async {
+    try {
+      await _usersRef
+          .doc(myUid)
+          .collection('match_invites')
+          .doc(matchId)
+          .update({
+        'status': MatchInviteStatus.declined.key,
+      });
+    } catch (e) {
+      debugPrint('[FirestoreMatchService] Error declining match challenge: $e');
+    }
+  }
+
+  /// Cancels an outgoing match challenge dispatched to a friend.
+  Future<void> cancelMatchChallenge({
+    required String friendUid,
+    required String matchId,
+  }) async {
+    try {
+      await _usersRef
+          .doc(friendUid)
+          .collection('match_invites')
+          .doc(matchId)
+          .update({
+        'status': MatchInviteStatus.cancelled.key,
+      });
+    } catch (e) {
+      debugPrint('[FirestoreMatchService] Error cancelling match challenge: $e');
+    }
   }
 
   /// Atomically and idempotently submits completed turn telemetry and round performance.
@@ -408,6 +516,12 @@ class FirestoreMatchService {
         timestamp: now,
       );
       await docRef.collection('messages').doc(newMsg.id).set(newMsg.toMap());
+      await docRef.update({
+        'updatedAt': now,
+        'lastChatSenderUid': shooterUid,
+        'lastChatTimestamp': now,
+        'lastChatText': optionalChatMessage.trim(),
+      });
     }
   }
 
@@ -422,9 +536,12 @@ class FirestoreMatchService {
   }) async {
     final docRef = _matchesRef.doc(matchId);
     await docRef.collection('messages').doc(message.id).set(message.toMap());
-    // Touch updatedAt on root to signal activity to inbox listeners
+    // Touch updatedAt and mirror lightweight chat metadata on root for notification badges
     await docRef.update({
       'updatedAt': DateTime.now().millisecondsSinceEpoch,
+      'lastChatSenderUid': message.senderUid,
+      'lastChatTimestamp': message.timestamp,
+      'lastChatText': message.text,
     });
   }
 
@@ -509,6 +626,24 @@ class FirestoreMatchService {
     }
   }
 
+  /// Atomically marks a match completed and records winnerUid when opponent abandons or times out.
+  Future<void> claimForfeitVictory({
+    required String matchId,
+    required String winnerUid,
+  }) async {
+    final clean = matchId.trim().toUpperCase();
+    try {
+      await _matchesRef.doc(clean).update({
+        'status': MatchStatus.completed.key,
+        'winnerUid': winnerUid,
+        'updatedAt': DateTime.now().millisecondsSinceEpoch,
+      });
+      debugPrint('[FirestoreMatchService] Forfeit victory claimed for $clean by $winnerUid');
+    } catch (e) {
+      debugPrint('[FirestoreMatchService] Error claiming forfeit victory for $clean: $e');
+    }
+  }
+
   final Map<String, List<CloudMatch>> _cachedUserMatches = {};
 
   /// Retrieves the most recent memory-cached matches for instant zero-latency UI rendering.
@@ -541,5 +676,126 @@ class FirestoreMatchService {
       _cachedUserMatches[userUid] = matches;
       return matches;
     });
+  }
+
+  /// Broadcasts a live shot impulse micro-packet to the `live_shots` subcollection.
+  ///
+  /// This micro-packet (~150 bytes) conveys launch coordinates, 3D velocity vectors,
+  /// backspin, and make metadata so spectators can simulate the deterministic trajectory locally.
+  Future<void> broadcastLiveShot({
+    required String matchId,
+    required RecordedShot shot,
+    required String shooterUid,
+    required int shotIndex,
+  }) async {
+    final cleanId = matchId.trim().toUpperCase();
+    final docRef = _matchesRef.doc(cleanId).collection('live_shots');
+    final shotId = '${shot.timestampMs}_${shooterUid}_$shotIndex';
+    try {
+      await docRef.doc(shotId).set({
+        'id': shotId,
+        'shooterUid': shooterUid,
+        'shotIndex': shotIndex,
+        'shot': shot.toJson(),
+        'timestamp': shot.timestampMs,
+        'createdAt': DateTime.now().millisecondsSinceEpoch,
+      });
+    } catch (e) {
+      debugPrint('[FirestoreMatchService] broadcastLiveShot error: $e');
+    }
+  }
+
+  /// Streams real-time live shots broadcast by the active shooter.
+  ///
+  /// Uses Firestore document changes (`DocumentChangeType.added`) filtered by timestamp
+  /// to ensure only newly launched shots are received and spawned as ghost balls.
+  Stream<RecordedShot> streamLiveShots(String matchId, {int? sinceTimestampMs}) {
+    if (matchId.isEmpty) return const Stream.empty();
+    final cleanId = matchId.trim().toUpperCase();
+    final start = sinceTimestampMs ?? (DateTime.now().millisecondsSinceEpoch - 1500);
+
+    return _matchesRef
+        .doc(cleanId)
+        .collection('live_shots')
+        .where('createdAt', isGreaterThanOrEqualTo: start)
+        .snapshots()
+        .expand((snap) => snap.docChanges)
+        .where((change) => change.type == DocumentChangeType.added)
+        .map((change) {
+          final data = change.doc.data();
+          final shotMap = data?['shot'] as Map<String, dynamic>?;
+          if (shotMap == null) return null;
+
+          final createdAt = (data?['createdAt'] as num?)?.toInt() ?? 0;
+          final nowMs = DateTime.now().millisecondsSinceEpoch;
+          // Filter out bursts of stale shots older than 3 seconds (e.g. from background tab resume)
+          if (createdAt > 0 && (nowMs - createdAt > 3000)) {
+            return null;
+          }
+
+          return RecordedShot.fromJson(shotMap);
+        })
+        .where((shot) => shot != null)
+        .cast<RecordedShot>()
+        .handleError((e) {
+          debugPrint('[FirestoreMatchService] streamLiveShots error: $e');
+        });
+  }
+
+  /// Broadcasts a courtside reaction (floating emoji or text banter) to the `live_reactions` subcollection.
+  Future<void> sendLiveReaction({
+    required String matchId,
+    required LiveReactionEvent reaction,
+  }) async {
+    final cleanId = matchId.trim().toUpperCase();
+    try {
+      final docRef = _matchesRef.doc(cleanId).collection('live_reactions');
+      await docRef.doc(reaction.id).set(reaction.toMap());
+    } catch (e) {
+      debugPrint('[FirestoreMatchService] sendLiveReaction error: $e');
+    }
+  }
+
+  /// Streams real-time floating reactions & banter events occurring during the match.
+  Stream<LiveReactionEvent> streamLiveReactions(String matchId, {int? sinceTimestampMs}) {
+    if (matchId.isEmpty) return const Stream.empty();
+    final cleanId = matchId.trim().toUpperCase();
+    final start = sinceTimestampMs ?? (DateTime.now().millisecondsSinceEpoch - 2000);
+
+    return _matchesRef
+        .doc(cleanId)
+        .collection('live_reactions')
+        .where('timestamp', isGreaterThanOrEqualTo: start)
+        .snapshots()
+        .expand((snap) => snap.docChanges)
+        .where((change) => change.type == DocumentChangeType.added)
+        .map((change) {
+          final data = change.doc.data();
+          if (data == null) return null;
+          return LiveReactionEvent.fromMap(data, change.doc.id);
+        })
+        .where((reaction) => reaction != null)
+        .cast<LiveReactionEvent>()
+        .handleError((e) {
+          debugPrint('[FirestoreMatchService] streamLiveReactions error: $e');
+        });
+  }
+
+  /// Updates the live round score on the root match document so spectators see exact score agreement.
+  Future<void> updateLiveShooterScore({
+    required String matchId,
+    required int currentRoundScore,
+    required String shooterUid,
+  }) async {
+    final cleanId = matchId.trim().toUpperCase();
+    try {
+      await _matchesRef.doc(cleanId).update({
+        'liveShooterScore': currentRoundScore,
+        'liveShooterUid': shooterUid,
+        'updatedAt': DateTime.now().millisecondsSinceEpoch,
+      });
+    } catch (e) {
+      debugPrint('[FirestoreMatchService] updateLiveShooterScore error: $e');
+    }
   }
 }

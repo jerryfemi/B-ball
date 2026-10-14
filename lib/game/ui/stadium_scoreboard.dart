@@ -45,8 +45,6 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
   late final AnimationController _urgentClockController;
   late final Animation<double> _urgentGlowAnimation;
 
-  int _lastScore = 0;
-
   @override
   void initState() {
     super.initState();
@@ -94,8 +92,9 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
     );
 
     widget.game.scoreNotifier.addListener(_onScoreChanged);
+    widget.game.player1MatchScoreNotifier.addListener(_onScoreChanged);
+    widget.game.player2MatchScoreNotifier.addListener(_onScoreChanged);
     widget.game.timeRemainingNotifier.addListener(_onTimeChanged);
-    _lastScore = widget.game.scoreNotifier.value;
   }
 
   @override
@@ -103,8 +102,12 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
     super.didUpdateWidget(oldWidget);
     if (oldWidget.game != widget.game) {
       oldWidget.game.scoreNotifier.removeListener(_onScoreChanged);
+      oldWidget.game.player1MatchScoreNotifier.removeListener(_onScoreChanged);
+      oldWidget.game.player2MatchScoreNotifier.removeListener(_onScoreChanged);
       oldWidget.game.timeRemainingNotifier.removeListener(_onTimeChanged);
       widget.game.scoreNotifier.addListener(_onScoreChanged);
+      widget.game.player1MatchScoreNotifier.addListener(_onScoreChanged);
+      widget.game.player2MatchScoreNotifier.addListener(_onScoreChanged);
       widget.game.timeRemainingNotifier.addListener(_onTimeChanged);
     }
   }
@@ -112,6 +115,8 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
   @override
   void dispose() {
     widget.game.scoreNotifier.removeListener(_onScoreChanged);
+    widget.game.player1MatchScoreNotifier.removeListener(_onScoreChanged);
+    widget.game.player2MatchScoreNotifier.removeListener(_onScoreChanged);
     widget.game.timeRemainingNotifier.removeListener(_onTimeChanged);
     _popController.dispose();
     _urgentClockController.dispose();
@@ -119,11 +124,7 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
   }
 
   void _onScoreChanged() {
-    final current = widget.game.scoreNotifier.value;
-    if (current > _lastScore) {
-      _popController.forward(from: 0.0);
-    }
-    _lastScore = current;
+    _popController.forward(from: 0.0);
   }
 
   void _onTimeChanged() {
@@ -161,15 +162,14 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
     UserProfile? userProfile,
   ) {
     final is1v1 = matchSession != null;
-    final isWatchingReplay =
-        is1v1 && matchSession.phase == MatchTurnPhase.watchingOpponentReplay;
+    final isSpectatingOpponent = is1v1 &&
+        (matchSession.phase == MatchTurnPhase.watchingOpponentReplay ||
+         matchSession.phase == MatchTurnPhase.watchingLiveOpponent);
 
-    // When watching opponent replay, highlight the opponent whose shots are actively flying into the net.
+    // When spectating opponent (live or replay), highlight the opponent (bay 1).
     // When shooting live, highlight the active shooter.
     final int shootingPlayerIndex = is1v1
-        ? (isWatchingReplay
-              ? (matchSession.activePlayerIndex == 0 ? 1 : 0)
-              : matchSession.activePlayerIndex)
+        ? (isSpectatingOpponent ? 1 : matchSession.activePlayerIndex)
         : 0;
 
     final p1Active = is1v1 && shootingPlayerIndex == 0;

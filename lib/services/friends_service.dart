@@ -365,6 +365,8 @@ class FriendsService {
         'participants': [fromUid, toUid],
         'chat': FieldValue.arrayUnion([msgMap]),
         'updatedAt': DateTime.now().millisecondsSinceEpoch,
+        'lastMsgSenderUid': fromUid,
+        'lastMsgTimestamp': message.timestamp,
       }, SetOptions(merge: true));
     } catch (e) {
       debugPrint('[FriendsService] Send direct message error: $e');
@@ -406,4 +408,67 @@ class FriendsService {
           return const <CloudChatMessage>[];
         });
   }
+
+  /// Streams metadata for all direct conversations involving [myUid].
+  Stream<List<DirectConversationSummary>> streamUserConversations(String myUid) {
+    if (myUid.isEmpty) return Stream.value(const []);
+    return _firestore
+        .collection('conversations')
+        .where('participants', arrayContains: myUid)
+        .snapshots()
+        .map((snap) => snap.docs.map((doc) {
+              final data = doc.data();
+              final participants = (data['participants'] as List<dynamic>?)
+                      ?.map((e) => e.toString())
+                      .toList() ??
+                  [];
+              final otherUid = participants.firstWhere(
+                (p) => p != myUid,
+                orElse: () => '',
+              );
+              final rawChat = data['chat'] as List<dynamic>?;
+              CloudChatMessage? lastMessage;
+              if (rawChat != null && rawChat.isNotEmpty) {
+                lastMessage = CloudChatMessage.fromMap(
+                  rawChat.last as Map<String, dynamic>,
+                );
+              }
+              final lastSenderUid = data['lastMsgSenderUid'] as String? ??
+                  lastMessage?.senderUid ??
+                  '';
+              final lastTimestamp =
+                  (data['lastMsgTimestamp'] as num?)?.toInt() ??
+                      lastMessage?.timestamp ??
+                      (data['updatedAt'] as num?)?.toInt() ??
+                      0;
+              return DirectConversationSummary(
+                id: doc.id,
+                friendUid: otherUid,
+                lastSenderUid: lastSenderUid,
+                lastTimestamp: lastTimestamp,
+                lastMessageText: lastMessage?.text,
+              );
+            }).toList())
+        .handleError((e) {
+          debugPrint('[FriendsService] Stream user conversations error: $e');
+          return const <DirectConversationSummary>[];
+        });
+  }
+}
+
+/// Lightweight summary of a direct friend conversation for notification badging.
+class DirectConversationSummary {
+  final String id;
+  final String friendUid;
+  final String lastSenderUid;
+  final int lastTimestamp;
+  final String? lastMessageText;
+
+  const DirectConversationSummary({
+    required this.id,
+    required this.friendUid,
+    required this.lastSenderUid,
+    required this.lastTimestamp,
+    this.lastMessageText,
+  });
 }

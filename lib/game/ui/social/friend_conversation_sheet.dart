@@ -8,12 +8,15 @@ import '../../../models/friend_profile.dart';
 import '../../../models/player_descriptor.dart';
 import '../../../providers/app_providers.dart';
 import '../../../services/auth_service.dart';
+import '../../../services/chat_read_receipt_service.dart';
 import '../../../services/firestore_match_service.dart';
 import '../../../services/friends_service.dart';
+import '../../match/match_config.dart';
 import '../common/app_avatar.dart';
 import '../common/app_modal_sheet.dart';
 import '../common/chat/chat_bubble_list.dart';
 import '../common/chat/chat_input_bar.dart';
+import '../match/match_lobby_dialog.dart';
 import '../match/match_setup_dialog.dart';
 
 /// GamePigeon-style conversation screen featuring a sticky top 1v1 match banner,
@@ -70,6 +73,14 @@ class FriendConversationSheet extends HookConsumerWidget {
     final currentMatch = useState<CloudMatch?>(activeMatch);
     final currentUser = ref.watch(currentUserProfileProvider).value;
 
+    useEffect(() {
+      ChatReadReceiptService.instance.markFriendChatRead(friend.uid);
+      if (activeMatch != null) {
+        ChatReadReceiptService.instance.markMatchRead(activeMatch!.id);
+      }
+      return null;
+    }, [friend.uid, activeMatch?.id]);
+
     void scrollToBottom() {
       Future.delayed(const Duration(milliseconds: 150), () {
         if (scrollController.hasClients) {
@@ -121,7 +132,15 @@ class FriendConversationSheet extends HookConsumerWidget {
     }
 
     Future<void> handleCreateChallenge() async {
-      final config = await MatchSetupDialog.show(context);
+      final config = await MatchSetupDialog.show(
+        context,
+        initialConfig: MatchConfig(
+          opponentFriend: friend,
+          player2Name: friend.displayName,
+          player2Avatar: friend.avatarEmoji,
+          player2Uid: friend.uid,
+        ),
+      );
       if (config == null || !context.mounted) return;
 
       final profile =
@@ -132,10 +151,11 @@ class FriendConversationSheet extends HookConsumerWidget {
             avatarEmoji: PlayerDescriptor.defaultAvatar,
           );
 
-      final newMatch = await FirestoreMatchService.instance.createMatch(
-        config: config,
-        player1Profile: profile,
-      );
+      final newMatch = config.precreatedMatch ??
+          await FirestoreMatchService.instance.createMatch(
+            config: config,
+            player1Profile: profile,
+          );
 
       await FriendsService.instance.updateFriendMatch(
         myUid: myUid,
@@ -145,7 +165,17 @@ class FriendConversationSheet extends HookConsumerWidget {
 
       if (context.mounted) {
         Navigator.of(context).pop();
-        onPlayTurn(newMatch);
+        MatchLobbyDialog.show(
+          context: context,
+          match: newMatch,
+          challengedFriend: friend,
+          onPlaySoloWhileWaiting: () {
+            onPlayTurn(newMatch);
+          },
+          onEnterArena: (confirmedMatch) {
+            onPlayTurn(confirmedMatch);
+          },
+        );
       }
     }
 

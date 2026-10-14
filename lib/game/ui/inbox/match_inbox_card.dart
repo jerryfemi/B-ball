@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../models/cloud_match.dart';
+import '../../../services/chat_read_receipt_service.dart';
 import '../common/app_avatar.dart';
+import '../common/app_colors.dart';
 import '../common/match_status_badge.dart';
 
 /// Punchy Arcade Head-to-Head Versus Match Card.
@@ -38,7 +40,15 @@ class MatchInboxCard extends StatelessWidget {
     final myScore = myPlayer?.totalScore ?? 0;
     final opponentScore = opponent?.totalScore ?? 0;
 
+    final hasRootChat = match.lastChatText != null && match.lastChatText!.isNotEmpty;
     final latestChat = match.chat.isNotEmpty ? match.chat.last : null;
+    final hasChatSnippet = latestChat != null || hasRootChat;
+    final lastRead = ChatReadReceiptService.instance.getMatchLastRead(match.id);
+    final hasUnreadBanter = match.hasUnreadChat(myUid, lastRead);
+    final snippetText = latestChat?.text ?? match.lastChatText ?? '';
+    final snippetSender = latestChat?.senderName ??
+        (match.lastChatSenderUid == myUid ? (myPlayer?.displayName ?? 'You') : opponentName);
+
     final isCompleted = match.status == MatchStatus.completed;
     final isWaitingOpponent = match.status == MatchStatus.waitingForOpponent;
 
@@ -257,33 +267,50 @@ class MatchInboxCard extends StatelessWidget {
                 ),
 
                 // Latest banter chip (if available)
-                if (latestChat != null) ...[
+                if (hasChatSnippet) ...[
                   const SizedBox(height: 10),
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 8,
-                      vertical: 4,
+                      vertical: 5,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF0C101A),
+                      color: hasUnreadBanter
+                          ? AppColors.accentRed.withValues(alpha: 0.12)
+                          : const Color(0xFF0C101A),
                       borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: hasUnreadBanter
+                            ? AppColors.accentRed.withValues(alpha: 0.4)
+                            : Colors.transparent,
+                        width: 1.0,
+                      ),
                     ),
                     child: Row(
                       children: [
-                        const Icon(
-                          Icons.chat_bubble_outline,
+                        Icon(
+                          hasUnreadBanter
+                              ? Icons.chat_bubble_rounded
+                              : Icons.chat_bubble_outline,
                           size: 11,
-                          color: Color(0xFF64748B),
+                          color: hasUnreadBanter
+                              ? AppColors.accentRed
+                              : const Color(0xFF64748B),
                         ),
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
-                            '${latestChat.senderName}: "${latestChat.text}"',
+                            '$snippetSender: "$snippetText"',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Color(0xFF94A3B8),
+                            style: TextStyle(
+                              color: hasUnreadBanter
+                                  ? AppColors.accentRed
+                                  : const Color(0xFF94A3B8),
                               fontSize: 11,
+                              fontWeight: hasUnreadBanter
+                                  ? FontWeight.w700
+                                  : FontWeight.normal,
                               fontStyle: FontStyle.italic,
                             ),
                           ),

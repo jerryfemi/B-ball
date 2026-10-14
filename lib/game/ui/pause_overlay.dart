@@ -5,7 +5,6 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import '../audio/audio_engine.dart';
 import '../basketball_game.dart';
 import '../physics/shot_difficulty.dart';
-import 'match/match_setup_dialog.dart';
 
 /// Frosted obsidian glass Pause Overlay displayed when mid-round action is paused.
 class PauseOverlay extends HookWidget {
@@ -338,53 +337,7 @@ class PauseOverlay extends HookWidget {
                               ),
                               const SizedBox(height: 12.0),
 
-                              // Solo Actions: Start 1v1 or Restart Round
-                              SizedBox(
-                                width: double.infinity,
-                                height: 42.0,
-                                child: OutlinedButton(
-                                  onPressed: () async {
-                                    final config = await MatchSetupDialog.show(
-                                      context,
-                                      initialConfig: game.currentMatchConfig,
-                                    );
-                                    if (config != null) {
-                                      game.startPassAndPlayMatch(config: config);
-                                    }
-                                  },
-                                  style: OutlinedButton.styleFrom(
-                                    side: const BorderSide(
-                                      color: Color(0x6638BDF8),
-                                      width: 1.0,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(14.0),
-                                    ),
-                                    backgroundColor: const Color(0x180284C7),
-                                  ),
-                                  child: const Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(
-                                        Icons.tune_rounded,
-                                        size: 16.0,
-                                        color: Color(0xFF38BDF8),
-                                      ),
-                                      SizedBox(width: 8.0),
-                                      Text(
-                                        'START 1V1 MATCH',
-                                        style: TextStyle(
-                                          color: Color(0xFF38BDF8),
-                                          fontSize: 13.0,
-                                          fontWeight: FontWeight.w800,
-                                          letterSpacing: 1.0,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 8.0),
+                              // Solo Action: Restart Round
                               SizedBox(
                                 width: double.infinity,
                                 height: 42.0,
@@ -400,14 +353,25 @@ class PauseOverlay extends HookWidget {
                                     ),
                                     backgroundColor: const Color(0x1E334155),
                                   ),
-                                  child: const Text(
-                                    'RESTART ROUND',
-                                    style: TextStyle(
-                                      color: Color(0xFFCBD5E1),
-                                      fontSize: 13.0,
-                                      fontWeight: FontWeight.w700,
-                                      letterSpacing: 1.0,
-                                    ),
+                                  child: const Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.replay_rounded,
+                                        size: 16.0,
+                                        color: Color(0xFFCBD5E1),
+                                      ),
+                                      SizedBox(width: 8.0),
+                                      Text(
+                                        'RESTART ROUND',
+                                        style: TextStyle(
+                                          color: Color(0xFFCBD5E1),
+                                          fontSize: 13.0,
+                                          fontWeight: FontWeight.w700,
+                                          letterSpacing: 1.0,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),
