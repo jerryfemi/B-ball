@@ -1,9 +1,15 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
 
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../../../models/friend_profile.dart';
+import '../../../services/auth_service.dart';
 import '../../../services/firestore_match_service.dart';
 import '../../basketball_game.dart';
 import '../../match/match_session.dart';
 import '../common/app_avatar.dart';
+import 'match_lobby_dialog.dart';
 import 'match_setup_dialog.dart';
 import 'podium/podium_score_matrix.dart';
 import 'podium/podium_stats_comparison.dart';
@@ -30,6 +36,84 @@ class MatchWinnerPodiumOverlay extends StatelessWidget {
       }
     }
     game.exitToSoloMode();
+  }
+
+  Future<void> _handleInstantRematch(BuildContext context) async {
+    HapticFeedback.mediumImpact();
+    final profile = AuthService.instance.currentUser;
+    final myUid = profile?.uid ?? '';
+    final oldMatchId = session.cloudMatchId;
+
+    final opponent = session.player2;
+    final opponentFriend = opponent.id.isNotEmpty
+        ? FriendProfile(
+            uid: opponent.id,
+            displayName: opponent.name,
+            avatarEmoji: opponent.avatar,
+            addedAt: DateTime.now().millisecondsSinceEpoch,
+          )
+        : null;
+
+    if (oldMatchId != null) {
+      unawaited(
+        FirestoreMatchService.instance.deleteMatch(oldMatchId).catchError((e) {
+          debugPrint('[Podium] Failed to delete old match: $e');
+        }),
+      );
+    }
+
+    try {
+      final config = MatchConfig(
+        totalRounds: session.totalRounds,
+        roundDurationSeconds: session.config.roundDurationSeconds,
+        difficulty: session.config.difficulty,
+        player1Name: session.player1.name,
+        player1Avatar: session.player1.avatar,
+        player2Name: opponent.name,
+        player2Avatar: opponent.avatar,
+        player2Uid: opponent.id.isNotEmpty ? opponent.id : null,
+        opponentFriend: opponentFriend,
+      );
+
+      final userProfile = profile ??
+          UserProfile(
+            uid: myUid,
+            displayName: session.player1.name,
+            avatarEmoji: session.player1.avatar,
+          );
+
+      final newMatch = await FirestoreMatchService.instance.createMatch(
+        config: config,
+        player1Profile: userProfile,
+      );
+
+      if (context.mounted) {
+        game.exitToSoloMode();
+
+        MatchLobbyDialog.show(
+          context: context,
+          match: newMatch,
+          challengedFriend: opponentFriend,
+          onPlaySoloWhileWaiting: () {
+            game.startCloudMatch(newMatch, userProfile.uid);
+          },
+          onEnterArena: (confirmedMatch) {
+            game.startCloudMatch(confirmedMatch, userProfile.uid);
+          },
+        );
+      }
+    } catch (e) {
+      debugPrint('[Podium] Failed to create instant rematch: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to initiate rematch: $e'),
+            backgroundColor: const Color(0xFFEF4444),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -152,30 +236,68 @@ class MatchWinnerPodiumOverlay extends StatelessWidget {
 
                     // 5. Action Buttons
                     if (session.cloudMatchId != null) ...[
-                      // Online Cloud Match: Close & Evaporate Room
+                      // Primary Action: INSTANT REMATCH
                       SizedBox(
                         width: double.infinity,
-                        child: ElevatedButton.icon(
+                        child: ElevatedButton(
+                          onPressed: () => _handleInstantRematch(context),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: bannerColor,
+                            foregroundColor: Colors.black,
+                            padding: const EdgeInsets.symmetric(vertical: 14.0),
+                            elevation: 8.0,
+                            shadowColor: bannerColor.withValues(alpha: 0.5),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16.0),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.replay_rounded, size: 20.0),
+                              const SizedBox(width: 8.0),
+                              Flexible(
+                                child: Text(
+                                  'REMATCH ${session.player2.name.toUpperCase()}',
+                                  style: const TextStyle(
+                                    fontSize: 14.5,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 1.1,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8.0),
+
+                      // Secondary Action: CLOSE & DISMISS
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
                           onPressed: () => _handleCloseOrDismiss(context),
-                          icon: const Icon(Icons.close_rounded, size: 18),
+                          icon: const Icon(Icons.close_rounded, size: 17),
                           label: const Text(
-                            'CLOSE ROOM & DISMISS MATCH',
+                            'CLOSE ROOM & EXIT',
                             style: TextStyle(
                               fontSize: 13.0,
-                              fontWeight: FontWeight.w900,
+                              fontWeight: FontWeight.w800,
                               letterSpacing: 0.8,
                             ),
                           ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF1E293B),
-                            foregroundColor: const Color(0xFFCBD5E1),
-                            padding: const EdgeInsets.symmetric(vertical: 13.0),
+                          style: OutlinedButton.styleFrom(
+                            backgroundColor: const Color(0x181E293B),
+                            foregroundColor: const Color(0xFF94A3B8),
+                            side: const BorderSide(
+                              color: Color(0xFF334155),
+                              width: 1.0,
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 12.0),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16.0),
-                              side: const BorderSide(
-                                color: Color(0xFF334155),
-                                width: 1.0,
-                              ),
                             ),
                           ),
                         ),
