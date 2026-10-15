@@ -170,7 +170,14 @@ class FirestoreMatchService {
       chat: const [],
     );
 
-    await docRef.set(match.toMap());
+    final ttl7Days = Timestamp.fromDate(
+      DateTime.now().add(const Duration(days: 7)),
+    );
+
+    await docRef.set({
+      ...match.toMap(),
+      'expireAt': ttl7Days,
+    });
 
     // Write initial chat message to lightweight subcollection (decoupled from match telemetry)
     if (initialChatMessage != null && initialChatMessage.trim().isNotEmpty) {
@@ -182,7 +189,10 @@ class FirestoreMatchService {
         text: initialChatMessage.trim(),
         timestamp: now,
       );
-      await docRef.collection('messages').doc(chatMsg.id).set(chatMsg.toMap());
+      await docRef.collection('messages').doc(chatMsg.id).set({
+        ...chatMsg.toMap(),
+        'expireAt': ttl7Days,
+      });
     }
     debugPrint('[FirestoreMatchService] Created match with docId/code $joinCode');
 
@@ -294,7 +304,12 @@ class FirestoreMatchService {
         .doc(friend.uid)
         .collection('match_invites')
         .doc(match.id)
-        .set(invite.toMap());
+        .set({
+          ...invite.toMap(),
+          'expireAt': Timestamp.fromDate(
+            DateTime.now().add(const Duration(days: 7)),
+          ),
+        });
 
     try {
       await _effectiveFriendsService.updateFriendMatch(
@@ -500,11 +515,15 @@ class FirestoreMatchService {
       }
 
       final now = DateTime.now().millisecondsSinceEpoch;
+      final ttl7Days = Timestamp.fromDate(
+        DateTime.now().add(const Duration(days: 7)),
+      );
       final updateData = <String, dynamic>{
         'currentRound': nextRound,
         'activeTurnPlayerUid': nextTurnUid,
         'status': nextStatus.key,
         'updatedAt': now,
+        'expireAt': ttl7Days,
         'latestTelemetry': telemetry.toJson(),
         'latestTelemetryRound': match.currentRound,
         'latestTelemetryShooterUid': shooterUid,
@@ -524,6 +543,9 @@ class FirestoreMatchService {
     // Write optional chat message to lightweight subcollection (outside transaction for efficiency)
     if (optionalChatMessage != null && optionalChatMessage.trim().isNotEmpty) {
       final now = DateTime.now().millisecondsSinceEpoch;
+      final ttl7Days = Timestamp.fromDate(
+        DateTime.now().add(const Duration(days: 7)),
+      );
       final newMsg = CloudChatMessage(
         id: '${now}_$shooterUid',
         senderUid: shooterUid,
@@ -532,12 +554,16 @@ class FirestoreMatchService {
         text: optionalChatMessage.trim(),
         timestamp: now,
       );
-      await docRef.collection('messages').doc(newMsg.id).set(newMsg.toMap());
+      await docRef.collection('messages').doc(newMsg.id).set({
+        ...newMsg.toMap(),
+        'expireAt': ttl7Days,
+      });
       await docRef.update({
         'updatedAt': now,
         'lastChatSenderUid': shooterUid,
         'lastChatTimestamp': now,
         'lastChatText': optionalChatMessage.trim(),
+        'expireAt': ttl7Days,
       });
     }
   }
@@ -552,13 +578,20 @@ class FirestoreMatchService {
     required CloudChatMessage message,
   }) async {
     final docRef = _matchesRef.doc(matchId);
-    await docRef.collection('messages').doc(message.id).set(message.toMap());
+    final ttl7Days = Timestamp.fromDate(
+      DateTime.now().add(const Duration(days: 7)),
+    );
+    await docRef.collection('messages').doc(message.id).set({
+      ...message.toMap(),
+      'expireAt': ttl7Days,
+    });
     // Touch updatedAt and mirror lightweight chat metadata on root for notification badges
     await docRef.update({
       'updatedAt': DateTime.now().millisecondsSinceEpoch,
       'lastChatSenderUid': message.senderUid,
       'lastChatTimestamp': message.timestamp,
       'lastChatText': message.text,
+      'expireAt': ttl7Days,
     });
   }
 
@@ -716,6 +749,9 @@ class FirestoreMatchService {
         'shot': shot.toJson(),
         'timestamp': shot.timestampMs,
         'createdAt': DateTime.now().millisecondsSinceEpoch,
+        'expireAt': Timestamp.fromDate(
+          DateTime.now().add(const Duration(hours: 24)),
+        ),
       });
     } catch (e) {
       debugPrint('[FirestoreMatchService] broadcastLiveShot error: $e');
