@@ -28,6 +28,18 @@ class GameBackground extends Component with HasGameReference {
   Vector2? _cachedSize;
 
   @override
+  Future<void> onLoad() async {
+    await super.onLoad();
+    final results = await Future.wait([
+      DistantWallRenderer.loadBrickImage(),
+      CourtFloorRenderer.loadFloorImage(),
+    ]);
+    if (results.any((img) => img != null)) {
+      _invalidateCache();
+    }
+  }
+
+  @override
   void onGameResize(Vector2 size) {
     super.onGameResize(size);
     _invalidateCache();
