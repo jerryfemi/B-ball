@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/cloud_match.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_match_service.dart';
+import '../services/vatar/vatar_bridge.dart';
 import 'audio/audio_engine.dart';
 import 'components/background.dart';
 import 'components/background/distant_wall_renderer.dart';
@@ -619,6 +620,10 @@ class BasketballGame extends Forge2DGame {
     if (isNew) {
       bestScoreNotifier.value = score;
       _saveBestScore(score);
+    }
+    // Automatically submit score to Lagos Life leaderboard when running embedded
+    if (VatarBridge.instance.isInsideVatar && score > 0) {
+      unawaited(VatarBridge.instance.submitScore(score));
     }
     statsNotifier.value = GameRoundStats(
       score: score,
@@ -1300,6 +1305,17 @@ class BasketballGame extends Forge2DGame {
       DistantWallRenderer.loadBrickImage(),
       CourtFloorRenderer.loadFloorImage(),
     ]);
+
+    // Bind Lagos Life frame pause and resume events
+    VatarBridge.instance.onPause(() {
+      if (gameStateNotifier.value == GameModeState.playing) {
+        pauseGame(manual: true);
+      }
+      AudioEngine.onAppBackground();
+    });
+    VatarBridge.instance.onResume(() {
+      AudioEngine.onAppForeground();
+    });
 
     // Asynchronously restore high score and check onboarding tour status
     unawaited(() async {
