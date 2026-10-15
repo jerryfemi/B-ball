@@ -4,7 +4,6 @@ uniform vec2 u_center; // center of the ball in screen pixels
 uniform float u_radius; // radius of the ball in screen pixels
 uniform vec2 u_rotation; // x = yaw (spin around Y), y = pitch (spin around X)
 uniform float u_local_radius; // radius in local canvas coordinates
-uniform float u_skin_id; // 0.0 = Classic Pro, 1.0 = Danfo Yellow
 
 out vec4 fragColor;
 
@@ -97,24 +96,11 @@ void main() {
     vec3 perturbedNormal = normalize(normal + bumpOffset);
     
     // --- 4. Authentic Composite Leather Color Grading ---
-    vec3 leatherDark;
-    vec3 leatherMid;
-    vec3 leatherPeak;
-    vec3 rubberSeamColor;
-
-    if (u_skin_id > 0.5) {
-        // Danfo Street Edition: Iconic Lagos yellow with pitch-black rubber stripes
-        leatherDark = vec3(0.78, 0.52, 0.02);  // Rich golden ochre between pebbles
-        leatherMid  = vec3(0.96, 0.74, 0.04);  // Vibrant Danfo bus yellow body
-        leatherPeak = vec3(1.00, 0.88, 0.20);  // High-sheen pebble crest
-        rubberSeamColor = vec3(0.04, 0.04, 0.04); // Deep pitch-black rubber seams
-    } else {
-        // Classic Wilson / Spalding composite orange palette
-        leatherDark = vec3(0.70, 0.27, 0.03);  // Deep burnt sienna between pebbles
-        leatherMid  = vec3(0.86, 0.38, 0.07);  // Warm composite orange body
-        leatherPeak = vec3(0.96, 0.47, 0.11);  // Slightly worn pebble highlight tops
-        rubberSeamColor = vec3(0.12, 0.12, 0.12); // Matte charcoal rubber seams
-    }
+    // Classic Wilson / Spalding composite orange palette
+    vec3 leatherDark = vec3(0.70, 0.27, 0.03);  // Deep burnt sienna between pebbles
+    vec3 leatherMid  = vec3(0.86, 0.38, 0.07);  // Warm composite orange body
+    vec3 leatherPeak = vec3(0.96, 0.47, 0.11);  // Slightly worn pebble highlight tops
+    vec3 rubberSeamColor = vec3(0.12, 0.12, 0.12); // Matte charcoal rubber seams
     
     vec3 leatherColor = mix(leatherDark, leatherMid, pebbleBump);
     leatherColor = mix(leatherColor, leatherPeak, pow(pebbleBump, 2.5));
