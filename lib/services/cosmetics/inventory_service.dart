@@ -15,6 +15,10 @@ class InventoryService {
 
   static const String _prefKeyEquippedSkin = 'bball_equipped_skin';
   static const String _prefKeyUnlockedItems = 'bball_unlocked_items';
+  static const String _prefKeyLastPurchaseId = 'bball_last_purchase_id';
+
+  /// Most recent confirmed purchaseId (used for server verification in sandbox).
+  String? lastPurchaseId;
 
   /// Currently equipped ball skin identifier.
   final ValueNotifier<String> equippedBallSkinNotifier =
@@ -40,6 +44,7 @@ class InventoryService {
   Future<void> init() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      lastPurchaseId = prefs.getString(_prefKeyLastPurchaseId);
 
       final savedUnlocked = prefs.getStringList(_prefKeyUnlockedItems);
       if (savedUnlocked != null && savedUnlocked.isNotEmpty) {
@@ -104,6 +109,11 @@ class InventoryService {
 
     final purchaseId = await VatarBridge.instance.purchase(productId);
     if (purchaseId != null) {
+      lastPurchaseId = purchaseId;
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_prefKeyLastPurchaseId, purchaseId);
+      } catch (_) {}
       debugPrint('[InventoryService] Purchase confirmed! purchaseId: $purchaseId');
       await unlockItem(item.id);
       await equipItem(item.id);
