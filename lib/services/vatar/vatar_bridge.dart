@@ -42,7 +42,4 @@ class VatarBridge {
 
   /// Fetches the top 50 rankings and player's standing from the city leaderboard.
   Future<VatarLeaderboardResult?> getLeaderboard() => _bridge.getLeaderboard();
-
-  /// Prompts the native Lagos Life payment sheet for real Naira purchases.
-  Future<String?> purchase(String productId) => _bridge.purchase(productId);
 }
