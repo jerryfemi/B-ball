@@ -44,8 +44,6 @@ class CourtFloorRenderer {
 
   void render(Canvas canvas, RoomGeometry geom) {
     final floorRect = geom.floorRect;
-    final width = geom.screenWidth;
-    final height = geom.screenHeight;
 
     canvas.save();
     canvas.clipRect(floorRect);
@@ -53,7 +51,8 @@ class CourtFloorRenderer {
     if (_cachedFloorImage != null) {
       _renderPhotorealisticFloor(canvas, geom, floorRect, _cachedFloorImage!);
     } else {
-      _renderProceduralFloor(canvas, geom, floorRect, width, height);
+      // Clean blonde maple base tone while texture decodes
+      canvas.drawRect(floorRect, Paint()..color = const Color(0xFFC98E50));
     }
 
     // 4. Terracotta/Crimson Painted Key Trapezoid
@@ -188,53 +187,6 @@ class CourtFloorRenderer {
         const [0.0, 0.45, 1.0],
       );
     canvas.drawRect(floorRect, warmBouncePaint);
-  }
-
-  /// Original procedural hardwood court base & floorboard lines (fully preserved).
-  void _renderProceduralFloor(
-    Canvas canvas,
-    RoomGeometry geom,
-    Rect floorRect,
-    double width,
-    double height,
-  ) {
-    // 1. Maple Hardwood Court Base
-    final maplePaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: const [
-          Color(0xFFB57A3D), // Deeper maple at baseline
-          Color(0xFFD89C5D), // Vibrant golden maple center
-          Color(0xFFC98E50), // Warm foreground maple
-        ],
-        stops: const [0.0, 0.45, 1.0],
-      ).createShader(floorRect);
-    canvas.drawRect(floorRect, maplePaint);
-
-    // 2. Longitudinal Floorboards Radiating from Vanishing Point
-    final plankPaint = Paint()
-      ..color = const Color(0x14000000)
-      ..strokeWidth = 0.8;
-
-    const plankSpacingAtBottom = 22.0;
-    for (double bx = -width * 0.3; bx <= width * 1.3; bx += plankSpacingAtBottom) {
-      final topPt = geom.vanishingPoint;
-      final botPt = Offset(bx, height);
-      canvas.drawLine(topPt, botPt, plankPaint);
-    }
-
-    // 3. Subtle Transverse Depth Steps (Softened perspective steps)
-    final transversePaint = Paint()
-      ..color = const Color(0x0A000000)
-      ..strokeWidth = 0.6;
-
-    for (double z = 0.8; z <= RoomGeometry.wallZ; z += 0.9) {
-      final y = geom.projectFloor(0.0, z).dy;
-      if (y >= geom.wallBaseY && y <= height) {
-        canvas.drawLine(Offset(0, y), Offset(width, y), transversePaint);
-      }
-    }
   }
 
   /// Polished lacquer floor sheen overlay.
