@@ -524,7 +524,7 @@ class BasketballGame extends Forge2DGame {
       if (is1v1Spectating &&
           session.phase == MatchTurnPhase.watchingOpponentReplay) {
         // Increment opponent's scoreboard bay only during deterministic recorded replay
-        if (session.activePlayerIndex == 1) {
+        if (session.opponentPlayer == session.player2) {
           player2MatchScoreNotifier.value += points;
         } else {
           player1MatchScoreNotifier.value += points;
@@ -1113,14 +1113,14 @@ class BasketballGame extends Forge2DGame {
       session.totalRounds - 1,
     );
     final opponentBaseline = opponent.scoreUpToRound(replayedRoundIndex);
-    if (session.activePlayerIndex == 1) {
-      // Opponent is Player 1 (YOU bay)
-      player1MatchScoreNotifier.value = opponentBaseline;
-      player2MatchScoreNotifier.value = session.player2.totalScore;
-    } else {
+    if (opponent == session.player2) {
       // Opponent is Player 2 (THEM bay)
       player1MatchScoreNotifier.value = session.player1.totalScore;
       player2MatchScoreNotifier.value = opponentBaseline;
+    } else {
+      // Opponent is Player 1 (YOU bay)
+      player1MatchScoreNotifier.value = opponentBaseline;
+      player2MatchScoreNotifier.value = session.player2.totalScore;
     }
 
     activeGhostTelemetry = opponentTelemetry;
