@@ -7,7 +7,6 @@ import 'game_over/game_over_stats_grid.dart';
 import 'game_over/play_again_button.dart';
 import 'game_over/see_replay_button.dart';
 import 'inbox/match_inbox_sheet.dart';
-import 'locker_room/locker_room_button.dart';
 
 /// Celebratory Game Over recap modal shown when the 60-second round clock expires.
 class GameOverOverlay extends HookWidget {
@@ -112,8 +111,6 @@ class GameOverOverlay extends HookWidget {
                           PlayAgainButton(
                             onPressed: () => game.exitToSoloMode(),
                           ),
-                          const SizedBox(height: 10.0),
-                          const LockerRoomButton(),
                           const SizedBox(height: 10.0),
                           SizedBox(
                             width: double.infinity,
