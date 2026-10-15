@@ -13,7 +13,6 @@ import '../basketball_game.dart';
 import '../physics/ball_physics_3d.dart';
 import '../physics/perspective_camera.dart';
 import '../physics/launch_solver.dart';
-import '../../services/cosmetics/inventory_service.dart';
 import 'wall_impact_puff.dart';
 
 /// Basketball component featuring true 3D projectile kinematics,
@@ -529,7 +528,6 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
       shader.setFloat(3, physics.yaw);
       shader.setFloat(4, physics.pitch);
       shader.setFloat(5, radius);
-      shader.setFloat(6, InventoryService.instance.activeSkinIdFloat);
 
       final paint = Paint()..shader = shader;
       final rect = Rect.fromCenter(
@@ -539,10 +537,7 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
       );
       canvas.drawRect(rect, paint);
     } else {
-      final skinFloat = InventoryService.instance.activeSkinIdFloat;
-      final fallbackColor = skinFloat > 0.5
-          ? const Color(0xFFFACC15)
-          : const Color(0xFFFF6F00);
+      const fallbackColor = Color(0xFFFF6F00);
       final paint = Paint()..color = fallbackColor;
       canvas.drawCircle(Offset.zero, radius, paint);
     }
