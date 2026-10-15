@@ -49,6 +49,9 @@ class FriendsService {
         'displayNameLower': profile.displayName.toLowerCase().trim(),
         'avatarEmoji': profile.avatarEmoji,
         'updatedAt': DateTime.now().millisecondsSinceEpoch,
+        'expireAt': Timestamp.fromDate(
+          DateTime.now().add(const Duration(days: 30)),
+        ),
       }, SetOptions(merge: true));
     } catch (e) {
       debugPrint(
@@ -367,6 +370,9 @@ class FriendsService {
         'updatedAt': DateTime.now().millisecondsSinceEpoch,
         'lastMsgSenderUid': fromUid,
         'lastMsgTimestamp': message.timestamp,
+        'expireAt': Timestamp.fromDate(
+          DateTime.now().add(const Duration(days: 7)),
+        ),
       }, SetOptions(merge: true));
     } catch (e) {
       debugPrint('[FriendsService] Send direct message error: $e');
