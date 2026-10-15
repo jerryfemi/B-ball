@@ -444,7 +444,7 @@ class LockerRoomSheet extends HookWidget {
         width: double.infinity,
         height: 48.0,
         child: ElevatedButton(
-          onTap: () {
+          onPressed: () {
             HapticFeedback.mediumImpact();
             InventoryService.instance.equipItem(item.id);
           },
