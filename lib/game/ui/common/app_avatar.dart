@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../../../models/player_descriptor.dart';
@@ -5,12 +6,12 @@ import 'app_colors.dart';
 
 /// Centralized, high-performance avatar widget for the entire application.
 ///
-/// Automatically determines whether [avatar] is an image asset path (e.g.
-/// `assets/avatars/dunk_heads (1).webp`) or a legacy emoji string, rendering
-/// an edge-to-edge clipped circular headshot with transparent background
+/// Automatically determines whether [avatar] is a local image asset,
+/// a base64 data URI (from Lagos Life), a remote URL, or a legacy emoji string,
+/// rendering an edge-to-edge clipped circular headshot with transparent background
 /// and optional illuminated status ring.
 class AppAvatar extends StatelessWidget {
-  /// The avatar identifier: either a valid asset path or an emoji character.
+  /// The avatar identifier: local asset path, base64 data URI, HTTP URL, or emoji.
   final String avatar;
 
   /// Diameter of the circular avatar badge in logical pixels.
@@ -76,6 +77,44 @@ class AppAvatar extends StatelessWidget {
   }
 
   Widget _buildContent() {
+    // 1. Base64 Data URL (e.g. Lagos Life character avatar)
+    if (avatar.startsWith('data:image')) {
+      final commaIndex = avatar.indexOf(',');
+      if (commaIndex != -1) {
+        try {
+          final base64String = avatar.substring(commaIndex + 1);
+          final bytes = base64Decode(base64String);
+          return ClipOval(
+            child: Image.memory(
+              bytes,
+              width: size,
+              height: size,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => Center(
+                child: Text('🏀', style: TextStyle(fontSize: size * 0.5)),
+              ),
+            ),
+          );
+        } catch (_) {}
+      }
+    }
+
+    // 2. Remote HTTP image URL
+    if (avatar.startsWith('http://') || avatar.startsWith('https://')) {
+      return ClipOval(
+        child: Image.network(
+          avatar,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => Center(
+            child: Text('🏀', style: TextStyle(fontSize: size * 0.5)),
+          ),
+        ),
+      );
+    }
+
+    // 3. Local bundled asset
     if (isImageAsset(avatar)) {
       return ClipOval(
         child: Image.asset(
@@ -89,6 +128,8 @@ class AppAvatar extends StatelessWidget {
         ),
       );
     }
+
+    // 4. Fallback emoji or text
     return Center(
       child: Text(
         avatar.isEmpty ? '🏀' : avatar,
