@@ -154,25 +154,4 @@ class VatarPlatformBridge {
       return null;
     }
   }
-
-  Future<String?> purchase(String productId) async {
-    if (!_isInsideVatar) return null;
-    final vatar = _vatar;
-    if (vatar == null) return null;
-
-    try {
-      final promise = vatar.callMethod<JSPromise<JSObject>>(
-        'purchase'.toJS,
-        productId.toJS,
-      );
-      final res = await promise.toDart;
-      if (res.isA<JSObject>()) {
-        final resObj = res;
-        return (resObj['purchaseId'] as JSString?)?.toDart;
-      }
-    } catch (e) {
-      debugPrint('[VatarBridge] purchase error: $e');
-    }
-    return null;
-  }
 }
