@@ -92,7 +92,8 @@ service cloud.firestore {
             'updatedAt',
             'lastChatSenderUid',
             'lastChatTimestamp',
-            'lastChatText'
+            'lastChatText',
+            'expireAt'
           ]);
       }
 
