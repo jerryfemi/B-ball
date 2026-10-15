@@ -475,6 +475,10 @@ class PauseOverlay extends HookWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
   Widget _buildMatchForfeitSection(BuildContext context, MatchSession session) {
     return Column(
       mainAxisSize: MainAxisSize.min,
