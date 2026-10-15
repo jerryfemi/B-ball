@@ -158,6 +158,7 @@ class BasketballGame extends Forge2DGame {
   // Reactive ValueNotifiers for zero-overhead Flutter UI binding
   final ValueNotifier<int> scoreNotifier = ValueNotifier<int>(0);
   final ValueNotifier<int> streakNotifier = ValueNotifier<int>(0);
+  final ValueNotifier<bool> streakFxEnabledNotifier = ValueNotifier<bool>(true);
   final ValueNotifier<int> timeRemainingNotifier = ValueNotifier<int>(
     roundDurationSeconds,
   );
@@ -230,6 +231,19 @@ class BasketballGame extends Forge2DGame {
     resumeEngine();
   }
 
+  /// Toggles player's streak visual effects (Flame at 6+, Lightning at 11+)
+  /// and persists their preference to local SharedPreferences.
+  Future<void> toggleStreakFx() async {
+    final nextVal = !streakFxEnabledNotifier.value;
+    streakFxEnabledNotifier.value = nextVal;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('streak_fx_enabled', nextVal);
+    } catch (e) {
+      debugPrint('[BasketballGame] Error persisting streak_fx_enabled: $e');
+    }
+  }
+
   @override
   void lifecycleStateChange(AppLifecycleState state) {
     super.lifecycleStateChange(state);
@@ -273,6 +287,7 @@ class BasketballGame extends Forge2DGame {
       vy: vy,
       vz: vz,
       backspin: backspin,
+      streak: streakNotifier.value,
     );
     _currentRoundShots.add(shot);
 
@@ -1357,6 +1372,9 @@ class BasketballGame extends Forge2DGame {
           isTourActiveNotifier.value = true;
         }
 
+        final streakFxPref = prefs.getBool('streak_fx_enabled') ?? true;
+        streakFxEnabledNotifier.value = streakFxPref;
+
         final user = AuthService.instance.currentUser;
         if (user != null) {
           final doc = await FirebaseFirestore.instance
@@ -1512,6 +1530,7 @@ class BasketballGame extends Forge2DGame {
     AudioEngine.dispose();
     scoreNotifier.dispose();
     streakNotifier.dispose();
+    streakFxEnabledNotifier.dispose();
     timeRemainingNotifier.dispose();
     bestScoreNotifier.dispose();
     isTourActiveNotifier.dispose();
