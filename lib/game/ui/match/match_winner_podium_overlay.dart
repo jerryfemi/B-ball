@@ -42,7 +42,6 @@ class MatchWinnerPodiumOverlay extends StatelessWidget {
     HapticFeedback.mediumImpact();
     final profile = AuthService.instance.currentUser;
     final myUid = profile?.uid ?? '';
-    final oldMatchId = session.cloudMatchId;
 
     final opponent = session.player2;
     final bool hasValidUid = opponent.id.isNotEmpty && opponent.id != 'them';
