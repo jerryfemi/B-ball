@@ -694,6 +694,30 @@ class FirestoreMatchService {
     }
   }
 
+  /// Gracefully forfeits / resigns an active match.
+  ///
+  /// Marks document as [MatchStatus.forfeited], designates [forfeitedBy], and names [winnerUid].
+  Future<void> forfeitMatch({
+    required String matchId,
+    required String forfeiterUid,
+    required String winnerUid,
+  }) async {
+    final clean = matchId.trim().toUpperCase();
+    try {
+      await _matchesRef.doc(clean).update({
+        'status': MatchStatus.forfeited.key,
+        'forfeitedBy': forfeiterUid,
+        'winnerUid': winnerUid,
+        'updatedAt': DateTime.now().millisecondsSinceEpoch,
+      });
+      debugPrint(
+        '[FirestoreMatchService] Match $clean forfeited by $forfeiterUid; winner: $winnerUid',
+      );
+    } catch (e) {
+      debugPrint('[FirestoreMatchService] Error forfeiting match $clean: $e');
+    }
+  }
+
   final Map<String, List<CloudMatch>> _cachedUserMatches = {};
 
   /// Retrieves the most recent memory-cached matches for instant zero-latency UI rendering.
