@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../firebase_options.dart';
 import '../models/player_descriptor.dart';
 import 'friends_service.dart';
+import 'vatar/vatar_bridge.dart';
 
 /// Exception thrown when an online feature is attempted without valid Firebase authentication.
 class AuthRequiredException implements Exception {
@@ -171,6 +172,21 @@ class AuthService {
     } else {
       savedAvatar = rawAvatar;
     }
+
+    // If running embedded inside Lagos Life, adopt character name and avatar
+    final vatar = VatarBridge.instance;
+    if (vatar.isInsideVatar && vatar.player != null) {
+      final vPlayer = vatar.player!;
+      if (vPlayer.name.isNotEmpty) {
+        savedName = vPlayer.name;
+        unawaited(prefs.setString(_prefKeyName, savedName));
+      }
+      if (vPlayer.avatar != null && vPlayer.avatar!.isNotEmpty) {
+        savedAvatar = vPlayer.avatar!;
+        unawaited(prefs.setString(_prefKeyAvatar, savedAvatar));
+      }
+    }
+
     String? localGuestUid = prefs.getString(_prefKeyUid);
 
     // 1. Ensure Firebase Core is ready
@@ -207,7 +223,9 @@ class AuthService {
           isAnon = user.isAnonymous;
           isVerified = true;
 
-          if (user.displayName != null &&
+          if (vatar.isInsideVatar && vatar.player != null) {
+            unawaited(user.updateDisplayName(savedName));
+          } else if (user.displayName != null &&
               user.displayName!.isNotEmpty &&
               user.displayName != 'Baller') {
             savedName = user.displayName!;
