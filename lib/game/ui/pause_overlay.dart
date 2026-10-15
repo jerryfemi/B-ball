@@ -1,9 +1,13 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 
+import '../../../services/auth_service.dart';
+import '../../../services/firestore_match_service.dart';
 import '../audio/audio_engine.dart';
 import '../basketball_game.dart';
+import '../match/match_session.dart';
 import '../physics/shot_difficulty.dart';
 
 /// Frosted obsidian glass Pause Overlay displayed when mid-round action is paused.
@@ -208,43 +212,7 @@ class PauseOverlay extends HookWidget {
                         builder: (context, session, _) {
                           final isMatch = session != null;
                           if (isMatch) {
-                            // In 1v1 match: Strict lock-in to prevent cheating/dodging.
-                            // Players cannot restart round or exit mid-turn.
-                            return Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14.0,
-                                vertical: 10.0,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0x180284C7),
-                                borderRadius: BorderRadius.circular(14.0),
-                                border: Border.all(
-                                  color: const Color(0x4438BDF8),
-                                  width: 1.0,
-                                ),
-                              ),
-                              child: const Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.lock_outline_rounded,
-                                    size: 15.0,
-                                    color: Color(0xFF38BDF8),
-                                  ),
-                                  SizedBox(width: 8.0),
-                                  Text(
-                                    '1V1 TURN IN PROGRESS • FINISH ROUND',
-                                    style: TextStyle(
-                                      color: Color(0xFF38BDF8),
-                                      fontSize: 11.5,
-                                      fontWeight: FontWeight.w800,
-                                      letterSpacing: 0.6,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
+                            return _buildMatchForfeitSection(context, session);
                           }
 
                           return Column(
@@ -507,8 +475,173 @@ class PauseOverlay extends HookWidget {
             ),
           ),
         ],
+  Widget _buildMatchForfeitSection(BuildContext context, MatchSession session) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 10.0),
+          decoration: BoxDecoration(
+            color: const Color(0x180284C7),
+            borderRadius: BorderRadius.circular(14.0),
+            border: Border.all(
+              color: const Color(0x4438BDF8),
+              width: 1.0,
+            ),
+          ),
+          child: const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.sports_basketball_rounded,
+                size: 15.0,
+                color: Color(0xFF38BDF8),
+              ),
+              SizedBox(width: 8.0),
+              Text(
+                '1V1 MATCH IN PROGRESS',
+                style: TextStyle(
+                  color: Color(0xFF38BDF8),
+                  fontSize: 12.0,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.8,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10.0),
+        SizedBox(
+          width: double.infinity,
+          height: 44.0,
+          child: OutlinedButton.icon(
+            onPressed: () => _showForfeitConfirmationDialog(context, session),
+            icon: const Icon(
+              Icons.flag_outlined,
+              size: 16.0,
+              color: Color(0xFFEF4444),
+            ),
+            label: const Text(
+              'FORFEIT MATCH',
+              style: TextStyle(
+                color: Color(0xFFEF4444),
+                fontSize: 12.5,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.8,
+              ),
+            ),
+            style: OutlinedButton.styleFrom(
+              side: BorderSide(
+                color: const Color(0xFFEF4444).withValues(alpha: 0.45),
+                width: 1.2,
+              ),
+              backgroundColor: const Color(0x15EF4444),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14.0),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _showForfeitConfirmationDialog(
+    BuildContext context,
+    MatchSession session,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: const Color(0xFF161822),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20.0),
+          side: BorderSide(
+            color: const Color(0xFFEF4444).withValues(alpha: 0.5),
+            width: 1.2,
+          ),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Color(0xFFEF4444), size: 24.0),
+            SizedBox(width: 10.0),
+            Text(
+              'Forfeit Match?',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 17.0,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
+        content: const Text(
+          'Leaving mid-game will forfeit this match and award the victory to your opponent. Are you sure you want to forfeit?',
+          style: TextStyle(
+            color: Color(0xFFCBD5E1),
+            fontSize: 13.5,
+            height: 1.4,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(false),
+            child: const Text(
+              'CANCEL',
+              style: TextStyle(
+                color: Color(0xFF94A3B8),
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFEF4444),
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12.0),
+              ),
+            ),
+            onPressed: () => Navigator.of(dialogCtx).pop(true),
+            child: const Text(
+              'CONFIRM FORFEIT',
+              style: TextStyle(fontWeight: FontWeight.w900),
+            ),
+          ),
+        ],
       ),
     );
+
+    if (confirmed == true && context.mounted) {
+      HapticFeedback.heavyImpact();
+      final myUid = AuthService.instance.currentUser?.uid ?? '';
+      final cloudMatchId = session.cloudMatchId;
+      final opponent = session.player2;
+
+      if (cloudMatchId != null && myUid.isNotEmpty) {
+        unawaited(
+          FirestoreMatchService.instance.forfeitMatch(
+            matchId: cloudMatchId,
+            forfeiterUid: myUid,
+            winnerUid:
+                opponent.id.isNotEmpty && opponent.id != 'them' ? opponent.id : '',
+          ),
+        );
+      }
+
+      game.exitToSoloMode();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You forfeited the match.'),
+          backgroundColor: Color(0xFFEF4444),
+          duration: Duration(seconds: 3),
+        ),
+      );
+    }
   }
 }
 
