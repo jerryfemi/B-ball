@@ -1,11 +1,15 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'room_geometry.dart';
 
 /// Renders the authentic GamePigeon hardwood court floor:
-/// - Longitudinal maple floorboards radiating from the vanishing point
-/// - Foreshortened transverse plank seams based on true 3D camera depth
+/// - Supports both photorealistic blonde maple wood texture ([assets/images/court_floor_blonde.jpg])
+///   mapped with 1-point perspective geometry, and procedural hardwood fallback
+/// - Atmospheric warm baseline bounce lighting bridging to the brick wall
 /// - Terracotta/Crimson painted key trapezoid in unified 3D perspective
 /// - Regulation restricted area arc centered directly under the hoop
 /// - Regulation free-throw circle (solid front arc, dashed rear arc)
@@ -13,6 +17,31 @@ import 'room_geometry.dart';
 /// - Signature vertical pole floor reflection streak
 /// - Polished lacquer high-gloss floor varnish sheen
 class CourtFloorRenderer {
+  static ui.Image? _cachedFloorImage;
+  static Future<ui.Image?>? _imageFuture;
+
+  /// Loads and caches the photorealistic blonde maple gym court texture from assets.
+  static Future<ui.Image?> loadFloorImage() {
+    if (_cachedFloorImage != null) return Future.value(_cachedFloorImage);
+    return _imageFuture ??= () async {
+      try {
+        final byteData =
+            await rootBundle.load('assets/images/court_floor_blonde.jpg');
+        final codec = await ui.instantiateImageCodec(
+          byteData.buffer.asUint8List(),
+        );
+        final frame = await codec.getNextFrame();
+        _cachedFloorImage = frame.image;
+        return _cachedFloorImage;
+      } catch (e) {
+        debugPrint(
+          '[CourtFloorRenderer] Failed to load court_floor_blonde.jpg: $e',
+        );
+        return null;
+      }
+    }();
+  }
+
   void render(Canvas canvas, RoomGeometry geom) {
     final floorRect = geom.floorRect;
     final width = geom.screenWidth;
@@ -21,6 +50,154 @@ class CourtFloorRenderer {
     canvas.save();
     canvas.clipRect(floorRect);
 
+    if (_cachedFloorImage != null) {
+      _renderPhotorealisticFloor(canvas, geom, floorRect, _cachedFloorImage!);
+    } else {
+      _renderProceduralFloor(canvas, geom, floorRect, width, height);
+    }
+
+    // 4. Terracotta/Crimson Painted Key Trapezoid
+    _renderKeyTrapezoid(canvas, geom);
+
+    // 5. Regulation Court Markings (Restricted Area, Free-Throw, 3-Point)
+    _renderCourtMarkings(canvas, geom);
+
+    // 6. Signature Vertical Pole Floor Reflection Streak
+    _renderPoleFloorReflection(canvas, geom);
+
+    // 7. Polished Lacquer Floor Sheen Overlay
+    _renderFloorSheen(canvas, floorRect);
+
+    canvas.restore();
+  }
+
+  /// Photorealistic blonde maple hardwood floor rendered with 1-point perspective
+  /// vertex projection, foreshortened planks, and warm baseline bounce lighting.
+  void _renderPhotorealisticFloor(
+    Canvas canvas,
+    RoomGeometry geom,
+    Rect floorRect,
+    ui.Image image,
+  ) {
+    const int cols = 16;
+    const int rows = 16;
+    const double wallZ = RoomGeometry.wallZ; // 5.25m baseline
+
+    // Physical dimension scaling:
+    // A 1024px court floor tile represents ~1.4m of court width and ~1.4m of depth
+    const double metersPerTileWidth = 1.40;
+    const double metersPerTileDepth = 1.40;
+
+    final positions = <Offset>[];
+    final textureCoords = <Offset>[];
+    final indices = <int>[];
+
+    final screenWidth = geom.screenWidth;
+    final halfScreenWidth = screenWidth / 2.0;
+    final ppm = geom.camera.pixelsPerMeter;
+
+    // Calculate nearZ at the bottom of the screen (floorRect.bottom)
+    final denomBottom = (floorRect.bottom - geom.horizonY) /
+        (geom.camera.eyeHeightInMeters * ppm);
+    final nearZ = denomBottom > 0
+        ? math.max(0.0, (geom.camera.focalDistance / denomBottom) - geom.camera.focalDistance)
+        : 0.0;
+
+    for (int r = 0; r <= rows; r++) {
+      final tRow = r / rows;
+      // Row 0 is at foreground (nearZ), Row 'rows' is at baseline (wallZ)
+      final z = nearZ + (wallZ - nearZ) * tRow;
+
+      // Exact pixel boundary locking: row 0 = floorRect.bottom, row 'rows' = floorRect.top
+      final double y;
+      if (r == 0) {
+        y = floorRect.bottom;
+      } else if (r == rows) {
+        y = floorRect.top;
+      } else {
+        y = geom.projectFloor(0.0, z).dy;
+      }
+
+      final s = geom.camera.scaleAtDepth(z);
+      final scaleFactor = ppm * s;
+
+      for (int c = 0; c <= cols; c++) {
+        final screenX = (c / cols) * screenWidth;
+        positions.add(Offset(screenX, y));
+
+        // Invert perspective projection to compute physical 3D world meters (x, z)
+        final worldX =
+            scaleFactor > 0 ? (screenX - halfScreenWidth) / scaleFactor : 0.0;
+
+        // Map world meters to image texture coordinates
+        final u = (worldX / metersPerTileWidth) * image.width;
+        final v = (z / metersPerTileDepth) * image.height;
+        textureCoords.add(Offset(u, v));
+      }
+    }
+
+    for (int r = 0; r < rows; r++) {
+      for (int c = 0; c < cols; c++) {
+        final i0 = r * (cols + 1) + c;
+        final i1 = i0 + 1;
+        final i2 = (r + 1) * (cols + 1) + c;
+        final i3 = i2 + 1;
+
+        indices.addAll([i0, i1, i2, i1, i3, i2]);
+      }
+    }
+
+    final matrix = Float64List.fromList([
+      1, 0, 0, 0,
+      0, 1, 0, 0,
+      0, 0, 1, 0,
+      0, 0, 0, 1,
+    ]);
+
+    final shader = ui.ImageShader(
+      image,
+      ui.TileMode.repeated,
+      ui.TileMode.repeated,
+      matrix,
+    );
+
+    final floorMeshPaint = Paint()
+      ..shader = shader
+      ..filterQuality = FilterQuality.medium;
+
+    final vertices = ui.Vertices(
+      ui.VertexMode.triangles,
+      positions,
+      textureCoordinates: textureCoords,
+      indices: indices,
+    );
+
+    canvas.drawVertices(vertices, BlendMode.srcOver, floorMeshPaint);
+
+    // Warm Atmospheric Lighting Bridge:
+    // Golden-amber ambient bounce light where the floor meets the red clay brick wall
+    final warmBouncePaint = Paint()
+      ..shader = ui.Gradient.linear(
+        Offset(0, floorRect.top),
+        Offset(0, floorRect.top + floorRect.height * 0.45),
+        const [
+          Color(0x2EB87333), // Warm copper/amber baseline bounce
+          Color(0x0EBD5A2A),
+          Color(0x00000000), // Clean blonde in foreground
+        ],
+        const [0.0, 0.45, 1.0],
+      );
+    canvas.drawRect(floorRect, warmBouncePaint);
+  }
+
+  /// Original procedural hardwood court base & floorboard lines (fully preserved).
+  void _renderProceduralFloor(
+    Canvas canvas,
+    RoomGeometry geom,
+    Rect floorRect,
+    double width,
+    double height,
+  ) {
     // 1. Maple Hardwood Court Base
     final maplePaint = Paint()
       ..shader = LinearGradient(
@@ -58,17 +235,10 @@ class CourtFloorRenderer {
         canvas.drawLine(Offset(0, y), Offset(width, y), transversePaint);
       }
     }
+  }
 
-    // 4. Terracotta/Crimson Painted Key Trapezoid
-    _renderKeyTrapezoid(canvas, geom);
-
-    // 5. Regulation Court Markings (Restricted Area, Free-Throw, 3-Point)
-    _renderCourtMarkings(canvas, geom);
-
-    // 6. Signature Vertical Pole Floor Reflection Streak
-    _renderPoleFloorReflection(canvas, geom);
-
-    // 7. Polished Lacquer Floor Sheen Overlay
+  /// Polished lacquer floor sheen overlay.
+  void _renderFloorSheen(Canvas canvas, Rect floorRect) {
     final floorGlossPaint = Paint()
       ..shader = LinearGradient(
         begin: Alignment.topCenter,
@@ -81,8 +251,6 @@ class CourtFloorRenderer {
         stops: const [0.0, 0.35, 1.0],
       ).createShader(floorRect);
     canvas.drawRect(floorRect, floorGlossPaint);
-
-    canvas.restore();
   }
 
   void _renderKeyTrapezoid(Canvas canvas, RoomGeometry geom) {
