@@ -13,6 +13,8 @@ import '../services/auth_service.dart';
 import '../services/firestore_match_service.dart';
 import 'audio/audio_engine.dart';
 import 'components/background.dart';
+import 'components/background/distant_wall_renderer.dart';
+import 'components/background/court_floor_renderer.dart';
 import 'components/backboard_visual.dart';
 import 'components/rear_rim_visual.dart';
 import 'components/front_rim_visual.dart';
@@ -1289,7 +1291,12 @@ class BasketballGame extends Forge2DGame {
   @override
   Future<void> onLoad() async {
     await super.onLoad();
-    await Future.wait([AudioEngine.init(), Basketball.loadProgram()]);
+    await Future.wait([
+      AudioEngine.init(),
+      Basketball.loadProgram(),
+      DistantWallRenderer.loadBrickImage(),
+      CourtFloorRenderer.loadFloorImage(),
+    ]);
 
     // Asynchronously restore high score and check onboarding tour status
     unawaited(() async {
