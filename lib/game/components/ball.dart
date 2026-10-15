@@ -552,7 +552,8 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
         game.isPaused) {
       return false;
     }
-    if (isLaunched || isEntering) return false;
+    // Allow immediate touch even while entering so rapid swipes are never ignored
+    if (isLaunched) return false;
     // Lower ~45% of the screen (Y >= 11.0m in Forge2D world)
     // or within generous radius of the ready ball
     return point.y >= 11.0 || (point - body.position).length <= radius * 2.5;
@@ -561,7 +562,19 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
   @override
   void onDragStart(DragStartEvent event) {
     super.onDragStart(event);
-    if (!isLaunched && !isEntering) {
+    if (!isLaunched) {
+      // If player swipes while ball is still gliding up, immediately snap to ready position
+      if (isEntering) {
+        isEntering = false;
+        enterProgress = 1.0;
+        physics.pos.y = 0.25;
+        final f2d = camera3D.projectToForge2D(
+          physics.pos.x,
+          physics.pos.y,
+          physics.pos.z,
+        );
+        body.setTransform(Vector2(f2d.dx, f2d.dy), const forge2d.Rot.identity());
+      }
       _touchSamples.clear();
       _touchSamples.add(
         _TouchSample(
@@ -575,39 +588,53 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
   @override
   void onDragUpdate(DragUpdateEvent event) {
     super.onDragUpdate(event);
-    if (!isLaunched && !isEntering) {
+    if (!isLaunched) {
+      if (isEntering) {
+        isEntering = false;
+        enterProgress = 1.0;
+      }
       final now = _touchClock.elapsedMilliseconds;
       _touchSamples.add(_TouchSample(event.canvasEndPosition, now));
 
-      // Keep sample buffer compact (retain last ~150ms)
+      // Retain sample buffer up to 350ms to preserve full intentional stroke trajectory
       while (_touchSamples.length > 2 &&
-          now - _touchSamples.first.timestampMs > 150) {
+          now - _touchSamples.first.timestampMs > 350) {
         _touchSamples.removeAt(0);
       }
     }
   }
 
   @override
+  void onDragCancel(DragCancelEvent event) {
+    super.onDragCancel(event);
+    _touchSamples.clear();
+  }
+
+  @override
   void onDragEnd(DragEndEvent event) {
     super.onDragEnd(event);
 
-    if (isLaunched || isEntering || _touchSamples.isEmpty) return;
+    if (isLaunched || _touchSamples.isEmpty) return;
+    if (isEntering) {
+      isEntering = false;
+      enterProgress = 1.0;
+    }
 
     final now = _touchClock.elapsedMilliseconds;
     final lastSample = _touchSamples.last;
+    final firstSample = _touchSamples.first;
 
     // 1. Resting finger cancel:
-    // Web browsers & iOS Safari PWA inject slight gesture recognition delays (100-140ms),
-    // so we provide a more generous 160ms window on web/PWA to ensure flick shots register seamlessly,
-    // while maintaining a crisp 100ms cancel window on native mobile.
-    final restingThresholdMs = kIsWeb ? 160 : 100;
+    // Web browsers & iOS Safari PWA inject slight gesture recognition delays (100-140ms).
+    // Provide a generous window (240ms on web, 180ms on native) so valid rapid flicks are never dropped,
+    // while still cancelling an intentionally held stationary finger.
+    final restingThresholdMs = kIsWeb ? 240 : 180;
     if (now - lastSample.timestampMs > restingThresholdMs) {
       _touchSamples.clear();
       return;
     }
 
-    // 2. Trailing ~90ms release window:
-    // Filter samples to strictly the final 90ms of finger motion
+    // 2. Trailing ~90ms release window for launch speed & momentum:
     final windowStartMs = lastSample.timestampMs - 90;
     final windowSamples = _touchSamples
         .where((s) => s.timestampMs >= windowStartMs)
@@ -616,8 +643,6 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     double vx = event.velocity.x;
     double vy = event.velocity.y;
 
-    // Primary estimator: trailing 90ms window displacement.
-    // Falls back to event.velocity only if fewer than 2 samples exist.
     if (windowSamples.length >= 2) {
       final firstInWindow = windowSamples.first;
       final dtSec =
@@ -628,11 +653,26 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
       }
     }
 
+    // Full gesture displacement vector (start of touch to liftoff)
+    final totalDx = lastSample.position.x - firstSample.position.x;
+    final totalDy = lastSample.position.y - firstSample.position.y;
+    final totalDtSec =
+        (lastSample.timestampMs - firstSample.timestampMs) / 1000.0;
+
+    // If release window decelerated near liftoff but the stroke was a rapid upward flick,
+    // use the overall stroke upward velocity as a floor to prevent dropped shots.
+    if (totalDtSec > 0.02 && totalDy < -40.0) {
+      final strokeVy = totalDy / totalDtSec;
+      if (strokeVy < vy) {
+        vy = strokeVy;
+      }
+    }
+
     _touchSamples.clear();
 
     // 3. Minimum upward flick threshold:
     // Only launch when swiped upwards toward the hoop
-    if (vy >= -120.0) return;
+    if (vy >= -90.0 && totalDy >= -35.0) return;
 
     // Platform-aware velocity normalization:
     // On touch devices (iOS / Android), human finger flicks generate velocities
@@ -645,10 +685,29 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
 
     // Upward swipe velocity in pixels/second (normalized for touch vs pointer)
     final swipeSpeedY = vy.abs() * touchScale;
-    // Lateral swipe ratio (aim angle dx / |dy| remains invariant since both axes scale identically)
-    final swipeRatioX = (vx / vy.abs()).clamp(-0.80, 0.80);
 
-    // 4. GamePigeon Power Plateau calculation via LaunchSolver with room difficulty
+    // 4. Robust Aim Direction Synthesis (Kills Sideways Thumb-Roll Glitch):
+    // Calculate aim from release window AND full gesture displacement.
+    final trailingAimRatio = (vx / vy.abs()).clamp(-0.80, 0.80);
+    double swipeRatioX;
+
+    if (totalDy.abs() >= 35.0) {
+      final overallAimRatio = (totalDx / totalDy.abs()).clamp(-0.80, 0.80);
+
+      // Blend overall intentional gesture path (70%) with release momentum (30%)
+      swipeRatioX = (overallAimRatio * 0.70) + (trailingAimRatio * 0.30);
+
+      // Liftoff noise rejection:
+      // If the player swiped straight (|overallAimRatio| <= 0.08), clamp any rogue thumb-roll hook
+      if (overallAimRatio.abs() <= 0.08) {
+        swipeRatioX = swipeRatioX.clamp(-0.09, 0.09);
+      }
+    } else {
+      swipeRatioX = trailingAimRatio;
+    }
+    swipeRatioX = swipeRatioX.clamp(-0.80, 0.80);
+
+    // 5. GamePigeon Power Plateau calculation via LaunchSolver with room difficulty
     final difficulty = game.currentDifficulty;
     final powerRatio = LaunchSolver.flickToPower(
       swipeSpeedY,
