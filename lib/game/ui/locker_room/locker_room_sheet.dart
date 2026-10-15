@@ -99,7 +99,15 @@ class LockerRoomSheet extends HookWidget {
             isEquipped: isSelectedEquipped,
             isPurchasing: isPurchasing,
           ),
-          const SizedBox(height: 10.0),
+          if (InventoryService.instance.isShopVisible) ...[
+            const SizedBox(height: 8.0),
+            _buildSandboxToolsRow(
+              context: context,
+              item: selectedItem.value,
+              isPurchasing: isPurchasing,
+            ),
+          ],
+          const SizedBox(height: 8.0),
         ],
       ),
     );
@@ -524,27 +532,10 @@ class LockerRoomSheet extends HookWidget {
                           await InventoryService.instance.purchaseItem(item);
                       if (purchaseId != null && context.mounted) {
                         HapticFeedback.heavyImpact();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            backgroundColor: AppColors.surfaceDialog,
-                            content: Row(
-                              children: [
-                                const Icon(
-                                  Icons.check_circle_rounded,
-                                  color: AppColors.accentEmerald,
-                                  size: 18.0,
-                                ),
-                                const SizedBox(width: 10.0),
-                                Text(
-                                  '${item.name} unlocked & equipped!',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
+                        await _showPurchaseDetailsDialog(
+                          context: context,
+                          purchaseId: purchaseId,
+                          item: item,
                         );
                       }
                     } finally {
@@ -585,6 +576,257 @@ class LockerRoomSheet extends HookWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// Compact sandbox developer bar allowing quick re-testing and one-tap copying of purchase IDs.
+  Widget _buildSandboxToolsRow({
+    required BuildContext context,
+    required CosmeticItem item,
+    required ValueNotifier<bool> isPurchasing,
+  }) {
+    final lastId = InventoryService.instance.lastPurchaseId;
+    final testItem =
+        item.vatarProductId != null ? item : CosmeticCatalog.danfoBall;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
+      decoration: BoxDecoration(
+        color: const Color(0xFF11141E),
+        borderRadius: BorderRadius.circular(12.0),
+        border: Border.all(
+          color: AppColors.borderSubtle.withValues(alpha: 0.6),
+          width: 1.0,
+        ),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.bug_report_rounded,
+            size: 14.0,
+            color: AppColors.accentAmber,
+          ),
+          const SizedBox(width: 6.0),
+          Expanded(
+            child: Text(
+              lastId != null
+                  ? 'ID: ${lastId.substring(0, (lastId.length > 14 ? 14 : lastId.length))}...'
+                  : 'Sandbox Ready',
+              style: const TextStyle(
+                color: AppColors.textMuted,
+                fontSize: 11.0,
+                fontFamily: 'monospace',
+                fontWeight: FontWeight.w600,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (lastId != null) ...[
+            TextButton(
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: lastId));
+                HapticFeedback.lightImpact();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    backgroundColor: AppColors.surfaceDialog,
+                    content: Text(
+                      'Purchase ID copied to clipboard!',
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                    ),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              },
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 6.0),
+              ),
+              child: const Text(
+                'COPY ID',
+                style: TextStyle(
+                  color: AppColors.accentNeonCyan,
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ),
+          ],
+          TextButton(
+            onPressed: isPurchasing.value
+                ? null
+                : () async {
+                    HapticFeedback.mediumImpact();
+                    isPurchasing.value = true;
+                    try {
+                      final purchaseId =
+                          await InventoryService.instance.purchaseItem(testItem);
+                      if (purchaseId != null && context.mounted) {
+                        await _showPurchaseDetailsDialog(
+                          context: context,
+                          purchaseId: purchaseId,
+                          item: testItem,
+                        );
+                      }
+                    } finally {
+                      isPurchasing.value = false;
+                    }
+                  },
+            style: TextButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 6.0),
+            ),
+            child: const Text(
+              'RE-TEST',
+              style: TextStyle(
+                color: AppColors.accentEmerald,
+                fontSize: 10.5,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Dialog displaying the confirmed purchase ID with one-tap copy for server verification.
+  static Future<void> _showPurchaseDetailsDialog({
+    required BuildContext context,
+    required String purchaseId,
+    required CosmeticItem item,
+  }) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: const Color(0xFF161822),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20.0),
+          side: BorderSide(
+            color: AppColors.accentEmerald.withValues(alpha: 0.4),
+            width: 1.2,
+          ),
+        ),
+        title: const Row(
+          children: [
+            Icon(
+              Icons.verified_rounded,
+              color: AppColors.accentEmerald,
+              size: 24.0,
+            ),
+            SizedBox(width: 10.0),
+            Text(
+              'Purchase Successful!',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16.0,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${item.name} unlocked & equipped.',
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 13.0,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 14.0),
+            const Text(
+              'SANDBOX PURCHASE ID:',
+              style: TextStyle(
+                color: AppColors.textMuted,
+                fontSize: 10.0,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.8,
+              ),
+            ),
+            const SizedBox(height: 6.0),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10.0),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0D0F17),
+                borderRadius: BorderRadius.circular(10.0),
+                border: Border.all(
+                  color: AppColors.borderSubtle,
+                  width: 1.0,
+                ),
+              ),
+              child: SelectableText(
+                purchaseId,
+                style: const TextStyle(
+                  color: AppColors.accentNeonCyan,
+                  fontFamily: 'monospace',
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8.0),
+            const Text(
+              'Tap COPY ID below to run verification and deliver curl commands.',
+              style: TextStyle(
+                color: AppColors.textSubtle,
+                fontSize: 11.0,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton.icon(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: purchaseId));
+              HapticFeedback.lightImpact();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  backgroundColor: AppColors.surfaceDialog,
+                  content: Text(
+                    'Purchase ID copied to clipboard!',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                  ),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            },
+            icon: const Icon(Icons.copy_rounded, size: 15.0, color: AppColors.accentNeonCyan),
+            label: const Text(
+              'COPY ID',
+              style: TextStyle(
+                color: AppColors.accentNeonCyan,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.8,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.accentEmerald,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12.0),
+              ),
+            ),
+            onPressed: () => Navigator.of(dialogCtx).pop(),
+            child: const Text(
+              'DONE',
+              style: TextStyle(fontWeight: FontWeight.w900),
+            ),
+          ),
+        ],
       ),
     );
   }
