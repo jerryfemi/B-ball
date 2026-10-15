@@ -15,6 +15,15 @@
     ],
     "headers": [
       {
+        "source": "**",
+        "headers": [
+          {
+            "key": "Content-Security-Policy",
+            "value": "frame-ancestors 'self' https://lagoslife.app https://www.lagoslife.app https://naijalife.app https://www.naijalife.app https://lagoslife.eliysites.com"
+          }
+        ]
+      },
+      {
         "source": "**/*.@(css|wasm|png|jpg|jpeg|webp|svg|woff|woff2|ttf|mp3|ogg|wav)",
         "headers": [
           {
