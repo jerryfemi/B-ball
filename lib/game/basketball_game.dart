@@ -645,6 +645,9 @@ class BasketballGame extends Forge2DGame {
               .set({
                 'highScore': newBest,
                 'updatedAt': DateTime.now().millisecondsSinceEpoch,
+                'expireAt': Timestamp.fromDate(
+                  DateTime.now().add(const Duration(days: 30)),
+                ),
               }, SetOptions(merge: true));
         }
       } catch (e) {
