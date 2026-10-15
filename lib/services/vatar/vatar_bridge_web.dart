@@ -1,12 +1,10 @@
-// ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
-import 'dart:html' as html;
-import 'dart:js_util' as js_util;
-import 'dart:ui';
+import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 import 'package:flutter/foundation.dart';
 
 import 'vatar_models.dart';
 
-/// Web implementation of the Lagos Life / Vatar Games SDK bridge.
+/// Web implementation of the Lagos Life / Vatar Games SDK bridge using modern dart:js_interop.
 class VatarPlatformBridge {
   static final VatarPlatformBridge instance = VatarPlatformBridge._internal();
   VatarPlatformBridge._internal();
@@ -19,10 +17,13 @@ class VatarPlatformBridge {
   VatarSession? get session => _session;
   VatarPlayer? get player => _session?.player;
 
-  dynamic get _vatar {
+  JSObject? get _vatar {
     try {
-      if (js_util.hasProperty(html.window, 'Vatar')) {
-        return js_util.getProperty(html.window, 'Vatar');
+      if (globalContext.hasProperty('Vatar'.toJS).toDart) {
+        final val = globalContext['Vatar'];
+        if (val != null && val.isA<JSObject>()) {
+          return val as JSObject;
+        }
       }
     } catch (_) {}
     return null;
@@ -39,18 +40,20 @@ class VatarPlatformBridge {
     }
 
     try {
-      final initPromise = js_util.callMethod(vatar, 'init', []);
-      final res = await js_util.promiseToFuture(initPromise);
-      if (res != null) {
-        final mode = js_util.getProperty(res, 'mode') as String? ?? 'live';
-        final sessionToken = js_util.getProperty(res, 'session') as String?;
-        final playerObj = js_util.getProperty(res, 'player');
+      final initPromise = vatar.callMethod<JSPromise<JSObject>>('init'.toJS);
+      final res = await initPromise.toDart;
+      if (res.isA<JSObject>()) {
+        final resObj = res;
+        final mode = (resObj['mode'] as JSString?)?.toDart ?? 'live';
+        final sessionToken = (resObj['session'] as JSString?)?.toDart;
+        final playerVal = resObj['player'];
 
         VatarPlayer? player;
-        if (playerObj != null) {
-          final id = js_util.getProperty(playerObj, 'id') as String? ?? '';
-          final name = js_util.getProperty(playerObj, 'name') as String? ?? 'Player';
-          final avatar = js_util.getProperty(playerObj, 'avatar') as String?;
+        if (playerVal != null && playerVal.isA<JSObject>()) {
+          final playerObj = playerVal as JSObject;
+          final id = (playerObj['id'] as JSString?)?.toDart ?? '';
+          final name = (playerObj['name'] as JSString?)?.toDart ?? 'Player';
+          final avatar = (playerObj['avatar'] as JSString?)?.toDart;
           player = VatarPlayer(id: id, name: name, avatar: avatar);
         }
 
@@ -60,7 +63,7 @@ class VatarPlatformBridge {
         return _session;
       }
     } catch (e) {
-      debugPrint('[VatarBridge] Standalone mode (init failed or not in iframe): $e');
+      debugPrint('[VatarBridge] Standalone mode (init rejected or outside iframe): $e');
       _isInsideVatar = false;
     }
     return null;
@@ -70,7 +73,8 @@ class VatarPlatformBridge {
     final vatar = _vatar;
     if (vatar == null) return;
     try {
-      js_util.callMethod(vatar, 'onPause', [js_util.allowInterop(callback)]);
+      final jsCb = callback.toJS;
+      vatar.callMethod<JSAny?>('onPause'.toJS, jsCb);
     } catch (e) {
       debugPrint('[VatarBridge] Failed to register onPause: $e');
     }
@@ -80,7 +84,8 @@ class VatarPlatformBridge {
     final vatar = _vatar;
     if (vatar == null) return;
     try {
-      js_util.callMethod(vatar, 'onResume', [js_util.allowInterop(callback)]);
+      final jsCb = callback.toJS;
+      vatar.callMethod<JSAny?>('onResume'.toJS, jsCb);
     } catch (e) {
       debugPrint('[VatarBridge] Failed to register onResume: $e');
     }
@@ -92,8 +97,11 @@ class VatarPlatformBridge {
     if (vatar == null) return false;
 
     try {
-      final promise = js_util.callMethod(vatar, 'submitScore', [score]);
-      await js_util.promiseToFuture(promise);
+      final promise = vatar.callMethod<JSPromise<JSAny?>>(
+        'submitScore'.toJS,
+        score.toJS,
+      );
+      await promise.toDart;
       debugPrint('[VatarBridge] Score $score posted to Lagos Life leaderboard.');
       return true;
     } catch (e) {
@@ -108,40 +116,35 @@ class VatarPlatformBridge {
     if (vatar == null) return null;
 
     try {
-      final promise = js_util.callMethod(vatar, 'leaderboard', []);
-      final res = await js_util.promiseToFuture(promise);
-      if (res == null) return null;
+      final promise = vatar.callMethod<JSPromise<JSObject>>('leaderboard'.toJS);
+      final res = await promise.toDart;
+      if (!res.isA<JSObject>()) return null;
 
+      final resObj = res;
       final entries = <VatarLeaderboardEntry>[];
-      final jsEntries = js_util.getProperty(res, 'entries');
-      if (jsEntries != null) {
-        final length = js_util.getProperty(jsEntries, 'length') as int? ?? 0;
+      final jsEntriesVal = resObj['entries'];
+      if (jsEntriesVal != null && jsEntriesVal.isA<JSArray>()) {
+        final jsArray = jsEntriesVal as JSArray;
+        final length = jsArray.length;
         for (var i = 0; i < length; i++) {
-          final entryObj = js_util.callMethod(jsEntries, 'at', [i]) ??
-              js_util.getProperty(jsEntries, i.toString());
-          if (entryObj != null) {
-            final rank =
-                (js_util.getProperty(entryObj, 'rank') as num?)?.toInt() ?? (i + 1);
-            final label =
-                js_util.getProperty(entryObj, 'label') as String? ?? 'Player';
-            final score =
-                (js_util.getProperty(entryObj, 'score') as num?)?.toInt() ?? 0;
-            entries.add(
-              VatarLeaderboardEntry(rank: rank, label: label, score: score),
-            );
+          final item = jsArray[i];
+          if (item != null && item.isA<JSObject>()) {
+            final entryObj = item as JSObject;
+            final rank = (entryObj['rank'] as JSNumber?)?.toDartInt ?? (i + 1);
+            final label = (entryObj['label'] as JSString?)?.toDart ?? 'Player';
+            final score = (entryObj['score'] as JSNumber?)?.toDartInt ?? 0;
+            entries.add(VatarLeaderboardEntry(rank: rank, label: label, score: score));
           }
         }
       }
 
       VatarLeaderboardEntry? me;
-      final meObj = js_util.getProperty(res, 'me');
-      if (meObj != null) {
-        final rank =
-            (js_util.getProperty(meObj, 'rank') as num?)?.toInt() ?? 0;
-        final label =
-            js_util.getProperty(meObj, 'label') as String? ?? 'You';
-        final score =
-            (js_util.getProperty(meObj, 'score') as num?)?.toInt() ?? 0;
+      final meVal = resObj['me'];
+      if (meVal != null && meVal.isA<JSObject>()) {
+        final meObj = meVal as JSObject;
+        final rank = (meObj['rank'] as JSNumber?)?.toDartInt ?? 0;
+        final label = (meObj['label'] as JSString?)?.toDart ?? 'You';
+        final score = (meObj['score'] as JSNumber?)?.toDartInt ?? 0;
         me = VatarLeaderboardEntry(rank: rank, label: label, score: score);
       }
 
@@ -158,10 +161,14 @@ class VatarPlatformBridge {
     if (vatar == null) return null;
 
     try {
-      final promise = js_util.callMethod(vatar, 'purchase', [productId]);
-      final res = await js_util.promiseToFuture(promise);
-      if (res != null) {
-        return js_util.getProperty(res, 'purchaseId') as String?;
+      final promise = vatar.callMethod<JSPromise<JSObject>>(
+        'purchase'.toJS,
+        productId.toJS,
+      );
+      final res = await promise.toDart;
+      if (res.isA<JSObject>()) {
+        final resObj = res;
+        return (resObj['purchaseId'] as JSString?)?.toDart;
       }
     } catch (e) {
       debugPrint('[VatarBridge] purchase error: $e');
