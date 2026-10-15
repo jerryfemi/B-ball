@@ -5,7 +5,6 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import '../audio/audio_engine.dart';
 import '../basketball_game.dart';
 import '../physics/shot_difficulty.dart';
-import 'locker_room/locker_room_button.dart';
 
 /// Frosted obsidian glass Pause Overlay displayed when mid-round action is paused.
 class PauseOverlay extends HookWidget {
@@ -380,10 +379,6 @@ class PauseOverlay extends HookWidget {
                           );
                         },
                       ),
-                      const SizedBox(height: 14.0),
-
-                      // 4b. Locker Room & Ball Skins (Guarded by isShopVisible)
-                      const LockerRoomButton(),
                       const SizedBox(height: 14.0),
 
                       // 5. Audio Settings Card: SFX & Music Sliders + Mute Toggle
