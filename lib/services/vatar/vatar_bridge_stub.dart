@@ -16,5 +16,4 @@ class VatarPlatformBridge {
   void onResume(VoidCallback callback) {}
   Future<bool> submitScore(int score) async => false;
   Future<VatarLeaderboardResult?> getLeaderboard() async => null;
-  Future<String?> purchase(String productId) async => null;
 }
