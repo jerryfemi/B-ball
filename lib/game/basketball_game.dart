@@ -893,9 +893,29 @@ class BasketballGame extends Forge2DGame {
         ..addAll(oppCloudPlayer.roundScores);
     }
 
-    // Check if match was completed
-    if (updatedMatch.status == MatchStatus.completed) {
-      if (updatedMatch.winnerUid != null &&
+    // Check if match was completed or forfeited
+    if (updatedMatch.status == MatchStatus.completed ||
+        updatedMatch.status == MatchStatus.forfeited) {
+      if (updatedMatch.status == MatchStatus.forfeited) {
+        if (updatedMatch.forfeitedByUid != null &&
+            updatedMatch.forfeitedByUid!.isNotEmpty) {
+          if (updatedMatch.forfeitedByUid == myUid) {
+            session.forfeitWinner = session.player2;
+          } else {
+            session.forfeitWinner = session.player1;
+          }
+        } else if (updatedMatch.winnerUid != null &&
+            updatedMatch.winnerUid!.isNotEmpty) {
+          if (updatedMatch.winnerUid == session.player1.id) {
+            session.forfeitWinner = session.player1;
+          } else if (updatedMatch.winnerUid == session.player2.id) {
+            session.forfeitWinner = session.player2;
+          }
+        }
+        if (session.forfeitWinner == session.player1) {
+          AudioEngine.playSwish();
+        }
+      } else if (updatedMatch.winnerUid != null &&
           updatedMatch.winnerUid!.isNotEmpty) {
         if (updatedMatch.winnerUid == session.player1.id) {
           session.forfeitWinner = session.player1;
@@ -903,6 +923,12 @@ class BasketballGame extends Forge2DGame {
           session.forfeitWinner = session.player2;
         }
       }
+
+      _liveShotSubscription?.cancel();
+      _liveShotSubscription = null;
+      _liveMatchSubscription?.cancel();
+      _liveMatchSubscription = null;
+
       spectatorStatusNotifier.value = SpectatorConnectionStatus.connected;
       session.phase = MatchTurnPhase.matchComplete;
       gameStateNotifier.value = GameModeState.gameOver;
