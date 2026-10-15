@@ -266,10 +266,10 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
       }
 
       // 2. Lifecycle cleanup:
-      // Active in-flight balls get up to 4.0s full flight time.
-      // Once settled on the floor or after 2+ bounces, retire within 2.5s to prevent ball pileup.
+      // Active in-flight balls get up to 5.0s full flight time (extended by 1.0s).
+      // Once settled on the floor or after 2+ bounces, retire within 3.5s (extended by 1.0s) to allow natural bounces and roll.
       final double maxLifetime =
-          (physics.isSettled || physics.bounceCount >= 2) ? 2.5 : 4.0;
+          (physics.isSettled || physics.bounceCount >= 2) ? 3.5 : 5.0;
       if (physics.timeSinceLaunch > maxLifetime) {
         removeFromParent();
         return;
@@ -323,7 +323,7 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
   void render(Canvas canvas) {
     // Dynamic fade out over the final 0.8s of the ball's lifetime
     final double maxLifetime =
-        (physics.isSettled || physics.bounceCount >= 2) ? 2.5 : 4.0;
+        (physics.isSettled || physics.bounceCount >= 2) ? 3.5 : 5.0;
     final double fadeOutStart = maxLifetime - 0.8;
     final double fadeOut = physics.timeSinceLaunch > fadeOutStart
         ? (1.0 - (physics.timeSinceLaunch - fadeOutStart) / 0.8).clamp(0.0, 1.0)
