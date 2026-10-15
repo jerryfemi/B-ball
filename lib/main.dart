@@ -12,7 +12,6 @@ import 'game/basketball_game.dart';
 import 'game/ui/game_hud_overlay.dart';
 import 'services/auth_service.dart';
 import 'services/chat_read_receipt_service.dart';
-import 'services/cosmetics/inventory_service.dart';
 import 'services/update/update_service.dart';
 import 'services/vatar/vatar_bridge.dart';
 
@@ -21,7 +20,6 @@ Future<void> main() async {
   unawaited(AudioEngine.init());
   unawaited(UpdateService.instance.initialize());
   unawaited(ChatReadReceiptService.instance.init());
-  unawaited(InventoryService.instance.init());
   await initializeForge2D();
   try {
     await VatarBridge.instance.init();
