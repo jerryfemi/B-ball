@@ -21,6 +21,15 @@ class MatchNotFoundException implements Exception {
   String toString() => message;
 }
 
+/// Exception thrown when a match room has been closed, cancelled, or concluded by the host.
+class MatchClosedException implements Exception {
+  final String message;
+  const MatchClosedException([this.message = 'This room has already been closed by the host.']);
+
+  @override
+  String toString() => message;
+}
+
 /// Exception thrown when a match room is already filled or concluded.
 class MatchAlreadyFullException implements Exception {
   final String message;
@@ -239,9 +248,18 @@ class FirestoreMatchService {
         throw const SelfJoinException('You cannot join a match hosted by yourself.');
       }
 
+      // Check if room was closed, abandoned, or finished
+      if (match.status == MatchStatus.abandoned || match.status == MatchStatus.declined) {
+        throw const MatchClosedException('This room has been closed by the host.');
+      }
+
+      if (match.status == MatchStatus.completed || match.status == MatchStatus.forfeited) {
+        throw const MatchClosedException('This match has already ended.');
+      }
+
       // Ensure room is waiting and not already full
       if (match.status != MatchStatus.waitingForOpponent || match.player2 != null) {
-        throw const MatchAlreadyFullException('This match is already in progress or completed.');
+        throw const MatchAlreadyFullException('This room is already in progress with another player.');
       }
 
       final now = DateTime.now().millisecondsSinceEpoch;
