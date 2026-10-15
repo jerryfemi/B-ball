@@ -55,6 +55,8 @@ class JoinMatchDialog extends HookWidget {
         }
       } on MatchNotFoundException catch (e) {
         errorMessage.value = e.message;
+      } on MatchClosedException catch (e) {
+        errorMessage.value = e.message;
       } on SelfJoinException catch (e) {
         errorMessage.value = e.message;
       } on MatchAlreadyFullException catch (e) {
@@ -62,7 +64,16 @@ class JoinMatchDialog extends HookWidget {
       } on AuthRequiredException catch (e) {
         errorMessage.value = e.message;
       } catch (e) {
-        errorMessage.value = 'Failed to join: $e';
+        final raw = e.toString();
+        final cleanMsg = raw
+            .replaceAll(
+              RegExp(r'^(Exception:|Error:(\s*Dart Exception:)?)\s*', caseSensitive: false),
+              '',
+            )
+            .trim();
+        errorMessage.value = cleanMsg.isNotEmpty
+            ? cleanMsg
+            : 'Unable to join room. Please check the code and try again.';
       } finally {
         if (context.mounted) isLoading.value = false;
       }
