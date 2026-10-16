@@ -76,8 +76,8 @@ class PauseOverlay extends HookWidget {
                   boxShadow: const [
                     BoxShadow(
                       color: Color(0x66000000),
-                      blurRadius: 32.0,
-                      offset: Offset(0, 10),
+                      blurRadius: 12.0,
+                      offset: Offset(0, 6),
                     ),
                   ],
                 ),
