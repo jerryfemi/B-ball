@@ -22,3 +22,11 @@ Future<String?> fetchRemoteVersion() async {
     return null;
   }
 }
+
+bool isDeviceOnline() {
+  try {
+    return html.window.navigator.onLine ?? true;
+  } catch (_) {
+    return true;
+  }
+}
