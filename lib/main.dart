@@ -63,8 +63,7 @@ class _BasketballAppState extends State<BasketballApp>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.hidden ||
-        state == AppLifecycleState.inactive) {
+        state == AppLifecycleState.hidden) {
       AudioEngine.onAppBackground();
     } else if (state == AppLifecycleState.resumed) {
       AudioEngine.onAppForeground();
