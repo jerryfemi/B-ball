@@ -1,13 +1,16 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
 import 'dart:html' as html;
 
-void reloadPage() {
+Future<void> reloadPage() async {
   try {
-    html.window.navigator.serviceWorker?.getRegistrations().then((registrations) {
+    final registrations = await html.window.navigator.serviceWorker
+        ?.getRegistrations()
+        .timeout(const Duration(milliseconds: 1500));
+    if (registrations != null) {
       for (final reg in registrations) {
-        reg.update();
+        await reg.update().timeout(const Duration(milliseconds: 1500));
       }
-    });
+    }
   } catch (_) {}
   html.window.location.reload();
 }
