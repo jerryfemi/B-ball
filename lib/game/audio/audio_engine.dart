@@ -77,32 +77,12 @@ class AudioEngine {
   static AudioSource? _buzzerSource;
   static AudioSource? _preloadedMusicSource;
 
-  // ── Background Music Jukebox (DJ-Mixed Afrobeats & Classics - Option 1) ──
+  // ── Background Music (Single Looping Track: Back Outside - BNXN, Sarz) ──
   static final List<MusicTrack> _playlist = [
-    const MusicTrack(
-      title: 'Champion - Fireboy DML',
-      assetPath: 'assets/music/short/Fireboy DML, D Smoke - Champion.mp3',
-      durationSeconds: 52.0,
-    ),
     const MusicTrack(
       title: 'Back Outside - BNXN, Sarz',
       assetPath: 'assets/music/short/BNXN, Sarz - Back Outside.mp3',
       durationSeconds: 40.0,
-    ),
-    const MusicTrack(
-      title: 'Back To Life - Soul II Soul',
-      assetPath: 'assets/music/short/Back To Life - Soul II Soul.mp3',
-      durationSeconds: 45.0,
-    ),
-    const MusicTrack(
-      title: 'No Panic - Burna Boy',
-      assetPath: 'assets/music/short/Burna Boy - No Panic.mp3',
-      durationSeconds: 55.0,
-    ),
-    const MusicTrack(
-      title: 'WAIT FOR U - Future ft. Drake, Tems',
-      assetPath: 'assets/music/short/Future - WAIT FOR U ft. Drake, Tems.mp3',
-      durationSeconds: 56.0,
     ),
   ];
 
@@ -275,18 +255,21 @@ class AudioEngine {
           ? 0.0
           : (musicVolume * 0.6).clamp(0.0, 1.0);
 
+      final isSingleTrack = _playlist.length <= 1;
       _musicHandle = SoLoud.instance.play(
         source,
         volume: effectiveVolume,
-        looping: false,
+        looping: isSingleTrack,
       );
 
       debugPrint(
-        '[AudioEngine] 🎵 Now playing: ${track.title} '
-        '(${_currentTrackIndex + 1}/${_playlist.length})',
+        '[AudioEngine] 🎵 Now playing: ${track.title}'
+        '${isSingleTrack ? ' (Continuous Loop)' : ' (${_currentTrackIndex + 1}/${_playlist.length})'}',
       );
 
-      _scheduleNextCrossfade(track, gen);
+      if (!isSingleTrack) {
+        _scheduleNextCrossfade(track, gen);
+      }
     } catch (e) {
       debugPrint('[AudioEngine] Music playback error: $e');
       if (_audioUnlocked && _musicStarted) {
