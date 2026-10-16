@@ -435,7 +435,8 @@ class AudioEngine {
     if (now - _lastRimUs < 80000) return; // 80ms debounce
     _lastRimUs = now;
 
-    final volume = (impactSpeed / 6.0).clamp(0.35, 1.0);
+    // Scaled by impact velocity with 10% reduction
+    final volume = ((impactSpeed / 6.0).clamp(0.35, 1.0) * 0.90);
     _safePlay(_rimSource, volume);
     _safeHaptic(HapticFeedback.heavyImpact);
   }
@@ -500,6 +501,8 @@ class AudioEngine {
   }
 
   static void _safeHaptic(Future<void> Function() hapticCall) {
+    // Avoid navigator.vibrate DOM IPC overhead on Web/PWA to ensure seamless Web Audio buffer scheduling
+    if (kIsWeb) return;
     try {
       hapticCall();
     } catch (_) {}
