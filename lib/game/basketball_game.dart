@@ -231,7 +231,7 @@ class BasketballGame extends Forge2DGame {
     resumeEngine();
   }
 
-  /// Toggles player's streak visual effects (Flame at 6+, Lightning at 11+)
+  /// Toggles player's streak visual effects (Lightning at 3+, Flame at 6+)
   /// and persists their preference to local SharedPreferences.
   Future<void> toggleStreakFx() async {
     final nextVal = !streakFxEnabledNotifier.value;
