@@ -4,3 +4,5 @@ import 'update_platform_stub.dart'
 void reloadPage() => platform.reloadPage();
 
 Future<String?> fetchRemoteVersion() => platform.fetchRemoteVersion();
+
+bool isDeviceOnline() => platform.isDeviceOnline();
