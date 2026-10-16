@@ -74,10 +74,10 @@ class UpdateService {
   }
 
   /// Reloads the web page to immediately execute the new release.
-  void reload() {
+  Future<void> reload() async {
     _dismissed = true;
     isUpdateAvailable.value = false;
-    reloadPage();
+    await reloadPage();
   }
 
   void dispose() {
