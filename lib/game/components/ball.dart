@@ -310,11 +310,11 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
       }
 
       // 2. Lifecycle cleanup:
-      // Active in-flight balls get up to 5.0s full flight time (extended by 1.0s).
-      // Once settled on the floor or after 2+ bounces, retire within 3.5s (extended by 1.0s) to allow natural bounces and roll.
+      // Active in-flight balls get up to 4.0s full flight time.
+      // Once settled on the floor or after 2+ bounces, retire within 1.8s to allow natural bounces and roll.
       final double maxLifetime = (physics.isSettled || physics.bounceCount >= 2)
-          ? 3.5
-          : 5.0;
+          ? 1.8
+          : 4.0;
       if (physics.timeSinceLaunch > maxLifetime) {
         removeFromParent();
         return;
@@ -597,8 +597,8 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
       final paint = Paint()..shader = shader;
       final rect = Rect.fromCenter(
         center: Offset.zero,
-        width: radius * 2.2,
-        height: radius * 2.2,
+        width: radius * 2.02,
+        height: radius * 2.02,
       );
       canvas.drawRect(rect, paint);
     } else {
@@ -619,9 +619,9 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     }
     // Allow immediate touch even while entering so rapid swipes are never ignored
     if (isLaunched) return false;
-    // Lower ~45% of the screen (Y >= 11.0m in Forge2D world)
-    // or within generous radius of the ready ball
-    return point.y >= 11.0 || (point - body.position).length <= radius * 2.5;
+    // Lower ~55% of the screen (Y >= 9.5m in Forge2D world)
+    // or within generous 3.0x radius of the ready ball to avoid Android bottom gesture conflicts
+    return point.y >= 9.5 || (point - body.position).length <= radius * 3.0;
   }
 
   @override
