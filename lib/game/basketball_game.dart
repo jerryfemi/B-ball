@@ -1432,10 +1432,7 @@ class BasketballGame extends Forge2DGame {
 
     // Priority 3: Rear rim arc, mounting bracket flange, and rear net mesh
     world.add(
-      RearRimVisual(
-        position: hoopCenterInMeters,
-        hoopWidth: hoopWidthInMeters,
-      ),
+      RearRimVisual(position: hoopCenterInMeters, hoopWidth: hoopWidthInMeters),
     );
 
     // Physics colliders (circles for rims, deflector plate, score sensor)
@@ -1496,7 +1493,8 @@ class BasketballGame extends Forge2DGame {
 
     if (candidates.isNotEmpty) {
       candidates.sort(
-        (a, b) => b.physics.timeSinceLaunch.compareTo(a.physics.timeSinceLaunch),
+        (a, b) =>
+            b.physics.timeSinceLaunch.compareTo(a.physics.timeSinceLaunch),
       );
       candidates.first.removeFromParent();
     }
