@@ -350,6 +350,8 @@ class PauseOverlay extends HookWidget {
                                           AudioEngine.musicVolume = val,
                                     ),
                                     const SizedBox(height: 6.0),
+                                    _buildTrackSelector(),
+                                    const SizedBox(height: 6.0),
                                     _buildMuteToggle(),
                                     const Divider(
                                       color: Color(0x2238BDF8),
@@ -376,6 +378,119 @@ class PauseOverlay extends HookWidget {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildTrackSelector() {
+    return ValueListenableBuilder<int>(
+      valueListenable: AudioEngine.currentTrackIndexNotifier,
+      builder: (context, selectedIdx, _) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2.0),
+          child: Container(
+            decoration: BoxDecoration(
+              color: const Color(0x1538BDF8),
+              borderRadius: BorderRadius.circular(10.0),
+              border: Border.all(
+                color: const Color(0x3338BDF8),
+                width: 1.0,
+              ),
+            ),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 10.0,
+              vertical: 2.0,
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.queue_music_rounded,
+                  size: 15.0,
+                  color: Color(0xFF38BDF8),
+                ),
+                const SizedBox(width: 8.0),
+                const Text(
+                  'TRACK',
+                  style: TextStyle(
+                    color: Color(0xFF94A3B8),
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+                const SizedBox(width: 8.0),
+                Expanded(
+                  child: Theme(
+                    data: Theme.of(context).copyWith(
+                      canvasColor: const Color(0xFF0F172A),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<int>(
+                        value: selectedIdx.clamp(
+                          0,
+                          AudioEngine.availableTracks.length - 1,
+                        ),
+                        isDense: true,
+                        isExpanded: true,
+                        dropdownColor: const Color(0xFF0F172A),
+                        borderRadius: BorderRadius.circular(12.0),
+                        icon: const Icon(
+                          Icons.arrow_drop_down_rounded,
+                          color: Color(0xFF38BDF8),
+                          size: 20.0,
+                        ),
+                        items: List.generate(
+                          AudioEngine.availableTracks.length,
+                          (index) {
+                            final track = AudioEngine.availableTracks[index];
+                            final isSelected = index == selectedIdx;
+                            return DropdownMenuItem<int>(
+                              value: index,
+                              child: Row(
+                                children: [
+                                  if (isSelected)
+                                    const Padding(
+                                      padding: EdgeInsets.only(right: 6.0),
+                                      child: Icon(
+                                        Icons.check_rounded,
+                                        size: 13.0,
+                                        color: Color(0xFF38BDF8),
+                                      ),
+                                    ),
+                                  Expanded(
+                                    child: Text(
+                                      'Track ${index + 1}: ${track.title}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: isSelected
+                                            ? const Color(0xFF38BDF8)
+                                            : const Color(0xFFE2E8F0),
+                                        fontSize: 10.5,
+                                        fontWeight: isSelected
+                                            ? FontWeight.w800
+                                            : FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                        onChanged: (newIndex) {
+                          if (newIndex != null) {
+                            AudioEngine.selectTrack(newIndex);
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
