@@ -9,8 +9,13 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 class MusicTrack {
   final String title;
   final String assetPath;
+  final double durationSeconds;
 
-  const MusicTrack({required this.title, required this.assetPath});
+  const MusicTrack({
+    required this.title,
+    required this.assetPath,
+    required this.durationSeconds,
+  });
 }
 
 /// Centralized audio and haptics coordinator for basketball collisions,
@@ -72,48 +77,44 @@ class AudioEngine {
   static AudioSource? _buzzerSource;
   static AudioSource? _preloadedMusicSource;
 
-  // ── Background Music Jukebox (Afrobeats / Naija Soundtrack) ──
+  // ── Background Music Jukebox (DJ-Mixed Afrobeats & Classics - Option 1) ──
   static final List<MusicTrack> _playlist = [
     const MusicTrack(
-      title: '5 Star - Adekunle Gold',
-      assetPath: 'assets/music/Adekunle Gold - 5 Star [Official Audio] - Adekunle Gold.mp3',
+      title: 'Champion - Fireboy DML',
+      assetPath: 'assets/music/short/Fireboy DML, D Smoke - Champion.mp3',
+      durationSeconds: 52.0,
     ),
     const MusicTrack(
-      title: 'Never Stopped - Bnxn (Buju)',
-      assetPath: 'assets/music/Buju - Never Stopped (Audio) - Bnxn TYE.mp3',
+      title: 'Back Outside - BNXN, Sarz',
+      assetPath: 'assets/music/short/BNXN, Sarz - Back Outside.mp3',
+      durationSeconds: 40.0,
     ),
     const MusicTrack(
-      title: 'Fountains - Drake ft. Tems',
-      assetPath: 'assets/music/Drake - Fountains (Audio) ft. Tems - DrakeVEVO.mp3',
+      title: 'Back To Life - Soul II Soul',
+      assetPath: 'assets/music/short/Back To Life - Soul II Soul.mp3',
+      durationSeconds: 45.0,
     ),
     const MusicTrack(
-      title: 'Masculine - J Hus ft. Burna Boy',
-      assetPath: 'assets/music/J Hus - Masculine (Official Audio) ft. Burna Boy - JHusVEVO.mp3',
+      title: 'No Panic - Burna Boy',
+      assetPath: 'assets/music/short/Burna Boy - No Panic.mp3',
+      durationSeconds: 55.0,
     ),
     const MusicTrack(
-      title: 'Green Light - Olamide',
-      assetPath: 'assets/music/Olamide - Green Light [Audio] - Miziki.mp3',
-    ),
-    const MusicTrack(
-      title: 'Infinity - Olamide ft. Omah Lay',
-      assetPath: 'assets/music/Olamide feat. Omah Lay -  Infinity (Audio) - Olamide.mp3',
-    ),
-    const MusicTrack(
-      title: 'Ozumba Mbadiwe - Reekado Banks',
-      assetPath: 'assets/music/Reekado Banks - Ozumba Mbadiwe (Official Audio) - Reekado Banks.mp3',
-    ),
-    const MusicTrack(
-      title: 'Free Mind - Tems',
-      assetPath: 'assets/music/Tems - Free Mind (Lyrics) - life + lyrics.mp3',
+      title: 'WAIT FOR U - Future ft. Drake, Tems',
+      assetPath: 'assets/music/short/Future - WAIT FOR U ft. Drake, Tems.mp3',
+      durationSeconds: 56.0,
     ),
   ];
 
-  static final Random _rng = Random();
+  static const double _crossfadeSeconds = 3.0;
+  static int _currentTrackIndex = 0;
   static SoundHandle? _musicHandle;
   static AudioSource? _currentMusicSource;
-  static StreamSubscription? _musicEventSub;
-  static List<int> _shuffledIndices = [];
-  static int _currentShufflePos = 0;
+  static SoundHandle? _incomingMusicHandle;
+  static AudioSource? _incomingMusicSource;
+  static Timer? _crossfadeTriggerTimer;
+  static Timer? _crossfadeRampTimer;
+  static double _crossfadeProgress = 0.0;
   static bool _musicStarted = false;
   static int _musicGen = 0;
 
@@ -174,8 +175,8 @@ class AudioEngine {
 
       // Pre-warm initial track into RAM during startup so the first touch/swipe has 0ms audio latency
       if (_playlist.isNotEmpty) {
-        _reshufflePlaylist();
-        final initialTrack = _playlist[_shuffledIndices[_currentShufflePos]];
+        _currentTrackIndex = 0;
+        final initialTrack = _playlist[0];
         try {
           _preloadedMusicSource = await SoLoud.instance.loadAsset(
             initialTrack.assetPath,
@@ -222,85 +223,54 @@ class AudioEngine {
     }
   }
 
-  // ─────────────────────────── Background Music Jukebox ───────────────────────────
+  // ─────────────────────────── Background Music Jukebox (DJ Crossfade Engine) ───────────────────────────
 
-  /// Generates a new random shuffle of track indices.
-  static void _reshufflePlaylist() {
-    _shuffledIndices = List<int>.generate(_playlist.length, (i) => i)
-      ..shuffle(_rng);
-    _currentShufflePos = 0;
-  }
-
-  /// Starts the background music jukebox with a fresh, random shuffle of all tracks.
+  /// Starts the background music jukebox following the BPM-ordered sequence.
   static void _startMusic() {
     if (_playlist.isEmpty || !SoLoud.instance.isInitialized) return;
     _musicStarted = true;
 
-    // Fast-path: If initial track was pre-warmed during init, play immediately with 0ms decode latency
+    // Fast-path: If initial track (Champion) was pre-warmed during init, play immediately
     if (_preloadedMusicSource != null) {
-      final source = _preloadedMusicSource!;
-      _preloadedMusicSource = null;
-      _currentMusicSource = source;
-
-      final effectiveVolume = isMuted
-          ? 0.0
-          : (musicVolume * 0.6).clamp(0.0, 1.0);
-      final gen = ++_musicGen;
-
-      _musicHandle = SoLoud.instance.play(
-        source,
-        volume: effectiveVolume,
-        looping: false,
-      );
-
-      _musicEventSub = source.soundEvents.listen((event) {
-        if (event.event == SoundEventType.handleIsNoMoreValid &&
-            gen == _musicGen) {
-          _onTrackComplete();
-        }
-      });
-
-      final track = _playlist[_shuffledIndices[_currentShufflePos]];
-      debugPrint(
-        '[AudioEngine] 🎵 Now playing (instant pre-warmed): ${track.title} '
-        '(${_currentShufflePos + 1}/${_shuffledIndices.length})',
-      );
+      _currentTrackIndex = 0;
+      _playCurrentTrack(usePreloaded: true);
       return;
     }
 
-    _reshufflePlaylist();
+    _currentTrackIndex = 0;
     _playCurrentTrack();
   }
 
-  /// Plays the track at the current shuffle position.
-  static Future<void> _playCurrentTrack() async {
+  /// Plays the track at [_currentTrackIndex], cleaning up previous tracks and scheduling crossfade.
+  static Future<void> _playCurrentTrack({bool usePreloaded = false}) async {
     final gen = ++_musicGen;
     try {
       if (!SoLoud.instance.isInitialized) return;
 
-      // Stop and dispose previous track to conserve memory
       await _cleanupCurrentMusicTrack();
 
-      if (_currentShufflePos >= _shuffledIndices.length) {
-        _currentShufflePos = 0;
+      if (_currentTrackIndex >= _playlist.length) {
+        _currentTrackIndex = 0;
       }
-      final track = _playlist[_shuffledIndices[_currentShufflePos]];
+      final track = _playlist[_currentTrackIndex];
 
-      // Pre-decode active music track into RAM buffer (LoadMode.memory) for zero-latency,
-      // glitch-free playback without real-time disk streaming or CPU buffer underruns.
-      final source = await SoLoud.instance.loadAsset(
-        track.assetPath,
-        mode: LoadMode.memory,
-      );
+      AudioSource? source;
+      if (usePreloaded && _preloadedMusicSource != null) {
+        source = _preloadedMusicSource;
+        _preloadedMusicSource = null;
+      } else {
+        source = await SoLoud.instance.loadAsset(
+          track.assetPath,
+          mode: LoadMode.memory,
+        );
+      }
 
-      // Race guard: if another track was requested while loading, discard this one
-      if (gen != _musicGen) {
-        unawaited(SoLoud.instance.disposeSource(source));
+      if (gen != _musicGen || source == null) {
+        if (source != null) unawaited(SoLoud.instance.disposeSource(source));
         return;
       }
 
       _currentMusicSource = source;
-
       final effectiveVolume = isMuted
           ? 0.0
           : (musicVolume * 0.6).clamp(0.0, 1.0);
@@ -311,18 +281,12 @@ class AudioEngine {
         looping: false,
       );
 
-      // Auto-advance to next track when playback finishes
-      _musicEventSub = source.soundEvents.listen((event) {
-        if (event.event == SoundEventType.handleIsNoMoreValid &&
-            gen == _musicGen) {
-          _onTrackComplete();
-        }
-      });
-
       debugPrint(
         '[AudioEngine] 🎵 Now playing: ${track.title} '
-        '(${_currentShufflePos + 1}/${_shuffledIndices.length})',
+        '(${_currentTrackIndex + 1}/${_playlist.length})',
       );
+
+      _scheduleNextCrossfade(track, gen);
     } catch (e) {
       debugPrint('[AudioEngine] Music playback error: $e');
       if (_audioUnlocked && _musicStarted) {
@@ -333,10 +297,126 @@ class AudioEngine {
     }
   }
 
-  /// Cleans up current music handle and source.
+  /// Schedules the next track's crossfade [crossfadeSeconds] before the current track ends.
+  static void _scheduleNextCrossfade(MusicTrack track, int gen) {
+    _crossfadeTriggerTimer?.cancel();
+    final delaySeconds = (track.durationSeconds - _crossfadeSeconds).clamp(1.0, 300.0);
+
+    _crossfadeTriggerTimer = Timer(Duration(milliseconds: (delaySeconds * 1000).toInt()), () {
+      if (gen != _musicGen || !_musicStarted) return;
+      _startCrossfadeToNext(gen);
+    });
+  }
+
+  /// Initiates the smooth 3-second equal-power DJ crossfade into the next BPM track.
+  static Future<void> _startCrossfadeToNext(int gen) async {
+    final nextIndex = (_currentTrackIndex + 1) % _playlist.length;
+    final nextTrack = _playlist[nextIndex];
+
+    try {
+      final nextSource = await SoLoud.instance.loadAsset(
+        nextTrack.assetPath,
+        mode: LoadMode.memory,
+      );
+
+      if (gen != _musicGen || !_musicStarted) {
+        unawaited(SoLoud.instance.disposeSource(nextSource));
+        return;
+      }
+
+      _incomingMusicSource = nextSource;
+      _incomingMusicHandle = SoLoud.instance.play(
+        nextSource,
+        volume: 0.0,
+        looping: false,
+      );
+
+      _crossfadeProgress = 0.0;
+      const stepMs = 50;
+      final totalSteps = (_crossfadeSeconds * 1000) ~/ stepMs;
+      int currentStep = 0;
+
+      _crossfadeRampTimer?.cancel();
+      _crossfadeRampTimer = Timer.periodic(const Duration(milliseconds: stepMs), (timer) {
+        if (gen != _musicGen) {
+          timer.cancel();
+          return;
+        }
+
+        currentStep++;
+        _crossfadeProgress = (currentStep / totalSteps).clamp(0.0, 1.0);
+
+        final baseVolume = isMuted ? 0.0 : (musicVolume * 0.6).clamp(0.0, 1.0);
+        // Equal-power cosine curve prevents middle dip in perceived loudness
+        final outVol = baseVolume * cos(_crossfadeProgress * pi / 2);
+        final inVol = baseVolume * sin(_crossfadeProgress * pi / 2);
+
+        if (_musicHandle != null && SoLoud.instance.getIsValidVoiceHandle(_musicHandle!)) {
+          SoLoud.instance.setVolume(_musicHandle!, outVol);
+        }
+        if (_incomingMusicHandle != null && SoLoud.instance.getIsValidVoiceHandle(_incomingMusicHandle!)) {
+          SoLoud.instance.setVolume(_incomingMusicHandle!, inVol);
+        }
+
+        if (currentStep >= totalSteps) {
+          timer.cancel();
+          _finalizeCrossfade(nextIndex, gen);
+        }
+      });
+    } catch (e) {
+      debugPrint('[AudioEngine] Crossfade load error: $e');
+      _onTrackComplete();
+    }
+  }
+
+  /// Finalizes the crossfade by disposing the outgoing track from RAM and promoting the incoming track.
+  static void _finalizeCrossfade(int nextIndex, int gen) {
+    if (gen != _musicGen) return;
+
+    // 1. Immediately dispose outgoing track to free memory
+    if (_musicHandle != null) {
+      try {
+        if (SoLoud.instance.getIsValidVoiceHandle(_musicHandle!)) {
+          SoLoud.instance.stop(_musicHandle!);
+        }
+      } catch (_) {}
+      _musicHandle = null;
+    }
+    if (_currentMusicSource != null) {
+      try {
+        SoLoud.instance.disposeSource(_currentMusicSource!);
+      } catch (_) {}
+      _currentMusicSource = null;
+    }
+
+    // 2. Promote incoming track to primary
+    _currentMusicSource = _incomingMusicSource;
+    _musicHandle = _incomingMusicHandle;
+    _incomingMusicSource = null;
+    _incomingMusicHandle = null;
+    _currentTrackIndex = nextIndex;
+    _crossfadeProgress = 0.0;
+
+    // 3. Ensure target volume is applied
+    _applyMusicVolume();
+
+    final track = _playlist[_currentTrackIndex];
+    debugPrint(
+      '[AudioEngine] 🎵 Seamlessly crossfaded into: ${track.title} '
+      '(${_currentTrackIndex + 1}/${_playlist.length})',
+    );
+
+    // 4. Schedule crossfade for this track
+    _scheduleNextCrossfade(track, gen);
+  }
+
+  /// Cleans up all active and incoming music handles and disposes all sources from RAM.
   static Future<void> _cleanupCurrentMusicTrack() async {
-    await _musicEventSub?.cancel();
-    _musicEventSub = null;
+    _crossfadeTriggerTimer?.cancel();
+    _crossfadeTriggerTimer = null;
+    _crossfadeRampTimer?.cancel();
+    _crossfadeRampTimer = null;
+    _crossfadeProgress = 0.0;
 
     if (_musicHandle != null && SoLoud.instance.isInitialized) {
       try {
@@ -347,51 +427,69 @@ class AudioEngine {
       _musicHandle = null;
     }
 
+    if (_incomingMusicHandle != null && SoLoud.instance.isInitialized) {
+      try {
+        if (SoLoud.instance.getIsValidVoiceHandle(_incomingMusicHandle!)) {
+          await SoLoud.instance.stop(_incomingMusicHandle!);
+        }
+      } catch (_) {}
+      _incomingMusicHandle = null;
+    }
+
     if (_currentMusicSource != null && SoLoud.instance.isInitialized) {
       try {
         await SoLoud.instance.disposeSource(_currentMusicSource!);
       } catch (_) {}
       _currentMusicSource = null;
     }
+
+    if (_incomingMusicSource != null && SoLoud.instance.isInitialized) {
+      try {
+        await SoLoud.instance.disposeSource(_incomingMusicSource!);
+      } catch (_) {}
+      _incomingMusicSource = null;
+    }
   }
 
-  /// Called when a track finishes — advances to the next in the shuffle.
+  /// Advance to the next track in the BPM sequence.
   static void _onTrackComplete() {
     if (!_musicStarted) return;
-    _currentShufflePos++;
-    if (_currentShufflePos >= _shuffledIndices.length) {
-      final lastTrackIdx = _shuffledIndices.isNotEmpty
-          ? _shuffledIndices.last
-          : -1;
-      _reshufflePlaylist();
-      // Avoid playing the exact same track back-to-back across reshuffles
-      if (_shuffledIndices.length > 1 &&
-          _shuffledIndices.first == lastTrackIdx) {
-        _shuffledIndices.add(_shuffledIndices.removeAt(0));
-      }
-    }
+    _currentTrackIndex = (_currentTrackIndex + 1) % _playlist.length;
     _playCurrentTrack();
   }
 
-  /// Applies the current music volume to the active player.
+  /// Applies the current music volume to the active player(s).
   static void _applyMusicVolume() {
-    if (_musicHandle == null || !SoLoud.instance.isInitialized) return;
+    if (!SoLoud.instance.isInitialized) return;
+    final baseVolume = isMuted ? 0.0 : (musicVolume * 0.6).clamp(0.0, 1.0);
+
     try {
-      if (SoLoud.instance.getIsValidVoiceHandle(_musicHandle!)) {
-        final effectiveVolume = isMuted
-            ? 0.0
-            : (musicVolume * 0.6).clamp(0.0, 1.0);
-        SoLoud.instance.setVolume(_musicHandle!, effectiveVolume);
+      if (_crossfadeRampTimer?.isActive ?? false) {
+        final outVol = baseVolume * cos(_crossfadeProgress * pi / 2);
+        final inVol = baseVolume * sin(_crossfadeProgress * pi / 2);
+        if (_musicHandle != null && SoLoud.instance.getIsValidVoiceHandle(_musicHandle!)) {
+          SoLoud.instance.setVolume(_musicHandle!, outVol);
+        }
+        if (_incomingMusicHandle != null && SoLoud.instance.getIsValidVoiceHandle(_incomingMusicHandle!)) {
+          SoLoud.instance.setVolume(_incomingMusicHandle!, inVol);
+        }
+      } else {
+        if (_musicHandle != null && SoLoud.instance.getIsValidVoiceHandle(_musicHandle!)) {
+          SoLoud.instance.setVolume(_musicHandle!, baseVolume);
+        }
       }
     } catch (_) {}
   }
 
   /// Pauses the background music (used when muting or backgrounding).
   static void _pauseMusic() {
-    if (_musicHandle == null || !SoLoud.instance.isInitialized) return;
+    if (!SoLoud.instance.isInitialized) return;
     try {
-      if (SoLoud.instance.getIsValidVoiceHandle(_musicHandle!)) {
+      if (_musicHandle != null && SoLoud.instance.getIsValidVoiceHandle(_musicHandle!)) {
         SoLoud.instance.setPause(_musicHandle!, true);
+      }
+      if (_incomingMusicHandle != null && SoLoud.instance.getIsValidVoiceHandle(_incomingMusicHandle!)) {
+        SoLoud.instance.setPause(_incomingMusicHandle!, true);
       }
     } catch (_) {}
   }
@@ -399,13 +497,16 @@ class AudioEngine {
   /// Resumes the background music (used when unmuting or returning to foreground).
   static void _resumeMusic() {
     if (!SoLoud.instance.isInitialized) return;
-    if (_musicStarted && _musicHandle != null) {
+    if (_musicStarted && (_musicHandle != null || _incomingMusicHandle != null)) {
       try {
-        if (SoLoud.instance.getIsValidVoiceHandle(_musicHandle!)) {
-          _applyMusicVolume();
+        _applyMusicVolume();
+        if (_musicHandle != null && SoLoud.instance.getIsValidVoiceHandle(_musicHandle!)) {
           SoLoud.instance.setPause(_musicHandle!, false);
-          return;
         }
+        if (_incomingMusicHandle != null && SoLoud.instance.getIsValidVoiceHandle(_incomingMusicHandle!)) {
+          SoLoud.instance.setPause(_incomingMusicHandle!, false);
+        }
+        return;
       } catch (_) {}
     }
     if (_audioUnlocked) {
@@ -510,10 +611,7 @@ class AudioEngine {
 
   /// Releases all audio resources, stops music, and deinits SoLoud engine.
   static void dispose() {
-    _musicEventSub?.cancel();
-    _musicEventSub = null;
-    _musicHandle = null;
-    _currentMusicSource = null;
+    unawaited(_cleanupCurrentMusicTrack());
     _preloadedMusicSource = null;
     _musicStarted = false;
 
