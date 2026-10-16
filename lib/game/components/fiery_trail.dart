@@ -137,8 +137,8 @@ class FieryBallTrail {
 
         _nodeCount = math.min(_nodeCount + 1, maxNodes);
 
-        // Spawn a single micro-spark per sample (electric lightning for 6-9, fiery red for 10+)
-        _spawnEmber(ballPos, isLightning: streak < 10);
+        // Spawn a single micro-spark per sample (electric lightning for 3-5, fiery red for 6+)
+        _spawnEmber(ballPos, isLightning: streak < 6);
       }
     }
 
@@ -262,8 +262,8 @@ class FieryBallTrail {
     final int count = _nodeCount;
     if (count < 2) return;
 
-    // Tier 2: Electric Lightning (streaks 6-9). Tier 3: Searing Red Flame (streak 10+).
-    final bool isLightning = streak < 10;
+    // Tier 2: Electric Lightning (streaks 3-5). Tier 3: Searing Red Flame (streak 6+).
+    final bool isLightning = streak < 6;
 
     for (int i = 0; i < count; i++) {
       final node = _nodes[i];
