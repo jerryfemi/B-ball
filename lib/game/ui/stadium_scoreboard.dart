@@ -38,10 +38,7 @@ class StadiumScoreboard extends StatefulWidget {
 }
 
 class _StadiumScoreboardState extends State<StadiumScoreboard>
-    with TickerProviderStateMixin {
-  late final AnimationController _popController;
-  late final Animation<double> _scoreScaleAnimation;
-
+    with SingleTickerProviderStateMixin {
   late final AnimationController _urgentClockController;
   late final Animation<double> _urgentGlowAnimation;
 
@@ -49,29 +46,7 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
   void initState() {
     super.initState();
 
-    // 1. Spring pop on score change
-    _popController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 220),
-    );
-    _scoreScaleAnimation = TweenSequence<double>([
-      TweenSequenceItem(
-        tween: Tween<double>(
-          begin: 1.0,
-          end: 1.25,
-        ).chain(CurveTween(curve: Curves.easeOutBack)),
-        weight: 40,
-      ),
-      TweenSequenceItem(
-        tween: Tween<double>(
-          begin: 1.25,
-          end: 1.0,
-        ).chain(CurveTween(curve: Curves.easeInOut)),
-        weight: 60,
-      ),
-    ]).animate(_popController);
-
-    // 2. Urgent clock pulse when time <= 10s
+    // Urgent clock pulse when time <= 10s
     _urgentClockController =
         AnimationController(
           vsync: this,
@@ -91,9 +66,6 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
       CurvedAnimation(parent: _urgentClockController, curve: Curves.easeInOut),
     );
 
-    widget.game.scoreNotifier.addListener(_onScoreChanged);
-    widget.game.player1MatchScoreNotifier.addListener(_onScoreChanged);
-    widget.game.player2MatchScoreNotifier.addListener(_onScoreChanged);
     widget.game.timeRemainingNotifier.addListener(_onTimeChanged);
   }
 
@@ -101,30 +73,16 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
   void didUpdateWidget(covariant StadiumScoreboard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.game != widget.game) {
-      oldWidget.game.scoreNotifier.removeListener(_onScoreChanged);
-      oldWidget.game.player1MatchScoreNotifier.removeListener(_onScoreChanged);
-      oldWidget.game.player2MatchScoreNotifier.removeListener(_onScoreChanged);
       oldWidget.game.timeRemainingNotifier.removeListener(_onTimeChanged);
-      widget.game.scoreNotifier.addListener(_onScoreChanged);
-      widget.game.player1MatchScoreNotifier.addListener(_onScoreChanged);
-      widget.game.player2MatchScoreNotifier.addListener(_onScoreChanged);
       widget.game.timeRemainingNotifier.addListener(_onTimeChanged);
     }
   }
 
   @override
   void dispose() {
-    widget.game.scoreNotifier.removeListener(_onScoreChanged);
-    widget.game.player1MatchScoreNotifier.removeListener(_onScoreChanged);
-    widget.game.player2MatchScoreNotifier.removeListener(_onScoreChanged);
     widget.game.timeRemainingNotifier.removeListener(_onTimeChanged);
-    _popController.dispose();
     _urgentClockController.dispose();
     super.dispose();
-  }
-
-  void _onScoreChanged() {
-    _popController.forward(from: 0.0);
   }
 
   void _onTimeChanged() {
@@ -279,9 +237,6 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
               valueListenable: is1v1
                   ? widget.game.player1MatchScoreNotifier
                   : widget.game.scoreNotifier,
-              scaleAnimation: (is1v1 && shootingPlayerIndex == 0) || !is1v1
-                  ? _scoreScaleAnimation
-                  : null,
             ),
             const SizedBox(width: 10.0),
             Column(
@@ -308,9 +263,6 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
               valueListenable: is1v1
                   ? widget.game.player2MatchScoreNotifier
                   : widget.game.bestScoreNotifier,
-              scaleAnimation: (is1v1 && shootingPlayerIndex == 1)
-                  ? _scoreScaleAnimation
-                  : null,
             ),
           ],
         ),

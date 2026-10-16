@@ -76,7 +76,9 @@ class PodiumTrophyHeader extends StatelessWidget {
         const SizedBox(height: 3.0),
         Text(
           session.isForfeit
-              ? 'WON BY OPPONENT FORFEIT'
+              ? (session.forfeitWinner == session.player1
+                  ? 'VICTORY BY OPPONENT FORFEIT'
+                  : 'MATCH CONCEDED BY FORFEIT')
               : '${session.totalRounds}-ROUND 1V1 MATCH FINAL',
           style: const TextStyle(
             color: Color(0xFF94A3B8),

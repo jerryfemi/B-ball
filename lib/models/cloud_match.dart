@@ -21,6 +21,9 @@ enum MatchStatus {
   /// Recipient explicitly declined the challenge.
   declined,
 
+  /// One of the participants forfeited / resigned mid-match.
+  forfeited,
+
   /// Fallback for forward compatibility with newer clients.
   unknown;
 
@@ -265,6 +268,12 @@ class CloudMatch {
   final int? lastChatTimestamp;
   final String? lastChatText;
 
+  /// UID of the player who forfeited, if status is forfeited.
+  final String? forfeitedByUid;
+
+  /// Custom winner UID explicitly stored on document (e.g. for forfeits).
+  final String? customWinnerUid;
+
   const CloudMatch({
     required this.id,
     required this.joinCode,
@@ -288,6 +297,8 @@ class CloudMatch {
     this.lastChatSenderUid,
     this.lastChatTimestamp,
     this.lastChatText,
+    this.forfeitedByUid,
+    this.customWinnerUid,
   });
 
   bool isMyTurn(String myUid) =>
@@ -315,6 +326,10 @@ class CloudMatch {
 
   /// Evaluates overall match outcome with explicit enum support.
   MatchOutcome get outcome {
+    if (status == MatchStatus.forfeited) {
+      if (forfeitedByUid == player1.uid) return MatchOutcome.player2Won;
+      if (forfeitedByUid == player2?.uid) return MatchOutcome.player1Won;
+    }
     if (status != MatchStatus.completed || player2 == null) {
       return MatchOutcome.inProgress;
     }
@@ -329,6 +344,9 @@ class CloudMatch {
 
   /// UID of the match winner, or null if tie or in progress.
   String? get winnerUid {
+    if (customWinnerUid != null && customWinnerUid!.isNotEmpty) {
+      return customWinnerUid;
+    }
     switch (outcome) {
       case MatchOutcome.player1Won:
         return player1.uid;
@@ -411,6 +429,8 @@ class CloudMatch {
     if (lastChatSenderUid != null) 'lastChatSenderUid': lastChatSenderUid,
     if (lastChatTimestamp != null) 'lastChatTimestamp': lastChatTimestamp,
     if (lastChatText != null) 'lastChatText': lastChatText,
+    if (forfeitedByUid != null) 'forfeitedBy': forfeitedByUid,
+    if (customWinnerUid != null) 'winnerUid': customWinnerUid,
   };
 
   /// Safely deserializes document map, resilient against corrupted or partial documents.
@@ -461,6 +481,8 @@ class CloudMatch {
         lastChatSenderUid: map['lastChatSenderUid'] as String?,
         lastChatTimestamp: (map['lastChatTimestamp'] as num?)?.toInt(),
         lastChatText: map['lastChatText'] as String?,
+        forfeitedByUid: map['forfeitedBy'] as String?,
+        customWinnerUid: map['winnerUid'] as String?,
       );
     } catch (e) {
       // Return safe fallback rather than crashing the inbox

@@ -42,10 +42,10 @@ class MatchWinnerPodiumOverlay extends StatelessWidget {
     HapticFeedback.mediumImpact();
     final profile = AuthService.instance.currentUser;
     final myUid = profile?.uid ?? '';
-    final oldMatchId = session.cloudMatchId;
 
     final opponent = session.player2;
-    final opponentFriend = opponent.id.isNotEmpty
+    final bool hasValidUid = opponent.id.isNotEmpty && opponent.id != 'them';
+    final opponentFriend = hasValidUid
         ? FriendProfile(
             uid: opponent.id,
             displayName: opponent.name,
@@ -53,14 +53,6 @@ class MatchWinnerPodiumOverlay extends StatelessWidget {
             addedAt: DateTime.now().millisecondsSinceEpoch,
           )
         : null;
-
-    if (oldMatchId != null) {
-      unawaited(
-        FirestoreMatchService.instance.deleteMatch(oldMatchId).catchError((e) {
-          debugPrint('[Podium] Failed to delete old match: $e');
-        }),
-      );
-    }
 
     try {
       final config = MatchConfig(
@@ -236,42 +228,79 @@ class MatchWinnerPodiumOverlay extends StatelessWidget {
 
                     // 5. Action Buttons
                     if (session.cloudMatchId != null) ...[
-                      // Primary Action: INSTANT REMATCH
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: () => _handleInstantRematch(context),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: bannerColor,
-                            foregroundColor: Colors.black,
-                            padding: const EdgeInsets.symmetric(vertical: 14.0),
-                            elevation: 8.0,
-                            shadowColor: bannerColor.withValues(alpha: 0.5),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16.0),
+                      // Primary Action: INSTANT REMATCH (Host-only) or Waiting status (Guest)
+                      if (session.isHost)
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: () => _handleInstantRematch(context),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: bannerColor,
+                              foregroundColor: Colors.black,
+                              padding: const EdgeInsets.symmetric(vertical: 14.0),
+                              elevation: 8.0,
+                              shadowColor: bannerColor.withValues(alpha: 0.5),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16.0),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.replay_rounded, size: 20.0),
+                                const SizedBox(width: 8.0),
+                                Flexible(
+                                  child: Text(
+                                    'REMATCH ${session.player2.name.toUpperCase()}',
+                                    style: const TextStyle(
+                                      fontSize: 14.5,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 1.1,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          child: Row(
+                        )
+                      else
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 14.0),
+                          decoration: BoxDecoration(
+                            color: const Color(0x1838BDF8),
+                            borderRadius: BorderRadius.circular(16.0),
+                            border: Border.all(
+                              color: const Color(0x3338BDF8),
+                              width: 1.0,
+                            ),
+                          ),
+                          child: const Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              const Icon(Icons.replay_rounded, size: 20.0),
-                              const SizedBox(width: 8.0),
-                              Flexible(
-                                child: Text(
-                                  'REMATCH ${session.player2.name.toUpperCase()}',
-                                  style: const TextStyle(
-                                    fontSize: 14.5,
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: 1.1,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                              SizedBox(
+                                width: 14.0,
+                                height: 14.0,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.0,
+                                  color: Color(0xFF38BDF8),
+                                ),
+                              ),
+                              SizedBox(width: 10.0),
+                              Text(
+                                'WAITING FOR HOST TO REMATCH',
+                                style: TextStyle(
+                                  color: Color(0xFF38BDF8),
+                                  fontSize: 13.0,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.8,
                                 ),
                               ),
                             ],
                           ),
                         ),
-                      ),
                       const SizedBox(height: 8.0),
 
                       // Secondary Action: CLOSE & DISMISS

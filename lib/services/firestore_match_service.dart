@@ -11,11 +11,21 @@ import '../models/live_reaction_event.dart';
 import '../models/match_invite.dart';
 import 'auth_service.dart';
 import 'friends_service.dart';
+import 'update/update_platform.dart';
 
 /// Exception thrown when no match document exists for the requested join code.
 class MatchNotFoundException implements Exception {
   final String message;
   const MatchNotFoundException(this.message);
+
+  @override
+  String toString() => message;
+}
+
+/// Exception thrown when a match room has been closed, cancelled, or concluded by the host.
+class MatchClosedException implements Exception {
+  final String message;
+  const MatchClosedException([this.message = 'This room has already been closed by the host.']);
 
   @override
   String toString() => message;
@@ -124,6 +134,12 @@ class FirestoreMatchService {
     int? initialRoundScore,
     String? initialChatMessage,
   }) async {
+    if (!isDeviceOnline()) {
+      throw const AuthRequiredException(
+        'Internet connection required to create an online 1v1 match.',
+      );
+    }
+
     // Ensure the host is authenticated with Firebase before creating a cloud match
     await _effectiveAuthService.ensureAuthenticated();
 
@@ -219,6 +235,12 @@ class FirestoreMatchService {
     required String joinCode,
     required UserProfile player2Profile,
   }) async {
+    if (!isDeviceOnline()) {
+      throw const AuthRequiredException(
+        'Internet connection required to join an online 1v1 match.',
+      );
+    }
+
     // Ensure the joining player is authenticated with Firebase
     await _effectiveAuthService.ensureAuthenticated();
 
@@ -239,9 +261,18 @@ class FirestoreMatchService {
         throw const SelfJoinException('You cannot join a match hosted by yourself.');
       }
 
+      // Check if room was closed, abandoned, or finished
+      if (match.status == MatchStatus.abandoned || match.status == MatchStatus.declined) {
+        throw const MatchClosedException('This room has been closed by the host.');
+      }
+
+      if (match.status == MatchStatus.completed || match.status == MatchStatus.forfeited) {
+        throw const MatchClosedException('This match has already ended.');
+      }
+
       // Ensure room is waiting and not already full
       if (match.status != MatchStatus.waitingForOpponent || match.player2 != null) {
-        throw const MatchAlreadyFullException('This match is already in progress or completed.');
+        throw const MatchAlreadyFullException('This room is already in progress with another player.');
       }
 
       final now = DateTime.now().millisecondsSinceEpoch;
@@ -691,6 +722,30 @@ class FirestoreMatchService {
       debugPrint('[FirestoreMatchService] Forfeit victory claimed for $clean by $winnerUid');
     } catch (e) {
       debugPrint('[FirestoreMatchService] Error claiming forfeit victory for $clean: $e');
+    }
+  }
+
+  /// Gracefully forfeits / resigns an active match.
+  ///
+  /// Marks document as [MatchStatus.forfeited], designates [forfeitedBy], and names [winnerUid].
+  Future<void> forfeitMatch({
+    required String matchId,
+    required String forfeiterUid,
+    required String winnerUid,
+  }) async {
+    final clean = matchId.trim().toUpperCase();
+    try {
+      await _matchesRef.doc(clean).update({
+        'status': MatchStatus.forfeited.key,
+        'forfeitedBy': forfeiterUid,
+        'winnerUid': winnerUid,
+        'updatedAt': DateTime.now().millisecondsSinceEpoch,
+      });
+      debugPrint(
+        '[FirestoreMatchService] Match $clean forfeited by $forfeiterUid; winner: $winnerUid',
+      );
+    } catch (e) {
+      debugPrint('[FirestoreMatchService] Error forfeiting match $clean: $e');
     }
   }
 

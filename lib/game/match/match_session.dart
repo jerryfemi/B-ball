@@ -135,6 +135,7 @@ class MatchSession {
   PlayerMatchState player1;
   PlayerMatchState player2;
   MatchTurnPhase phase;
+  final bool isHost;
   PlayerMatchState? forfeitWinner;
 
   bool get isForfeit => forfeitWinner != null;
@@ -144,6 +145,7 @@ class MatchSession {
     this.cloudMatchId,
     this.joinCode,
     this.isWaitingForOpponent = false,
+    this.isHost = true,
     MatchConfig? config,
     int? totalRounds,
     this.currentRoundIndex = 0,
@@ -204,7 +206,7 @@ class MatchSession {
         cloudMatch.latestTelemetryShooterUid != myUid;
 
     final p1State = PlayerMatchState(
-      id: 'you',
+      id: myPlayer.uid.isNotEmpty ? myPlayer.uid : 'you',
       name: myPlayer.displayName,
       avatar: myPlayer.avatarEmoji,
       accentColor: const Color(0xFF00FFCC),
@@ -212,7 +214,7 @@ class MatchSession {
     );
 
     final p2State = PlayerMatchState(
-      id: 'them',
+      id: oppPlayer.uid.isNotEmpty ? oppPlayer.uid : 'them',
       name: oppPlayer.displayName,
       avatar: oppPlayer.avatarEmoji,
       accentColor: const Color(0xFF38BDF8),
@@ -247,6 +249,7 @@ class MatchSession {
       cloudMatchId: cloudMatch.id,
       joinCode: cloudMatch.joinCode,
       isWaitingForOpponent: isWaiting,
+      isHost: isP1,
       totalRounds: cloudMatch.totalRounds,
       currentRoundIndex: (cloudMatch.currentRound - 1).clamp(
         0,

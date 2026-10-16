@@ -13,6 +13,7 @@ import 'game/ui/game_hud_overlay.dart';
 import 'services/auth_service.dart';
 import 'services/chat_read_receipt_service.dart';
 import 'services/update/update_service.dart';
+import 'services/vatar/vatar_bridge.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,6 +21,11 @@ Future<void> main() async {
   unawaited(UpdateService.instance.initialize());
   unawaited(ChatReadReceiptService.instance.init());
   await initializeForge2D();
+  try {
+    await VatarBridge.instance.init();
+  } catch (e) {
+    debugPrint('[Main] Vatar init notice: $e');
+  }
   try {
     if (Firebase.apps.isEmpty) {
       await Firebase.initializeApp(
@@ -57,8 +63,7 @@ class _BasketballAppState extends State<BasketballApp>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.hidden ||
-        state == AppLifecycleState.inactive) {
+        state == AppLifecycleState.hidden) {
       AudioEngine.onAppBackground();
     } else if (state == AppLifecycleState.resumed) {
       AudioEngine.onAppForeground();

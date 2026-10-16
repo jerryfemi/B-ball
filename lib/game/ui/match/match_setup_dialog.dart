@@ -7,12 +7,14 @@ import '../../../models/friend_profile.dart';
 import '../../../models/player_descriptor.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/firestore_match_service.dart';
+import '../../../services/update/update_platform.dart';
 import '../../match/match_config.dart';
 import '../../physics/shot_difficulty.dart';
 import '../common/app_avatar.dart';
 import '../common/app_button.dart';
 import '../common/app_colors.dart';
 import '../common/app_modal_dialog.dart';
+import '../common/difficulty_stepped_slider.dart';
 import 'components/friend_selector_ribbon.dart';
 import 'components/match_code_card.dart';
 
@@ -52,6 +54,21 @@ class MatchSetupDialog extends HookWidget {
 
     Future<void> generateUpfrontCode(UserProfile profile) async {
       if (isGeneratingCode.value) return;
+      if (!isDeviceOnline()) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Internet connection required to create a 1v1 match.',
+              ),
+              backgroundColor: Color(0xFFEF4444),
+              behavior: SnackBarBehavior.floating,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
       isGeneratingCode.value = true;
       try {
         final config = MatchConfig(
@@ -413,71 +430,17 @@ class MatchSetupDialog extends HookWidget {
           const SizedBox(height: 16.0),
 
           // Option 3: Shot Difficulty
-          const Text(
-            'DIFFICULTY PRESET',
-            style: TextStyle(
-              color: Color(0xFF94A3B8),
-              fontSize: 11.0,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.0,
-            ),
-          ),
-          const SizedBox(height: 8.0),
-          Row(
-            children: ShotDifficulty.values.map((diff) {
-              final isSelected = selectedDifficulty.value == diff;
-              return Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 3.0),
-                  child: InkWell(
-                    onTap: () {
-                      HapticFeedback.selectionClick();
-                      selectedDifficulty.value = diff;
-                    },
-                    borderRadius: BorderRadius.circular(12.0),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 8.0),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? const Color(0xFF1E293B)
-                            : const Color(0xFF1E2638),
-                        borderRadius: BorderRadius.circular(12.0),
-                        border: Border.all(
-                          color: isSelected
-                              ? const Color(0xFF38BDF8)
-                              : const Color(0xFF334155),
-                          width: isSelected ? 1.5 : 1.0,
-                        ),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            diff.emoji,
-                            style: const TextStyle(fontSize: 14.0),
-                          ),
-                          const SizedBox(height: 2.0),
-                          Text(
-                            diff.label,
-                            style: TextStyle(
-                              color: isSelected
-                                  ? const Color(0xFF38BDF8)
-                                  : const Color(0xFFCBD5E1),
-                              fontSize: 11.0,
-                              fontWeight: isSelected
-                                  ? FontWeight.w900
-                                  : FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
+          ValueListenableBuilder<ShotDifficulty>(
+            valueListenable: selectedDifficulty,
+            builder: (context, diff, _) {
+              return DifficultySteppedSlider(
+                value: diff,
+                onChanged: (newDiff) => selectedDifficulty.value = newDiff,
+                title: 'DIFFICULTY PRESET',
               );
-            }).toList(),
+            },
           ),
-          const SizedBox(height: 22.0),
+          const SizedBox(height: 20.0),
 
           // Primary Start Challenge Button
           AppPrimaryButton(

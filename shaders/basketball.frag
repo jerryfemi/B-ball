@@ -4,6 +4,7 @@ uniform vec2 u_center; // center of the ball in screen pixels
 uniform float u_radius; // radius of the ball in screen pixels
 uniform vec2 u_rotation; // x = yaw (spin around Y), y = pitch (spin around X)
 uniform float u_local_radius; // radius in local canvas coordinates
+uniform float u_fire_intensity; // 0.0 = normal leather, 1.0 = on fire
 
 out vec4 fragColor;
 
@@ -96,18 +97,16 @@ void main() {
     vec3 perturbedNormal = normalize(normal + bumpOffset);
     
     // --- 4. Authentic Composite Leather Color Grading ---
-    // Deep Wilson / Spalding composite orange palette
+    // Classic Wilson / Spalding composite orange palette
     vec3 leatherDark = vec3(0.70, 0.27, 0.03);  // Deep burnt sienna between pebbles
     vec3 leatherMid  = vec3(0.86, 0.38, 0.07);  // Warm composite orange body
     vec3 leatherPeak = vec3(0.96, 0.47, 0.11);  // Slightly worn pebble highlight tops
+    vec3 rubberSeamColor = vec3(0.12, 0.12, 0.12); // Matte charcoal rubber seams
     
     vec3 leatherColor = mix(leatherDark, leatherMid, pebbleBump);
     leatherColor = mix(leatherColor, leatherPeak, pow(pebbleBump, 2.5));
     // Add subtle raised ridge brightness
     leatherColor += vec3(0.06, 0.03, 0.01) * seamRidge;
-    
-    // Matte charcoal black rubber seam with subtle edge gradient
-    vec3 rubberSeamColor = vec3(0.12, 0.12, 0.12);
     
     vec3 baseColor = mix(leatherColor, rubberSeamColor, seamMask);
     
@@ -135,6 +134,21 @@ void main() {
     float pebbleGlint = pow(specDot, 36.0) * pebbleBump * 0.24;
     
     vec3 finalColor = litColor + vec3(broadSheen + pebbleGlint);
+    
+    // Incandescent streak aura: 1.0 = Electric Lightning (streak 6+), 2.0 = Inferno Red Fire (streak 10+)
+    if (u_fire_intensity > 0.0) {
+        float intensity = min(u_fire_intensity, 1.0);
+        float fresnel = pow(1.0 - max(dot(viewDir, normal), 0.0), 2.2) * intensity;
+        vec3 auraColor;
+        if (u_fire_intensity > 1.5) {
+            // Tier 3 (Streak 10+): Blazing Inferno Red / Solar Gold
+            auraColor = mix(vec3(1.0, 0.15, 0.02), vec3(1.0, 0.88, 0.20), fresnel * 0.85);
+        } else {
+            // Tier 2 (Streak 6+): Electric Lightning Cyan / Plasma White
+            auraColor = mix(vec3(0.0, 0.72, 1.0), vec3(0.90, 0.96, 1.0), fresnel * 0.9);
+        }
+        finalColor = mix(finalColor, auraColor * 1.35, fresnel * 0.75);
+    }
     
     // Smooth anti-aliased edge
     float alpha = smoothstep(1.0, 0.985, radius);

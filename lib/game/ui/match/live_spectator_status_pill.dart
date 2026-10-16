@@ -104,8 +104,8 @@ class LiveSpectatorStatusPill extends HookWidget {
                   color: const Color(0xFF38BDF8).withValues(
                     alpha: 0.40 + (breathe * 0.50),
                   ),
-                  blurRadius: 4.0 + (breathe * 8.0),
-                  spreadRadius: 1.0 + (breathe * 1.5),
+                  blurRadius: 6.0,
+                  spreadRadius: 1.0,
                 ),
               ],
             ),
@@ -164,8 +164,8 @@ class LiveSpectatorStatusPill extends HookWidget {
             ),
             BoxShadow(
               color: borderColor.withValues(alpha: 0.12 + (breathe * 0.15)),
-              blurRadius: 10.0 + (breathe * 8.0),
-              spreadRadius: breathe * 1.0,
+              blurRadius: 8.0,
+              spreadRadius: 1.0,
             ),
           ],
         ),

@@ -23,6 +23,9 @@ class RecordedShot {
   final bool isBankShot;
   final int points;
 
+  /// Player's consecutive make streak heading into this shot.
+  final int streak;
+
   const RecordedShot({
     required this.timestampMs,
     required this.startX,
@@ -36,6 +39,7 @@ class RecordedShot {
     this.isSwish = false,
     this.isBankShot = false,
     this.points = 0,
+    this.streak = 0,
   });
 
   RecordedShot copyWith({
@@ -43,6 +47,7 @@ class RecordedShot {
     bool? isSwish,
     bool? isBankShot,
     int? points,
+    int? streak,
   }) {
     return RecordedShot(
       timestampMs: timestampMs,
@@ -57,6 +62,7 @@ class RecordedShot {
       isSwish: isSwish ?? this.isSwish,
       isBankShot: isBankShot ?? this.isBankShot,
       points: points ?? this.points,
+      streak: streak ?? this.streak,
     );
   }
 
@@ -73,6 +79,7 @@ class RecordedShot {
     'swish': isSwish,
     'bank': isBankShot,
     'pts': points,
+    'streak': streak,
   };
 
   factory RecordedShot.fromJson(Map<String, dynamic> json) => RecordedShot(
@@ -88,6 +95,7 @@ class RecordedShot {
     isSwish: json['swish'] as bool? ?? false,
     isBankShot: json['bank'] as bool? ?? false,
     points: (json['pts'] as num?)?.toInt() ?? 0,
+    streak: (json['streak'] as num?)?.toInt() ?? 0,
   );
 }
 

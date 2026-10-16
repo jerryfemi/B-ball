@@ -126,10 +126,16 @@ class BallPhysics3D {
 
     // Fixed timestep accumulator: cap raw dt to prevent spiral of death on frame hitches
     _accumulator += dt.clamp(0.0, 0.05);
-    while (_accumulator >= fixedDt) {
+    int substeps = 0;
+    while (_accumulator >= fixedDt && substeps < 4) {
       _substep(fixedDt);
       _accumulator -= fixedDt;
+      substeps++;
       if (isSettled) break;
+    }
+    // Prevent accumulator accumulation beyond 2 fixed steps during sudden frame hitches
+    if (_accumulator > fixedDt * 2) {
+      _accumulator = fixedDt * 2;
     }
   }
 

@@ -66,9 +66,18 @@ class IncomingChallengeDialog extends HookConsumerWidget {
       } catch (e) {
         if (context.mounted) {
           isAccepting.value = false;
+          final raw = e.toString();
+          final cleanMsg = raw
+              .replaceAll(
+                RegExp(r'^(Exception:|Error:(\s*Dart Exception:)?)\s*', caseSensitive: false),
+                '',
+              )
+              .trim();
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Failed to join match: $e'),
+              content: Text(
+                cleanMsg.isNotEmpty ? cleanMsg : 'Failed to join match.',
+              ),
               backgroundColor: AppColors.accentRed,
             ),
           );

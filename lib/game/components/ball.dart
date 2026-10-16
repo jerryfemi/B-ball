@@ -13,6 +13,7 @@ import '../basketball_game.dart';
 import '../physics/ball_physics_3d.dart';
 import '../physics/perspective_camera.dart';
 import '../physics/launch_solver.dart';
+import 'fiery_trail.dart';
 import 'wall_impact_puff.dart';
 
 /// Basketball component featuring true 3D projectile kinematics,
@@ -46,7 +47,8 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
   // ── Static Shadow Sprite Cache (Eliminates per-frame ui.Gradient.radial recompilations) ──
   static ui.Image? _cachedShadowSprite;
   static const Rect _shadowSrcRect = Rect.fromLTWH(0, 0, 64, 64);
-  static final Paint _sharedShadowPaint = Paint()..filterQuality = FilterQuality.low;
+  static final Paint _sharedShadowPaint = Paint()
+    ..filterQuality = FilterQuality.low;
 
   static void _ensureShadowSprite() {
     if (_cachedShadowSprite != null) return;
@@ -56,11 +58,7 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
       ..shader = ui.Gradient.radial(
         const Offset(32, 32),
         32,
-        const [
-          Color(0xFF000000),
-          Color(0x73000000),
-          Color(0x00000000),
-        ],
+        const [Color(0xFF000000), Color(0x73000000), Color(0x00000000)],
         const [0.0, 0.55, 1.0],
       );
     canvas.drawRect(const Rect.fromLTWH(0, 0, 64, 64), paint);
@@ -75,8 +73,9 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     if (_cachedProgram != null) return Future.value(_cachedProgram);
     return _programFuture ??= () async {
       try {
-        final program =
-            await ui.FragmentProgram.fromAsset('shaders/basketball.frag');
+        final program = await ui.FragmentProgram.fromAsset(
+          'shaders/basketball.frag',
+        );
         _cachedProgram = program;
         return program;
       } catch (e) {
@@ -104,6 +103,33 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
   /// Whether this ball is controlled by the live player.
   bool get isLiveBall => true;
 
+  /// Active streak score for this ball. For live ball, returns the game's reactive streak.
+  /// Subclasses (e.g. GhostBasketball) override this to return their recorded shot streak.
+  int get activeStreak => isLiveBall ? game.streakNotifier.value : 0;
+
+  /// High-performance zero-allocation fiery trail and ember spark system.
+  final FieryBallTrail fieryTrail = FieryBallTrail();
+
+  /// Whether this ball is currently blazing with fire/lightning in active flight.
+  /// Strictly restricted to the upward swiping trajectory towards the net.
+  /// Only ignites once the player achieves a streak of 3 in a row (matches HUD flame badge)!
+  /// Extinguishes immediately when the ball enters the net, touches the floor, or bounces.
+  bool get isFlightOnFire {
+    if (!isLaunched) return false;
+    // Local player preference: if local player disabled streak FX, don't show on live ball.
+    // Opponent ghost balls bypass this so spectator can see opponent's flaming/lightning streak!
+    if (isLiveBall && !game.streakFxEnabledNotifier.value) return false;
+    if (activeStreak < 3) return false; // 3 in a row trigger (lightning at 3-5, fire at 6+)
+
+    // Extinguish once the ball has entered the net, bounced, or is near the floor
+    if (physics.passedThroughRim) return false;
+    if (physics.bounceCount > 0) return false;
+    if (physics.isDeadBall || physics.isSettled) return false;
+    if (physics.pos.y <= physics.radius + 0.08) return false;
+
+    return true;
+  }
+
   @protected
   void onScoredBasket({required bool isSwish, required bool isBankShot}) {
     _streakEvaluated = true;
@@ -121,7 +147,8 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     Vector3? initialPos3D,
   }) : super(priority: 6) {
     physics = BallPhysics3D(
-      initialPos: initialPos3D ??
+      initialPos:
+          initialPos3D ??
           Vector3(
             initialPosition.x / PerspectiveCamera3D.forge2dUnitsPerMeterAtZ0,
             0.25,
@@ -179,10 +206,14 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
 
   @override
   void onRemove() {
-    if (isLiveBall && isLaunched && !_streakEvaluated && !physics.passedThroughRim) {
+    if (isLiveBall &&
+        isLaunched &&
+        !_streakEvaluated &&
+        !physics.passedThroughRim) {
       _streakEvaluated = true;
       game.resetStreak();
     }
+    fieryTrail.reset();
     _shader?.dispose();
     _shader = null;
     super.onRemove();
@@ -209,10 +240,7 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
       bodyPos = initialPosition;
     }
 
-    final bodyDef = BodyDef(
-      type: BodyType.kinematic,
-      position: bodyPos,
-    );
+    final bodyDef = BodyDef(type: BodyType.kinematic, position: bodyPos);
 
     final body = world.createBody(bodyDef);
 
@@ -220,7 +248,9 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
       density: 1.0,
       material: SurfaceMaterial(friction: 0.8, restitution: 0.82),
       filter: forge2d.Filter(
-        categoryBits: isLiveBall ? 0x0008 : 0x0010, // Basketball vs Ghost category
+        categoryBits: isLiveBall
+            ? 0x0008
+            : 0x0010, // Basketball vs Ghost category
         maskBits: 0, // True 3D physics handles all collisions!
       ),
     );
@@ -255,6 +285,20 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
       // 1. Advance the 3D physics engine (substeps, torus rim, backboard, floor)
       physics.update(dt);
 
+      // Update fiery flame trail and incandescent embers strictly during upward flight
+      if (!isFlightOnFire) {
+        fieryTrail.reset();
+      } else {
+        fieryTrail.update(
+          dt: dt,
+          ballPos: physics.pos,
+          ballRadius: radius,
+          isOnFire: isFlightOnFire,
+          isLaunched: isLaunched && !physics.isSettled,
+          streak: activeStreak,
+        );
+      }
+
       // Evaluate missed shot for streak reset once the ball settles on the floor or times out
       if (isLiveBall &&
           !_streakEvaluated &&
@@ -267,9 +311,10 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
 
       // 2. Lifecycle cleanup:
       // Active in-flight balls get up to 4.0s full flight time.
-      // Once settled on the floor or after 2+ bounces, retire within 2.5s to prevent ball pileup.
-      final double maxLifetime =
-          (physics.isSettled || physics.bounceCount >= 2) ? 2.5 : 4.0;
+      // Once settled on the floor or after 2+ bounces, retire within 1.8s to allow natural bounces and roll.
+      final double maxLifetime = (physics.isSettled || physics.bounceCount >= 2)
+          ? 1.8
+          : 4.0;
       if (physics.timeSinceLaunch > maxLifetime) {
         removeFromParent();
         return;
@@ -304,7 +349,8 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
       // In front of Backboard glass (1), but BEHIND Rear Rim & mounting bracket (3) and Front Rim (5)
       // Priority 2: BackboardVisual (1) < Ball (2) < RearRimVisual (3) < FrontRimVisual (5)
       priority = 2;
-    } else if (physics.pos.z >= (BallPhysics3D.rimCenter.z - BallPhysics3D.rimRadius) ||
+    } else if (physics.pos.z >=
+            (BallPhysics3D.rimCenter.z - BallPhysics3D.rimRadius) ||
         (physics.passedThroughRim &&
             physics.pos.y <= BallPhysics3D.rimCenter.y &&
             physics.pos.y >= BallPhysics3D.netBottomY)) {
@@ -322,8 +368,9 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
   @override
   void render(Canvas canvas) {
     // Dynamic fade out over the final 0.8s of the ball's lifetime
-    final double maxLifetime =
-        (physics.isSettled || physics.bounceCount >= 2) ? 2.5 : 4.0;
+    final double maxLifetime = (physics.isSettled || physics.bounceCount >= 2)
+        ? 3.5
+        : 5.0;
     final double fadeOutStart = maxLifetime - 0.8;
     final double fadeOut = physics.timeSinceLaunch > fadeOutStart
         ? (1.0 - (physics.timeSinceLaunch - fadeOutStart) / 0.8).clamp(0.0, 1.0)
@@ -370,8 +417,7 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
           shadowImage,
           _shadowSrcRect,
           shadowRect,
-          _sharedShadowPaint
-            ..color = Color.fromRGBO(0, 0, 0, shadowAlpha),
+          _sharedShadowPaint..color = Color.fromRGBO(0, 0, 0, shadowAlpha),
         );
       }
     }
@@ -380,7 +426,8 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     // Only an actively in-flight ball heading toward the hoop (before floor bounce or netting)
     // evaluates or renders vertical plane shadows (backboard and back wall).
     // Bounced, rolling, or scored balls strictly skip this to eliminate GPU fill-rate waste.
-    final bool canCastVerticalShadows = isLaunched &&
+    final bool canCastVerticalShadows =
+        isLaunched &&
         !physics.isSettled &&
         physics.bounceCount == 0 &&
         !physics.passedThroughRim &&
@@ -390,10 +437,14 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
       // 2. Dynamic Backboard Acrylic Contact Shadow (Convergence Depth Cue)
       // Cast on the white acrylic backboard as the ball approaches within ~1.20m (Z >= 3.76m).
       final double distToBoard =
-          (BallPhysics3D.backboardZ - (physics.pos.z + physics.radius))
-              .clamp(0.0, 1.20);
-      final double boardProximity =
-          (1.0 - (distToBoard / 1.20)).clamp(0.0, 1.0);
+          (BallPhysics3D.backboardZ - (physics.pos.z + physics.radius)).clamp(
+            0.0,
+            1.20,
+          );
+      final double boardProximity = (1.0 - (distToBoard / 1.20)).clamp(
+        0.0,
+        1.0,
+      );
 
       if (distToBoard < 1.20 &&
           physics.pos.z <= BallPhysics3D.backboardZ + 0.05 &&
@@ -495,6 +546,16 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
       }
     }
 
+    // Render fiery ribbon and incandescent embers right behind the ball during upward flight
+    if (isFlightOnFire) {
+      fieryTrail.render(
+        canvas,
+        ballBodyPos: Offset(body.position.x, body.position.y),
+        camera3D: camera3D,
+        streak: activeStreak,
+      );
+    }
+
     // 3. Monotonic Perspective Foreshortening based on exact 3D Z-depth
     final scaleFactor = 1.38 * camera3D.scaleAtDepth(physics.pos.z);
 
@@ -528,16 +589,21 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
       shader.setFloat(3, physics.yaw);
       shader.setFloat(4, physics.pitch);
       shader.setFloat(5, radius);
+      final double fireUniform = isFlightOnFire
+          ? (activeStreak >= 10 ? 2.0 : 1.0)
+          : 0.0;
+      shader.setFloat(6, fireUniform);
 
       final paint = Paint()..shader = shader;
       final rect = Rect.fromCenter(
         center: Offset.zero,
-        width: radius * 2.2,
-        height: radius * 2.2,
+        width: radius * 2.02,
+        height: radius * 2.02,
       );
       canvas.drawRect(rect, paint);
     } else {
-      final paint = Paint()..color = const Color(0xFFFF6F00);
+      const fallbackColor = Color(0xFFFF6F00);
+      final paint = Paint()..color = fallbackColor;
       canvas.drawCircle(Offset.zero, radius, paint);
     }
 
@@ -551,22 +617,35 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
         game.isPaused) {
       return false;
     }
-    if (isLaunched || isEntering) return false;
-    // Lower ~45% of the screen (Y >= 11.0m in Forge2D world)
-    // or within generous radius of the ready ball
-    return point.y >= 11.0 || (point - body.position).length <= radius * 2.5;
+    // Allow immediate touch even while entering so rapid swipes are never ignored
+    if (isLaunched) return false;
+    // Lower ~55% of the screen (Y >= 9.5m in Forge2D world)
+    // or within generous 3.0x radius of the ready ball to avoid Android bottom gesture conflicts
+    return point.y >= 9.5 || (point - body.position).length <= radius * 3.0;
   }
 
   @override
   void onDragStart(DragStartEvent event) {
     super.onDragStart(event);
-    if (!isLaunched && !isEntering) {
+    if (!isLaunched) {
+      // If player swipes while ball is still gliding up, immediately snap to ready position
+      if (isEntering) {
+        isEntering = false;
+        enterProgress = 1.0;
+        physics.pos.y = 0.25;
+        final f2d = camera3D.projectToForge2D(
+          physics.pos.x,
+          physics.pos.y,
+          physics.pos.z,
+        );
+        body.setTransform(
+          Vector2(f2d.dx, f2d.dy),
+          const forge2d.Rot.identity(),
+        );
+      }
       _touchSamples.clear();
       _touchSamples.add(
-        _TouchSample(
-          event.canvasPosition,
-          _touchClock.elapsedMilliseconds,
-        ),
+        _TouchSample(event.canvasPosition, _touchClock.elapsedMilliseconds),
       );
     }
   }
@@ -574,39 +653,53 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
   @override
   void onDragUpdate(DragUpdateEvent event) {
     super.onDragUpdate(event);
-    if (!isLaunched && !isEntering) {
+    if (!isLaunched) {
+      if (isEntering) {
+        isEntering = false;
+        enterProgress = 1.0;
+      }
       final now = _touchClock.elapsedMilliseconds;
       _touchSamples.add(_TouchSample(event.canvasEndPosition, now));
 
-      // Keep sample buffer compact (retain last ~150ms)
+      // Retain sample buffer up to 350ms to preserve full intentional stroke trajectory
       while (_touchSamples.length > 2 &&
-          now - _touchSamples.first.timestampMs > 150) {
+          now - _touchSamples.first.timestampMs > 350) {
         _touchSamples.removeAt(0);
       }
     }
   }
 
   @override
+  void onDragCancel(DragCancelEvent event) {
+    super.onDragCancel(event);
+    _touchSamples.clear();
+  }
+
+  @override
   void onDragEnd(DragEndEvent event) {
     super.onDragEnd(event);
 
-    if (isLaunched || isEntering || _touchSamples.isEmpty) return;
+    if (isLaunched || _touchSamples.isEmpty) return;
+    if (isEntering) {
+      isEntering = false;
+      enterProgress = 1.0;
+    }
 
     final now = _touchClock.elapsedMilliseconds;
     final lastSample = _touchSamples.last;
+    final firstSample = _touchSamples.first;
 
     // 1. Resting finger cancel:
-    // Web browsers & iOS Safari PWA inject slight gesture recognition delays (100-140ms),
-    // so we provide a more generous 160ms window on web/PWA to ensure flick shots register seamlessly,
-    // while maintaining a crisp 100ms cancel window on native mobile.
-    final restingThresholdMs = kIsWeb ? 160 : 100;
+    // Web browsers & iOS Safari PWA inject slight gesture recognition delays (100-140ms).
+    // Provide a generous window (240ms on web, 180ms on native) so valid rapid flicks are never dropped,
+    // while still cancelling an intentionally held stationary finger.
+    final restingThresholdMs = kIsWeb ? 240 : 180;
     if (now - lastSample.timestampMs > restingThresholdMs) {
       _touchSamples.clear();
       return;
     }
 
-    // 2. Trailing ~90ms release window:
-    // Filter samples to strictly the final 90ms of finger motion
+    // 2. Trailing ~90ms release window for launch speed & momentum:
     final windowStartMs = lastSample.timestampMs - 90;
     final windowSamples = _touchSamples
         .where((s) => s.timestampMs >= windowStartMs)
@@ -615,8 +708,6 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     double vx = event.velocity.x;
     double vy = event.velocity.y;
 
-    // Primary estimator: trailing 90ms window displacement.
-    // Falls back to event.velocity only if fewer than 2 samples exist.
     if (windowSamples.length >= 2) {
       final firstInWindow = windowSamples.first;
       final dtSec =
@@ -627,27 +718,62 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
       }
     }
 
+    // Full gesture displacement vector (start of touch to liftoff)
+    final totalDx = lastSample.position.x - firstSample.position.x;
+    final totalDy = lastSample.position.y - firstSample.position.y;
+    final totalDtSec =
+        (lastSample.timestampMs - firstSample.timestampMs) / 1000.0;
+
+    // If release window decelerated near liftoff but the stroke was a rapid upward flick,
+    // use the overall stroke upward velocity as a floor to prevent dropped shots.
+    if (totalDtSec > 0.02 && totalDy < -40.0) {
+      final strokeVy = totalDy / totalDtSec;
+      if (strokeVy < vy) {
+        vy = strokeVy;
+      }
+    }
+
     _touchSamples.clear();
 
     // 3. Minimum upward flick threshold:
     // Only launch when swiped upwards toward the hoop
-    if (vy >= -120.0) return;
+    if (vy >= -90.0 && totalDy >= -35.0) return;
 
     // Platform-aware velocity normalization:
     // On touch devices (iOS / Android), human finger flicks generate velocities
     // ~2.0x-2.3x higher (~1400-2500 px/s) than mouse cursor drags (~600-900 px/s).
     // Damping touch velocity normalizes the input so the calibrated 720 px/s sweet spot
     // feels natural, responsive, and consistent across both touch and pointer devices.
-    final bool isTouchDevice = defaultTargetPlatform == TargetPlatform.iOS ||
+    final bool isTouchDevice =
+        defaultTargetPlatform == TargetPlatform.iOS ||
         defaultTargetPlatform == TargetPlatform.android;
     final double touchScale = isTouchDevice ? 0.46 : 1.0;
 
     // Upward swipe velocity in pixels/second (normalized for touch vs pointer)
     final swipeSpeedY = vy.abs() * touchScale;
-    // Lateral swipe ratio (aim angle dx / |dy| remains invariant since both axes scale identically)
-    final swipeRatioX = (vx / vy.abs()).clamp(-0.80, 0.80);
 
-    // 4. GamePigeon Power Plateau calculation via LaunchSolver with room difficulty
+    // 4. Robust Aim Direction Synthesis (Kills Sideways Thumb-Roll Glitch):
+    // Calculate aim from release window AND full gesture displacement.
+    final trailingAimRatio = (vx / vy.abs()).clamp(-0.80, 0.80);
+    double swipeRatioX;
+
+    if (totalDy.abs() >= 35.0) {
+      final overallAimRatio = (totalDx / totalDy.abs()).clamp(-0.80, 0.80);
+
+      // Blend overall intentional gesture path (70%) with release momentum (30%)
+      swipeRatioX = (overallAimRatio * 0.70) + (trailingAimRatio * 0.30);
+
+      // Liftoff noise rejection:
+      // If the player swiped straight (|overallAimRatio| <= 0.08), clamp any rogue thumb-roll hook
+      if (overallAimRatio.abs() <= 0.08) {
+        swipeRatioX = swipeRatioX.clamp(-0.09, 0.09);
+      }
+    } else {
+      swipeRatioX = trailingAimRatio;
+    }
+    swipeRatioX = swipeRatioX.clamp(-0.80, 0.80);
+
+    // 5. GamePigeon Power Plateau calculation via LaunchSolver with room difficulty
     final difficulty = game.currentDifficulty;
     final powerRatio = LaunchSolver.flickToPower(
       swipeSpeedY,

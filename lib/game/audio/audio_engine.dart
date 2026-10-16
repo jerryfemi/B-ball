@@ -54,6 +54,8 @@ class AudioEngine {
   }
 
   static bool _initialized = false;
+  static bool _isInitializing = false;
+  static Completer<void>? _initCompleter;
 
   // ── Monotonic stopwatch (zero-allocation rate-limiting) ──
   static final Stopwatch _clock = Stopwatch();
@@ -68,6 +70,7 @@ class AudioEngine {
   static AudioSource? _swishSource;
   static AudioSource? _bounceSource;
   static AudioSource? _buzzerSource;
+  static AudioSource? _preloadedMusicSource;
 
   // ── Background Music Jukebox (Afrobeats / Naija Soundtrack) ──
   static final List<MusicTrack> _playlist = [
@@ -124,9 +127,13 @@ class AudioEngine {
   /// Master volume scale for all sound effects (scaled to 60%).
   static const double masterVolume = 0.60;
 
-  /// Preloads SoLoud engine and all SFX into RAM for zero-latency in-flight playback.
+  /// Preloads SoLoud engine, all SFX, and the initial music track into RAM for zero-latency startup playback.
   static Future<void> init() async {
     if (_initialized) return;
+    if (_isInitializing) return _initCompleter?.future;
+    _isInitializing = true;
+    _initCompleter = Completer<void>();
+
     try {
       _clock.reset();
       _clock.start();
@@ -165,12 +172,33 @@ class AudioEngine {
       _bounceSource = results[3];
       _buzzerSource = results[4];
 
+      // Pre-warm initial track into RAM during startup so the first touch/swipe has 0ms audio latency
+      if (_playlist.isNotEmpty) {
+        _reshufflePlaylist();
+        final initialTrack = _playlist[_shuffledIndices[_currentShufflePos]];
+        try {
+          _preloadedMusicSource = await SoLoud.instance.loadAsset(
+            initialTrack.assetPath,
+            mode: LoadMode.memory,
+          );
+          debugPrint(
+            '[AudioEngine] 🎵 Pre-warmed initial track: ${initialTrack.title}',
+          );
+        } catch (e) {
+          debugPrint('[AudioEngine] Music pre-warm notice: $e');
+        }
+      }
+
       _initialized = true;
+      _initCompleter?.complete();
       debugPrint(
-        '[AudioEngine] SoLoud engine initialized with 5 preloaded SFX.',
+        '[AudioEngine] SoLoud engine initialized with preloaded SFX and music track.',
       );
     } catch (e) {
+      _initCompleter?.completeError(e);
       debugPrint('[AudioEngine] SoLoud preload error: $e');
+    } finally {
+      _isInitializing = false;
     }
   }
 
@@ -186,14 +214,6 @@ class AudioEngine {
       return;
     }
     _audioUnlocked = true;
-
-    // Immediately trigger a 0-volume ping to tell Web Audio context to transition from suspended to running
-    if (_bounceSource != null) {
-      try {
-        final dummyHandle = SoLoud.instance.play(_bounceSource!, volume: 0.0);
-        SoLoud.instance.stop(dummyHandle);
-      } catch (_) {}
-    }
 
     if (!_musicStarted) {
       _startMusic();
@@ -215,6 +235,39 @@ class AudioEngine {
   static void _startMusic() {
     if (_playlist.isEmpty || !SoLoud.instance.isInitialized) return;
     _musicStarted = true;
+
+    // Fast-path: If initial track was pre-warmed during init, play immediately with 0ms decode latency
+    if (_preloadedMusicSource != null) {
+      final source = _preloadedMusicSource!;
+      _preloadedMusicSource = null;
+      _currentMusicSource = source;
+
+      final effectiveVolume = isMuted
+          ? 0.0
+          : (musicVolume * 0.6).clamp(0.0, 1.0);
+      final gen = ++_musicGen;
+
+      _musicHandle = SoLoud.instance.play(
+        source,
+        volume: effectiveVolume,
+        looping: false,
+      );
+
+      _musicEventSub = source.soundEvents.listen((event) {
+        if (event.event == SoundEventType.handleIsNoMoreValid &&
+            gen == _musicGen) {
+          _onTrackComplete();
+        }
+      });
+
+      final track = _playlist[_shuffledIndices[_currentShufflePos]];
+      debugPrint(
+        '[AudioEngine] 🎵 Now playing (instant pre-warmed): ${track.title} '
+        '(${_currentShufflePos + 1}/${_shuffledIndices.length})',
+      );
+      return;
+    }
+
     _reshufflePlaylist();
     _playCurrentTrack();
   }
@@ -382,7 +435,8 @@ class AudioEngine {
     if (now - _lastRimUs < 80000) return; // 80ms debounce
     _lastRimUs = now;
 
-    final volume = (impactSpeed / 6.0).clamp(0.35, 1.0);
+    // Scaled by impact velocity with 10% reduction
+    final volume = ((impactSpeed / 6.0).clamp(0.35, 1.0) * 0.90);
     _safePlay(_rimSource, volume);
     _safeHaptic(HapticFeedback.heavyImpact);
   }
@@ -447,6 +501,8 @@ class AudioEngine {
   }
 
   static void _safeHaptic(Future<void> Function() hapticCall) {
+    // Avoid navigator.vibrate DOM IPC overhead on Web/PWA to ensure seamless Web Audio buffer scheduling
+    if (kIsWeb) return;
     try {
       hapticCall();
     } catch (_) {}
@@ -458,6 +514,7 @@ class AudioEngine {
     _musicEventSub = null;
     _musicHandle = null;
     _currentMusicSource = null;
+    _preloadedMusicSource = null;
     _musicStarted = false;
 
     _rimSource = null;

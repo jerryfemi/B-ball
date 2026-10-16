@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/cloud_match.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_match_service.dart';
+import '../services/vatar/vatar_bridge.dart';
 import 'audio/audio_engine.dart';
 import 'components/background.dart';
 import 'components/background/distant_wall_renderer.dart';
@@ -157,6 +158,7 @@ class BasketballGame extends Forge2DGame {
   // Reactive ValueNotifiers for zero-overhead Flutter UI binding
   final ValueNotifier<int> scoreNotifier = ValueNotifier<int>(0);
   final ValueNotifier<int> streakNotifier = ValueNotifier<int>(0);
+  final ValueNotifier<bool> streakFxEnabledNotifier = ValueNotifier<bool>(true);
   final ValueNotifier<int> timeRemainingNotifier = ValueNotifier<int>(
     roundDurationSeconds,
   );
@@ -229,6 +231,19 @@ class BasketballGame extends Forge2DGame {
     resumeEngine();
   }
 
+  /// Toggles player's streak visual effects (Lightning at 3+, Flame at 6+)
+  /// and persists their preference to local SharedPreferences.
+  Future<void> toggleStreakFx() async {
+    final nextVal = !streakFxEnabledNotifier.value;
+    streakFxEnabledNotifier.value = nextVal;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('streak_fx_enabled', nextVal);
+    } catch (e) {
+      debugPrint('[BasketballGame] Error persisting streak_fx_enabled: $e');
+    }
+  }
+
   @override
   void lifecycleStateChange(AppLifecycleState state) {
     super.lifecycleStateChange(state);
@@ -272,6 +287,7 @@ class BasketballGame extends Forge2DGame {
       vy: vy,
       vz: vz,
       backspin: backspin,
+      streak: streakNotifier.value,
     );
     _currentRoundShots.add(shot);
 
@@ -523,7 +539,7 @@ class BasketballGame extends Forge2DGame {
       if (is1v1Spectating &&
           session.phase == MatchTurnPhase.watchingOpponentReplay) {
         // Increment opponent's scoreboard bay only during deterministic recorded replay
-        if (session.activePlayerIndex == 1) {
+        if (session.opponentPlayer == session.player2) {
           player2MatchScoreNotifier.value += points;
         } else {
           player1MatchScoreNotifier.value += points;
@@ -619,6 +635,10 @@ class BasketballGame extends Forge2DGame {
     if (isNew) {
       bestScoreNotifier.value = score;
       _saveBestScore(score);
+    }
+    // Automatically submit score to Lagos Life leaderboard when running embedded
+    if (VatarBridge.instance.isInsideVatar && score > 0) {
+      unawaited(VatarBridge.instance.submitScore(score));
     }
     statsNotifier.value = GameRoundStats(
       score: score,
@@ -888,9 +908,29 @@ class BasketballGame extends Forge2DGame {
         ..addAll(oppCloudPlayer.roundScores);
     }
 
-    // Check if match was completed
-    if (updatedMatch.status == MatchStatus.completed) {
-      if (updatedMatch.winnerUid != null &&
+    // Check if match was completed or forfeited
+    if (updatedMatch.status == MatchStatus.completed ||
+        updatedMatch.status == MatchStatus.forfeited) {
+      if (updatedMatch.status == MatchStatus.forfeited) {
+        if (updatedMatch.forfeitedByUid != null &&
+            updatedMatch.forfeitedByUid!.isNotEmpty) {
+          if (updatedMatch.forfeitedByUid == myUid) {
+            session.forfeitWinner = session.player2;
+          } else {
+            session.forfeitWinner = session.player1;
+          }
+        } else if (updatedMatch.winnerUid != null &&
+            updatedMatch.winnerUid!.isNotEmpty) {
+          if (updatedMatch.winnerUid == session.player1.id) {
+            session.forfeitWinner = session.player1;
+          } else if (updatedMatch.winnerUid == session.player2.id) {
+            session.forfeitWinner = session.player2;
+          }
+        }
+        if (session.forfeitWinner == session.player1) {
+          AudioEngine.playSwish();
+        }
+      } else if (updatedMatch.winnerUid != null &&
           updatedMatch.winnerUid!.isNotEmpty) {
         if (updatedMatch.winnerUid == session.player1.id) {
           session.forfeitWinner = session.player1;
@@ -898,6 +938,12 @@ class BasketballGame extends Forge2DGame {
           session.forfeitWinner = session.player2;
         }
       }
+
+      _liveShotSubscription?.cancel();
+      _liveShotSubscription = null;
+      _liveMatchSubscription?.cancel();
+      _liveMatchSubscription = null;
+
       spectatorStatusNotifier.value = SpectatorConnectionStatus.connected;
       session.phase = MatchTurnPhase.matchComplete;
       gameStateNotifier.value = GameModeState.gameOver;
@@ -1108,14 +1154,14 @@ class BasketballGame extends Forge2DGame {
       session.totalRounds - 1,
     );
     final opponentBaseline = opponent.scoreUpToRound(replayedRoundIndex);
-    if (session.activePlayerIndex == 1) {
-      // Opponent is Player 1 (YOU bay)
-      player1MatchScoreNotifier.value = opponentBaseline;
-      player2MatchScoreNotifier.value = session.player2.totalScore;
-    } else {
+    if (opponent == session.player2) {
       // Opponent is Player 2 (THEM bay)
       player1MatchScoreNotifier.value = session.player1.totalScore;
       player2MatchScoreNotifier.value = opponentBaseline;
+    } else {
+      // Opponent is Player 1 (YOU bay)
+      player1MatchScoreNotifier.value = opponentBaseline;
+      player2MatchScoreNotifier.value = session.player2.totalScore;
     }
 
     activeGhostTelemetry = opponentTelemetry;
@@ -1301,6 +1347,17 @@ class BasketballGame extends Forge2DGame {
       CourtFloorRenderer.loadFloorImage(),
     ]);
 
+    // Bind Lagos Life frame pause and resume events
+    VatarBridge.instance.onPause(() {
+      if (gameStateNotifier.value == GameModeState.playing) {
+        pauseGame(manual: true);
+      }
+      AudioEngine.onAppBackground();
+    });
+    VatarBridge.instance.onResume(() {
+      AudioEngine.onAppForeground();
+    });
+
     // Asynchronously restore high score and check onboarding tour status
     unawaited(() async {
       try {
@@ -1314,6 +1371,9 @@ class BasketballGame extends Forge2DGame {
         if (!hasSeenTour) {
           isTourActiveNotifier.value = true;
         }
+
+        final streakFxPref = prefs.getBool('streak_fx_enabled') ?? true;
+        streakFxEnabledNotifier.value = streakFxPref;
 
         final user = AuthService.instance.currentUser;
         if (user != null) {
@@ -1372,10 +1432,7 @@ class BasketballGame extends Forge2DGame {
 
     // Priority 3: Rear rim arc, mounting bracket flange, and rear net mesh
     world.add(
-      RearRimVisual(
-        position: hoopCenterInMeters,
-        hoopWidth: hoopWidthInMeters,
-      ),
+      RearRimVisual(position: hoopCenterInMeters, hoopWidth: hoopWidthInMeters),
     );
 
     // Physics colliders (circles for rims, deflector plate, score sensor)
@@ -1416,6 +1473,33 @@ class BasketballGame extends Forge2DGame {
     return chosen;
   }
 
+  /// Caps active in-world balls to at most [maxAllowed] launched balls (default 2 in-flight/settled + 1 ready = 3 total).
+  /// Safely retires the oldest settled or scored ball to preserve mobile GPU fill rate.
+  void _pruneExcessBalls({int maxAllowed = 2}) {
+    final activeBalls = world.children
+        .whereType<Basketball>()
+        .where((b) => b.isLaunched)
+        .toList();
+    if (activeBalls.length <= maxAllowed) return;
+
+    // Only prune balls whose scoring/streak has already been evaluated
+    // (settled on floor, bounced 1+ times, scored through rim, or marked dead ball)
+    final candidates = activeBalls.where((b) {
+      return b.physics.isSettled ||
+          b.physics.bounceCount >= 1 ||
+          b.passedThroughRim ||
+          b.physics.isDeadBall;
+    }).toList();
+
+    if (candidates.isNotEmpty) {
+      candidates.sort(
+        (a, b) =>
+            b.physics.timeSinceLaunch.compareTo(a.physics.timeSinceLaunch),
+      );
+      candidates.first.removeFromParent();
+    }
+  }
+
   void _spawnReadyBall({bool animate = false}) {
     if (gameStateNotifier.value == GameModeState.gameOver) return;
 
@@ -1424,6 +1508,8 @@ class BasketballGame extends Forge2DGame {
         session.phase == MatchTurnPhase.watchingLiveOpponent) {
       return; // Do not spawn interactive balls when spectating live
     }
+
+    _pruneExcessBalls(maxAllowed: 2);
 
     final spawnX = animate ? _pickNextSpawnX() : 0.0;
     final ball = Basketball(
@@ -1434,10 +1520,13 @@ class BasketballGame extends Forge2DGame {
       onLaunched: () {
         if (gameStateNotifier.value == GameModeState.gameOver) return;
 
-        // Snappy feed of next ball: 250ms delay managed via Flame TimerComponent
+        // Hard cap: keep maximum 3 balls in world (2 launched + 1 ready)
+        _pruneExcessBalls(maxAllowed: 2);
+
+        // Ultra-responsive feed of next ball: 100ms delay to eliminate rapid swipe deadzones
         add(
           TimerComponent(
-            period: 0.25,
+            period: 0.10,
             removeOnFinish: true,
             onTick: () {
               if (isLoaded &&
@@ -1470,6 +1559,7 @@ class BasketballGame extends Forge2DGame {
     AudioEngine.dispose();
     scoreNotifier.dispose();
     streakNotifier.dispose();
+    streakFxEnabledNotifier.dispose();
     timeRemainingNotifier.dispose();
     bestScoreNotifier.dispose();
     isTourActiveNotifier.dispose();

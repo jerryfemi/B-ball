@@ -29,6 +29,9 @@ class GhostBasketball extends Basketball {
   bool get isLiveBall => false;
 
   @override
+  int get activeStreak => shot.streak;
+
+  @override
   Future<void> onLoad() async {
     await super.onLoad();
     physics.launch(
