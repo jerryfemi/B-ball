@@ -112,14 +112,14 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
 
   /// Whether this ball is currently blazing with fire/lightning in active flight.
   /// Strictly restricted to the upward swiping trajectory towards the net.
-  /// Only ignites once the player achieves an elite streak of 6 in a row!
+  /// Only ignites once the player achieves a streak of 3 in a row (matches HUD flame badge)!
   /// Extinguishes immediately when the ball enters the net, touches the floor, or bounces.
   bool get isFlightOnFire {
     if (!isLaunched) return false;
     // Local player preference: if local player disabled streak FX, don't show on live ball.
     // Opponent ghost balls bypass this so spectator can see opponent's flaming/lightning streak!
     if (isLiveBall && !game.streakFxEnabledNotifier.value) return false;
-    if (activeStreak < 6) return false; // 6 in a row trigger
+    if (activeStreak < 3) return false; // 3 in a row trigger (lightning at 3-5, fire at 6+)
 
     // Extinguish once the ball has entered the net, bounced, or is near the floor
     if (physics.passedThroughRim) return false;
