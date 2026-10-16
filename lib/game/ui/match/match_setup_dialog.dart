@@ -7,6 +7,7 @@ import '../../../models/friend_profile.dart';
 import '../../../models/player_descriptor.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/firestore_match_service.dart';
+import '../../../services/update/update_platform.dart';
 import '../../match/match_config.dart';
 import '../../physics/shot_difficulty.dart';
 import '../common/app_avatar.dart';
@@ -53,6 +54,21 @@ class MatchSetupDialog extends HookWidget {
 
     Future<void> generateUpfrontCode(UserProfile profile) async {
       if (isGeneratingCode.value) return;
+      if (!isDeviceOnline()) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Internet connection required to create a 1v1 match.',
+              ),
+              backgroundColor: Color(0xFFEF4444),
+              behavior: SnackBarBehavior.floating,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
       isGeneratingCode.value = true;
       try {
         final config = MatchConfig(
