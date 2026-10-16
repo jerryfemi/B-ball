@@ -1,4 +1,4 @@
-void reloadPage() {}
+Future<void> reloadPage() async {}
 
 Future<String?> fetchRemoteVersion() async => null;
 
