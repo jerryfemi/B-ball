@@ -11,6 +11,7 @@ import '../models/live_reaction_event.dart';
 import '../models/match_invite.dart';
 import 'auth_service.dart';
 import 'friends_service.dart';
+import 'update/update_platform.dart';
 
 /// Exception thrown when no match document exists for the requested join code.
 class MatchNotFoundException implements Exception {
@@ -133,6 +134,12 @@ class FirestoreMatchService {
     int? initialRoundScore,
     String? initialChatMessage,
   }) async {
+    if (!isDeviceOnline()) {
+      throw const AuthRequiredException(
+        'Internet connection required to create an online 1v1 match.',
+      );
+    }
+
     // Ensure the host is authenticated with Firebase before creating a cloud match
     await _effectiveAuthService.ensureAuthenticated();
 
@@ -228,6 +235,12 @@ class FirestoreMatchService {
     required String joinCode,
     required UserProfile player2Profile,
   }) async {
+    if (!isDeviceOnline()) {
+      throw const AuthRequiredException(
+        'Internet connection required to join an online 1v1 match.',
+      );
+    }
+
     // Ensure the joining player is authenticated with Firebase
     await _effectiveAuthService.ensureAuthenticated();
 
