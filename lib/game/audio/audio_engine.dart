@@ -94,6 +94,13 @@ class AudioEngine {
           'assets/music/short/Back To Life - Soul II Soul (Instrumental).mp3',
       durationSeconds: 30.0,
     ),
+    MusicTrack(
+      title: 'WAIT FOR U',
+      subtitle: 'Future ft. Drake, Tems (83 BPM)',
+      assetPath:
+          'assets/music/short/Future - WAIT FOR U ft. Drake, Tems.mp3',
+      durationSeconds: 55.0,
+    ),
   ];
 
   /// Reactive notifier for the currently selected music track index.
