@@ -1476,6 +1476,32 @@ class BasketballGame extends Forge2DGame {
     return chosen;
   }
 
+  /// Caps active in-world balls to at most [maxAllowed] launched balls (default 2 in-flight/settled + 1 ready = 3 total).
+  /// Safely retires the oldest settled or scored ball to preserve mobile GPU fill rate.
+  void _pruneExcessBalls({int maxAllowed = 2}) {
+    final activeBalls = world.children
+        .whereType<Basketball>()
+        .where((b) => b.isLaunched)
+        .toList();
+    if (activeBalls.length <= maxAllowed) return;
+
+    // Only prune balls whose scoring/streak has already been evaluated
+    // (settled on floor, bounced 1+ times, scored through rim, or marked dead ball)
+    final candidates = activeBalls.where((b) {
+      return b.physics.isSettled ||
+          b.physics.bounceCount >= 1 ||
+          b.passedThroughRim ||
+          b.physics.isDeadBall;
+    }).toList();
+
+    if (candidates.isNotEmpty) {
+      candidates.sort(
+        (a, b) => b.physics.timeSinceLaunch.compareTo(a.physics.timeSinceLaunch),
+      );
+      candidates.first.removeFromParent();
+    }
+  }
+
   void _spawnReadyBall({bool animate = false}) {
     if (gameStateNotifier.value == GameModeState.gameOver) return;
 
@@ -1485,6 +1511,8 @@ class BasketballGame extends Forge2DGame {
       return; // Do not spawn interactive balls when spectating live
     }
 
+    _pruneExcessBalls(maxAllowed: 2);
+
     final spawnX = animate ? _pickNextSpawnX() : 0.0;
     final ball = Basketball(
       // Rest directly on the hardwood court floor at the chosen baseline spot
@@ -1493,6 +1521,9 @@ class BasketballGame extends Forge2DGame {
       animateEntrance: animate,
       onLaunched: () {
         if (gameStateNotifier.value == GameModeState.gameOver) return;
+
+        // Hard cap: keep maximum 3 balls in world (2 launched + 1 ready)
+        _pruneExcessBalls(maxAllowed: 2);
 
         // Ultra-responsive feed of next ball: 100ms delay to eliminate rapid swipe deadzones
         add(
