@@ -182,12 +182,21 @@ class GameHudOverlay extends StatelessWidget {
           },
         ),
 
-        // 1d. Live Spectator Connection & Grace Guard Pill
+        // 1d. Live Spectator Connection & Grace Guard Pill (mounted strictly during active 1v1 spectator phase)
         Positioned(
           top: MediaQuery.of(context).padding.top + 76.0,
           left: 16.0,
           right: 16.0,
-          child: LiveSpectatorStatusPill(game: game),
+          child: ValueListenableBuilder<MatchSession?>(
+            valueListenable: game.matchSessionNotifier,
+            builder: (context, session, _) {
+              if (session == null ||
+                  session.phase != MatchTurnPhase.watchingLiveOpponent) {
+                return const SizedBox.shrink();
+              }
+              return LiveSpectatorStatusPill(game: game);
+            },
+          ),
         ),
 
         // 2. Floating Score Toast Spawner (Centered around hoop plane, non-blocking)
