@@ -41,9 +41,9 @@ class AudioEngine {
   static set sfxVolume(double value) =>
       sfxVolumeNotifier.value = value.clamp(0.0, 1.0);
 
-  /// Volume scale for background music (0.0 to 1.0). Default 69%.
+  /// Volume scale for background music (0.0 to 1.0). Default 68%.
   static final ValueNotifier<double> musicVolumeNotifier =
-      ValueNotifier<double>(0.69);
+      ValueNotifier<double>(0.68);
   static double get musicVolume => musicVolumeNotifier.value;
   static set musicVolume(double value) {
     musicVolumeNotifier.value = value.clamp(0.0, 1.0);
