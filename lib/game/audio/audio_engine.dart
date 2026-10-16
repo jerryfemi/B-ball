@@ -33,17 +33,17 @@ class AudioEngine {
   static bool get isMuted => isMutedNotifier.value;
   static set isMuted(bool value) => isMutedNotifier.value = value;
 
-  /// Volume scale for sound effects (0.0 to 1.0). Default 45%.
+  /// Volume scale for sound effects (0.0 to 1.0). Default 60%.
   static final ValueNotifier<double> sfxVolumeNotifier = ValueNotifier<double>(
-    0.45,
+    0.60,
   );
   static double get sfxVolume => sfxVolumeNotifier.value;
   static set sfxVolume(double value) =>
       sfxVolumeNotifier.value = value.clamp(0.0, 1.0);
 
-  /// Volume scale for background music (0.0 to 1.0). Default 35%.
+  /// Volume scale for background music (0.0 to 1.0). Default 69%.
   static final ValueNotifier<double> musicVolumeNotifier =
-      ValueNotifier<double>(0.35);
+      ValueNotifier<double>(0.69);
   static double get musicVolume => musicVolumeNotifier.value;
   static set musicVolume(double value) {
     musicVolumeNotifier.value = value.clamp(0.0, 1.0);
