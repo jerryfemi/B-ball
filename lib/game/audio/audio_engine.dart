@@ -82,7 +82,7 @@ class AudioEngine {
     const MusicTrack(
       title: 'Back Outside - BNXN, Sarz',
       assetPath: 'assets/music/short/BNXN, Sarz - Back Outside.mp3',
-      durationSeconds: 40.0,
+      durationSeconds: 39.0,
     ),
   ];
 
