@@ -192,15 +192,9 @@ class _FloatingToastWidget extends HookWidget {
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: glowColor.withValues(alpha: 0.60),
-                      blurRadius: 18.0,
-                      spreadRadius: 2.0,
-                      offset: const Offset(0, 3),
-                    ),
-                    const BoxShadow(
-                      color: Color(0x99000000),
-                      blurRadius: 12.0,
-                      offset: Offset(0, 4),
+                      color: glowColor.withValues(alpha: 0.40),
+                      blurRadius: 8.0,
+                      offset: const Offset(0, 2),
                     ),
                   ],
                 ),
@@ -220,14 +214,10 @@ class _FloatingToastWidget extends HookWidget {
                         fontSize: 14.0,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 1.2,
-                        shadows: [
+                        shadows: const [
                           Shadow(
-                            color: glowColor,
-                            blurRadius: 10.0,
-                          ),
-                          const Shadow(
-                            color: Color(0xFF000000),
-                            blurRadius: 4.0,
+                            color: Color(0xCC000000),
+                            blurRadius: 3.0,
                             offset: Offset(0, 1),
                           ),
                         ],
