@@ -1494,10 +1494,10 @@ class BasketballGame extends Forge2DGame {
       onLaunched: () {
         if (gameStateNotifier.value == GameModeState.gameOver) return;
 
-        // Snappy feed of next ball: 250ms delay managed via Flame TimerComponent
+        // Ultra-responsive feed of next ball: 100ms delay to eliminate rapid swipe deadzones
         add(
           TimerComponent(
-            period: 0.25,
+            period: 0.10,
             removeOnFinish: true,
             onTick: () {
               if (isLoaded &&
