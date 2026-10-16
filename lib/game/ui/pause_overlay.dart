@@ -73,13 +73,6 @@ class PauseOverlay extends HookWidget {
                     color: const Color(0x5538BDF8),
                     width: 1.4,
                   ),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x66000000),
-                      blurRadius: 12.0,
-                      offset: Offset(0, 6),
-                    ),
-                  ],
                 ),
                 child: SingleChildScrollView(
                   physics: const BouncingScrollPhysics(),
@@ -116,9 +109,6 @@ class PauseOverlay extends HookWidget {
                           fontSize: 20.0,
                           fontWeight: FontWeight.w900,
                           letterSpacing: 2.0,
-                          shadows: [
-                            Shadow(color: Color(0x8838BDF8), blurRadius: 10.0),
-                          ],
                         ),
                       ),
                       const SizedBox(height: 18.0),
@@ -163,13 +153,6 @@ class PauseOverlay extends HookWidget {
                               colors: [Color(0xFF22C55E), Color(0xFF16A34A)],
                             ),
                             borderRadius: BorderRadius.circular(16.0),
-                            boxShadow: const [
-                              BoxShadow(
-                                color: Color(0x4422C55E),
-                                blurRadius: 12.0,
-                                offset: Offset(0, 4),
-                              ),
-                            ],
                           ),
                           child: Material(
                             color: Colors.transparent,
