@@ -223,10 +223,10 @@ class _LiveTurnTransitionOverlayState extends State<LiveTurnTransitionOverlay>
                           boxShadow: [
                             BoxShadow(
                               color: accentColor.withValues(
-                                alpha: 0.35 * _pulseGlowAnimation.value,
+                                alpha: 0.40 * _pulseGlowAnimation.value,
                               ),
-                              blurRadius: 28.0 * _pulseGlowAnimation.value,
-                              spreadRadius: 4.0,
+                              blurRadius: 18.0,
+                              spreadRadius: 3.0,
                             ),
                           ],
                         ),
