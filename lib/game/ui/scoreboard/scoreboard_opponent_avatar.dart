@@ -63,19 +63,8 @@ class ScoreboardOpponentAvatar extends HookConsumerWidget {
     void handleAvatarTap() {
       if (isWaiting && joinCode != null && joinCode!.isNotEmpty) {
         Clipboard.setData(ClipboardData(text: joinCode!));
-        HapticFeedback.mediumImpact();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Match code $joinCode copied! Share it with a friend.'),
-            backgroundColor: const Color(0xFF1E2638),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10.0),
-              side: const BorderSide(color: Color(0xFF38BDF8), width: 1.0),
-            ),
-            duration: const Duration(seconds: 2),
-          ),
-        );
+        // In-place confirmation in the avatar's own banter bubble (no SnackBar).
+        triggerBanterBubble('✓ CODE $joinCode COPIED');
       } else {
         onTap?.call();
       }
