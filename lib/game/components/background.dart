@@ -27,6 +27,11 @@ class GameBackground extends Component with HasGameReference {
   ui.Image? _cachedImage;
   Vector2? _cachedSize;
 
+  // Blit state cached alongside the image: zero allocations per frame.
+  static final Paint _blitPaint = Paint()..filterQuality = FilterQuality.low;
+  Rect _srcRect = Rect.zero;
+  Rect _dstRect = Rect.zero;
+
   @override
   Future<void> onLoad() async {
     await super.onLoad();
@@ -83,6 +88,13 @@ class GameBackground extends Component with HasGameReference {
     picture.dispose();
 
     _cachedSize = Vector2(width, height);
+    _srcRect = Rect.fromLTWH(
+      0,
+      0,
+      _cachedImage!.width.toDouble(),
+      _cachedImage!.height.toDouble(),
+    );
+    _dstRect = Rect.fromLTWH(0, 0, width, height);
   }
 
   @override
@@ -101,18 +113,9 @@ class GameBackground extends Component with HasGameReference {
       _rebuildCache(width, height);
     }
 
-    if (_cachedImage != null) {
-      canvas.drawImageRect(
-        _cachedImage!,
-        Rect.fromLTWH(
-          0,
-          0,
-          _cachedImage!.width.toDouble(),
-          _cachedImage!.height.toDouble(),
-        ),
-        Rect.fromLTWH(0, 0, width, height),
-        Paint()..filterQuality = FilterQuality.low,
-      );
+    final image = _cachedImage;
+    if (image != null) {
+      canvas.drawImageRect(image, _srcRect, _dstRect, _blitPaint);
     }
   }
 
