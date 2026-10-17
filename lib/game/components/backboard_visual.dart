@@ -4,26 +4,29 @@ import 'dart:ui' as ui;
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 
+import '../basketball_game.dart';
+import '../fx/net_simulation.dart';
+import '../physics/ball_physics_3d.dart';
 import 'ball.dart';
 
 /// Renders the GamePigeon scooped-shield backboard, 3D cylindrical pole,
 /// wall drop shadows, rear rim arc, and back net mesh.
 /// Configured with priority = 1 so it renders behind the basketball (priority = 2).
-class BackboardVisual extends PositionComponent {
+class BackboardVisual extends PositionComponent
+    with HasGameReference<BasketballGame> {
   final double hoopWidth;
   final double hoopDepth;
 
-  double _currentNetDepth = 0.9;
-  double _currentBottomWidth = 0.55;
-  double _netDepthVelocity = 0.0;
-  double _netWidthVelocity = 0.0;
-  double _currentSway = 0.0;
-  double _swayVelocity = 0.0;
+  /// Cloth net shared with [FrontRimVisual] (front half) and
+  /// [RearRimVisual] (rear half). Hoop-local units, origin at the rim center.
+  late final NetSimulation net = NetSimulation(
+    rimHalfWidth: hoopWidth / 2,
+    rimHalfDepth: hoopDepth / 2,
+  );
 
-  // Shared getters for FrontRimVisual synchronization
-  double get currentNetDepth => _currentNetDepth;
-  double get currentBottomWidth => _currentBottomWidth;
-  double get currentSway => _currentSway;
+  /// Physical rim radius (0.27m) → drawn rim half-width, used to map the
+  /// ball's 3D depth into the net's local space.
+  static const double _physicalRimRadius = 0.27;
 
   BackboardVisual({
     required Vector2 position,
@@ -40,64 +43,30 @@ class BackboardVisual extends PositionComponent {
   void update(double dt) {
     super.update(dt);
 
-    bool ballInNet = false;
-    double maxDepth = 0.9;
-    double targetWidth = 0.55;
+    final depthScale = (hoopWidth / 2) / _physicalRimRadius;
 
-    // Plain iteration with a type check: no whereType() iterable or `?? []`
-    // list allocated every frame.
+    // Feed every ball near the hoop into the cloth net. Plain iteration with a
+    // type check: no whereType() iterable allocated per frame.
     final children = parent?.children ?? const <Component>[];
     for (final child in children) {
       if (child is! Basketball) continue;
       final ball = child;
-      if (ball.passedThroughRim &&
-          ball.body.position.y >= 4.9 &&
-          ball.body.position.y <= 6.2 &&
-          ball.body.linearVelocity.y > 0) {
-        if (ball.body.position.x.abs() < hoopWidth * 0.45) {
-          ballInNet = true;
-          double stretchDepth = ball.body.position.y - 5.0 + ball.radius * 0.7;
-          if (stretchDepth > maxDepth) maxDepth = stretchDepth;
-          targetWidth = 0.85;
+      if (!ball.isLaunched) continue;
+      final pz = ball.physics.pos.z;
+      if (pz < 4.0 || pz > 5.0) continue;
 
-          // Impart lateral sway from ball horizontal speed
-          _swayVelocity = (ball.body.linearVelocity.x * 0.35).clamp(-2.0, 2.0);
-          _currentSway = (ball.body.position.x * 0.25).clamp(-0.20, 0.20);
-        }
-      }
+      final cam = ball.camera3D;
+      net.pushBall(
+        bx: ball.body.position.x - position.x,
+        bh: ball.body.position.y - position.y,
+        bz: (BallPhysics3D.rimCenter.z - pz) * depthScale,
+        radius: ball.radius * 1.38 * cam.scaleAtDepth(pz),
+        fallSpeed: -ball.physics.vel.y * depthScale,
+        dt: dt,
+      );
     }
 
-    if (ballInNet) {
-      _currentNetDepth = maxDepth.clamp(0.85, 1.35);
-      _currentBottomWidth = targetWidth.clamp(0.55, 0.85);
-      _netDepthVelocity = 1.8;
-      _netWidthVelocity = -1.2;
-    } else {
-      // Numerical stability: clamp timestep
-      final clampedDt = dt.clamp(0.001, 0.02);
-      // Under-damped spring values for a fast, loose, non-viscous wobbly net
-      const double kStiffness = 120.0;
-      const double kDamping = 3.5;
-
-      double depthForce =
-          kStiffness * (0.9 - _currentNetDepth) - kDamping * _netDepthVelocity;
-      _netDepthVelocity += depthForce * clampedDt;
-      _currentNetDepth += _netDepthVelocity * clampedDt;
-      _currentNetDepth = _currentNetDepth.clamp(0.70, 1.45);
-
-      double widthForce =
-          kStiffness * (0.55 - _currentBottomWidth) -
-          kDamping * _netWidthVelocity;
-      _netWidthVelocity += widthForce * clampedDt;
-      _currentBottomWidth += _netWidthVelocity * clampedDt;
-      _currentBottomWidth = _currentBottomWidth.clamp(0.38, 0.92);
-
-      // Lateral harmonic sway jiggle (fast and loose)
-      double swayForce = 90.0 * (0.0 - _currentSway) - 2.8 * _swayVelocity;
-      _swayVelocity += swayForce * clampedDt;
-      _currentSway += _swayVelocity * clampedDt;
-      _currentSway = _currentSway.clamp(-0.25, 0.25);
-    }
+    net.update(dt);
   }
 
   /// The backboard, pole and wall shadows never change, so they are recorded
@@ -119,7 +88,14 @@ class BackboardVisual extends PositionComponent {
   @override
   void render(Canvas canvas) {
     super.render(canvas);
+    final fx = game.hoopFx;
+    final shaking = fx.boardOffsetX != 0.0 || fx.boardOffsetY != 0.0;
+    if (shaking) {
+      canvas.save();
+      canvas.translate(fx.boardOffsetX, fx.boardOffsetY);
+    }
     canvas.drawPicture(_staticPicture ??= _recordStaticPicture());
+    if (shaking) canvas.restore();
   }
 
   @override
