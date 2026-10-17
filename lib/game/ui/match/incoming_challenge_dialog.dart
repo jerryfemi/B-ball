@@ -12,6 +12,7 @@ import '../common/app_avatar.dart';
 import '../common/app_button.dart';
 import '../common/app_colors.dart';
 import '../common/app_modal_dialog.dart';
+import '../common/inline_feedback.dart';
 
 /// Modal dialog presented to a player when receiving an incoming 1v1 match challenge.
 class IncomingChallengeDialog extends HookConsumerWidget {
@@ -46,9 +47,13 @@ class IncomingChallengeDialog extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(currentUserProfileProvider).value;
     final isAccepting = useState(false);
+    final acceptError = useState<String?>(null);
+    // Closed / full / missing rooms can't be fixed by retrying.
+    final acceptErrorIsFinal = useState(false);
 
     Future<void> handleAccept() async {
       if (isAccepting.value || user == null) return;
+      acceptError.value = null;
       isAccepting.value = true;
       HapticFeedback.mediumImpact();
 
@@ -66,20 +71,13 @@ class IncomingChallengeDialog extends HookConsumerWidget {
       } catch (e) {
         if (context.mounted) {
           isAccepting.value = false;
-          final raw = e.toString();
-          final cleanMsg = raw
-              .replaceAll(
-                RegExp(r'^(Exception:|Error:(\s*Dart Exception:)?)\s*', caseSensitive: false),
-                '',
-              )
-              .trim();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                cleanMsg.isNotEmpty ? cleanMsg : 'Failed to join match.',
-              ),
-              backgroundColor: AppColors.accentRed,
-            ),
+          acceptErrorIsFinal.value = e is MatchClosedException ||
+              e is MatchAlreadyFullException ||
+              e is MatchNotFoundException ||
+              e is SelfJoinException;
+          acceptError.value = InlineErrorPanel.friendlyMessage(
+            e,
+            fallback: 'Failed to join match.',
           );
         }
       }
@@ -260,13 +258,35 @@ class IncomingChallengeDialog extends HookConsumerWidget {
           ),
           const SizedBox(height: 20.0),
 
+          // Inline join failure (replaces the old floating SnackBar)
+          InlineFeedbackSwitcher(
+            child: acceptError.value == null
+                ? const SizedBox.shrink(key: ValueKey('no-error'))
+                : Padding(
+                    key: const ValueKey('accept-error'),
+                    padding: const EdgeInsets.only(bottom: 10.0),
+                    child: InlineErrorPanel(
+                      icon: acceptErrorIsFinal.value
+                          ? Icons.sports_basketball_outlined
+                          : Icons.wifi_off_rounded,
+                      title: acceptErrorIsFinal.value
+                          ? 'ROOM UNAVAILABLE'
+                          : 'COULDN\'T JOIN',
+                      message: acceptError.value!,
+                      onRetry: acceptErrorIsFinal.value ? null : handleAccept,
+                    ),
+                  ),
+          ),
+
           // Accept Action CTA
           AppPrimaryButton(
             label: isAccepting.value ? 'JOINING ROOM...' : 'ACCEPT CHALLENGE ➔',
             backgroundColor: AppColors.accentNeonCyan,
             foregroundColor: AppColors.buttonDarkText,
             iconData: Icons.sports_basketball_rounded,
-            onPressed: isAccepting.value ? null : handleAccept,
+            onPressed: (isAccepting.value || acceptErrorIsFinal.value)
+                ? null
+                : handleAccept,
           ),
           const SizedBox(height: 8.0),
 
