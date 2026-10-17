@@ -6,7 +6,8 @@ uniform vec2 u_rotation; // x = yaw (spin around Y), y = pitch (spin around X)
 uniform float u_local_radius; // radius in local canvas coordinates
 uniform float u_fire_intensity; // 0.0 = normal leather, 1.0 = on fire
 uniform float u_detail; // 0..1 pebble detail from AdaptiveQuality (float index 7)
-uniform vec2 u_scale; // squash & stretch: x/y axis scale (float indices 8, 9)
+uniform vec2 u_scale; // squash & stretch: x/y axis scale (float indices 8, 9).
+                      // A negative y mirrors the ball vertically (floor reflection).
 
 out vec4 fragColor;
 
@@ -24,7 +25,12 @@ void main() {
 
     // Squash & stretch: sample a deformed sphere (e.g. wider + flatter on a
     // floor bounce). Clamped so an unset uniform can never divide by zero.
-    uv /= max(u_scale, vec2(0.5));
+    uv /= max(abs(u_scale), vec2(0.5));
+    // Mirrored draw (floor reflection): flip the image upside down, so the
+    // lit top of the ball shows at the far end of the reflection.
+    if (u_scale.y < 0.0) {
+        uv.y = -uv.y;
+    }
 
     float radius = length(uv);
     if (radius > 1.0) {
