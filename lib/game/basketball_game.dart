@@ -1413,11 +1413,16 @@ class BasketballGame extends Forge2DGame {
   Future<void> onLoad() async {
     await super.onLoad();
     await Future.wait([
-      AudioEngine.init(),
       Basketball.loadProgram(),
       DistantWallRenderer.loadBrickImage(),
       CourtFloorRenderer.loadFloorImage(),
     ]);
+
+    // Audio must never block the court from appearing: on a slow network the
+    // SoLoud WASM module can take 15s+ (or fail), and awaiting it here used to
+    // abort onLoad and leave players on a blank screen. It finishes in the
+    // background; AudioEngine retries on the player's first tap if needed.
+    unawaited(AudioEngine.init());
 
     unawaited(quality.load());
 
