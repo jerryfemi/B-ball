@@ -816,15 +816,9 @@ class PauseOverlay extends HookWidget {
         );
       }
 
+      // The explicit CONFIRM FORFEIT dialog is the confirmation; returning to
+      // the court is the outcome — no floating SnackBar.
       game.exitToSoloMode();
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('You forfeited the match.'),
-          backgroundColor: Color(0xFFEF4444),
-          duration: Duration(seconds: 3),
-        ),
-      );
     }
   }
 }
