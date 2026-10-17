@@ -15,6 +15,7 @@ import '../common/app_button.dart';
 import '../common/app_colors.dart';
 import '../common/app_modal_dialog.dart';
 import '../common/difficulty_stepped_slider.dart';
+import '../common/inline_feedback.dart';
 import 'components/friend_selector_ribbon.dart';
 import 'components/match_code_card.dart';
 
@@ -51,22 +52,16 @@ class MatchSetupDialog extends HookWidget {
     final isGeneratingCode = useState(false);
     final precreatedMatch = useState<CloudMatch?>(null);
     final codeCopied = useState(false);
+    // Inline states that replace floating SnackBars.
+    final codeError = useState<String?>(null);
+    final showPickFriendHint = useState(false);
 
     Future<void> generateUpfrontCode(UserProfile profile) async {
       if (isGeneratingCode.value) return;
+      codeError.value = null;
       if (!isDeviceOnline()) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Internet connection required to create a 1v1 match.',
-              ),
-              backgroundColor: Color(0xFFEF4444),
-              behavior: SnackBarBehavior.floating,
-              duration: Duration(seconds: 3),
-            ),
-          );
-        }
+        codeError.value =
+            'You\'re offline. Reconnect to the internet to create a 1v1 match.';
         return;
       }
       isGeneratingCode.value = true;
@@ -94,11 +89,9 @@ class MatchSetupDialog extends HookWidget {
       } catch (e) {
         if (context.mounted) {
           isGeneratingCode.value = false;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Failed to generate code: $e'),
-              backgroundColor: const Color(0xFFEF4444),
-            ),
+          codeError.value = InlineErrorPanel.friendlyMessage(
+            e,
+            fallback: 'Couldn\'t generate a match code. Please try again.',
           );
         }
       }
@@ -110,31 +103,14 @@ class MatchSetupDialog extends HookWidget {
         ClipboardData(text: precreatedMatch.value!.joinCode),
       );
       HapticFeedback.lightImpact();
+      // MatchCodeCard renders its own copied state — no SnackBar needed.
       codeCopied.value = true;
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Match code ${precreatedMatch.value!.joinCode} copied!',
-            ),
-            backgroundColor: const Color(0xFF1E2638),
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
     }
 
     void onStartPressed() {
       HapticFeedback.mediumImpact();
       if (opponentMode.value == 1 && selectedFriend.value == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Please select a friend to challenge, or switch to Open Code.'),
-            backgroundColor: AppColors.accentRed,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        showPickFriendHint.value = true;
         return;
       }
 
@@ -290,15 +266,29 @@ class MatchSetupDialog extends HookWidget {
 
           // Opponent Details / Options
           if (opponentMode.value == 0)
-            MatchCodeCard(
-              precreatedMatch: precreatedMatch.value,
-              isGeneratingCode: isGeneratingCode.value,
-              codeCopied: codeCopied.value,
-              profile: profile,
-              onGenerateCode: () {
-                if (profile != null) generateUpfrontCode(profile);
-              },
-              onCopyCode: copyCode,
+            // The code card itself morphs into an inline error state with RETRY.
+            InlineFeedbackSwitcher(
+              child: codeError.value != null
+                  ? InlineErrorPanel(
+                      key: const ValueKey('code-error'),
+                      title: 'MATCH CODE UNAVAILABLE',
+                      message: codeError.value!,
+                      onRetry: profile == null
+                          ? null
+                          : () => generateUpfrontCode(profile),
+                      onDismiss: () => codeError.value = null,
+                    )
+                  : MatchCodeCard(
+                      key: const ValueKey('code-card'),
+                      precreatedMatch: precreatedMatch.value,
+                      isGeneratingCode: isGeneratingCode.value,
+                      codeCopied: codeCopied.value,
+                      profile: profile,
+                      onGenerateCode: () {
+                        if (profile != null) generateUpfrontCode(profile);
+                      },
+                      onCopyCode: copyCode,
+                    ),
             )
           else
             FriendSelectorRibbon(
@@ -306,6 +296,7 @@ class MatchSetupDialog extends HookWidget {
               selectedFriend: selectedFriend.value,
               onFriendSelected: (friend) {
                 selectedFriend.value = friend;
+                showPickFriendHint.value = false;
               },
               onUseOpenCode: () => opponentMode.value = 0,
             ),
@@ -441,6 +432,26 @@ class MatchSetupDialog extends HookWidget {
             },
           ),
           const SizedBox(height: 20.0),
+
+          // Inline validation hint (replaces the old floating SnackBar)
+          InlineFeedbackSwitcher(
+            child: (showPickFriendHint.value &&
+                    opponentMode.value == 1 &&
+                    selectedFriend.value == null)
+                ? Padding(
+                    key: const ValueKey('pick-friend'),
+                    padding: const EdgeInsets.only(bottom: 10.0),
+                    child: InlineErrorPanel(
+                      icon: Icons.people_alt_rounded,
+                      accent: AppColors.accentAmber,
+                      title: 'PICK A FRIEND',
+                      message:
+                          'Select a friend to challenge above, or switch to Open Code.',
+                      onDismiss: () => showPickFriendHint.value = false,
+                    ),
+                  )
+                : const SizedBox.shrink(key: ValueKey('no-hint')),
+          ),
 
           // Primary Start Challenge Button
           AppPrimaryButton(
