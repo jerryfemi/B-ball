@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 
+import '../basketball_game.dart';
 import 'backboard_visual.dart';
 
 /// Renders the rear half of the metal rim, solid steel mounting bracket neck,
@@ -20,13 +21,10 @@ import 'backboard_visual.dart';
 /// This mathematically guarantees that balls hitting the bank zone bounce visibly
 /// in front of the backboard faceplate while remaining solidly behind the rear rim
 /// and mounting bracket — completely eliminating any visual "slip-through" glitch.
-class RearRimVisual extends PositionComponent {
+class RearRimVisual extends PositionComponent
+    with HasGameReference<BasketballGame> {
   final double hoopWidth;
   final double hoopDepth;
-
-  double _currentNetDepth = 0.9;
-  double _currentBottomWidth = 0.55;
-  double _currentSway = 0.0;
 
   BackboardVisual? _cachedBackboard;
 
@@ -44,30 +42,17 @@ class RearRimVisual extends PositionComponent {
   @override
   void update(double dt) {
     super.update(dt);
-
     _cachedBackboard ??=
         parent?.children.whereType<BackboardVisual>().firstOrNull;
-    if (_cachedBackboard != null) {
-      _currentNetDepth = _cachedBackboard!.currentNetDepth;
-      _currentBottomWidth = _cachedBackboard!.currentBottomWidth;
-      _currentSway = _cachedBackboard!.currentSway;
-    }
   }
 
-  // ── Dirty-checked picture cache ──
-  // The rim metal never changes and the net only wobbles for a few seconds after a make.
-  // The picture is re-recorded only when the synced net state actually moves,
-  // so at rest the render loop allocates nothing.
-  static const double _netEpsilon = 0.0005;
+  // ── Version-checked picture cache ──
+  // The rim metal never changes and the cloth net only moves for a moment
+  // after contact. The picture is re-recorded only when the net simulation
+  // reports a new version, so at rest the render loop allocates nothing.
+  // Rim wobble (HoopFx) is a translation applied at draw time — free.
   ui.Picture? _picture;
-  double _recordedDepth = double.nan;
-  double _recordedWidth = double.nan;
-  double _recordedSway = double.nan;
-
-  bool get _netMoved =>
-      !((_currentNetDepth - _recordedDepth).abs() <= _netEpsilon &&
-          (_currentBottomWidth - _recordedWidth).abs() <= _netEpsilon &&
-          (_currentSway - _recordedSway).abs() <= _netEpsilon);
+  int _recordedNetVersion = -1;
 
   ui.Picture _recordPicture() {
     final recorder = ui.PictureRecorder();
@@ -77,20 +62,26 @@ class RearRimVisual extends PositionComponent {
     _renderMountingBracket(canvas);
     _renderRearNet(canvas);
     _renderRearRim(canvas);
-    _recordedDepth = _currentNetDepth;
-    _recordedWidth = _currentBottomWidth;
-    _recordedSway = _currentSway;
+    _recordedNetVersion = _cachedBackboard?.net.version ?? -1;
     return recorder.endRecording();
   }
 
   @override
   void render(Canvas canvas) {
     super.render(canvas);
-    if (_picture == null || _netMoved) {
+    final netVersion = _cachedBackboard?.net.version ?? -1;
+    if (_picture == null || netVersion != _recordedNetVersion) {
       _picture?.dispose();
       _picture = _recordPicture();
     }
+    final fx = game.hoopFx;
+    final shaking = fx.rimOffsetX != 0.0 || fx.rimOffsetY != 0.0;
+    if (shaking) {
+      canvas.save();
+      canvas.translate(fx.rimOffsetX, fx.rimOffsetY);
+    }
     canvas.drawPicture(_picture!);
+    if (shaking) canvas.restore();
   }
 
   @override
@@ -150,46 +141,15 @@ class RearRimVisual extends PositionComponent {
     canvas.drawArc(rimRect, math.pi, math.pi, false, rearRimPaint);
   }
 
+  static final Paint _rearNetPaint = Paint()
+    ..color = const Color(0x5094A3B8) // Translucent rear cords
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 0.025;
+
+  /// Rear half of the cloth net (seen through the front, behind the ball).
   void _renderRearNet(Canvas canvas) {
-    final rearNetPaint = Paint()
-      ..color = const Color(0x5094A3B8) // Translucent rear cords
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.025;
-
-    const cordCount = 7;
-    final netDepth = _currentNetDepth;
-    final bottomWidthRatio = _currentBottomWidth;
-
-    // Draw rear vertical cords tapering downwards
-    for (int i = 0; i <= cordCount; i++) {
-      final t = i / cordCount;
-      final angle = math.pi + t * math.pi;
-      final topX = (hoopWidth / 2) * math.cos(angle);
-      final topY = (hoopDepth / 2) * math.sin(angle);
-
-      final bottomX = topX * bottomWidthRatio + _currentSway;
-      final bottomY = netDepth;
-
-      canvas.drawLine(
-        Offset(topX, topY),
-        Offset(bottomX, bottomY),
-        rearNetPaint,
-      );
-    }
-
-    // Rear horizontal ribs
-    for (double yFrac = 0.25; yFrac <= 0.85; yFrac += 0.25) {
-      final curY = netDepth * yFrac;
-      final curWidth = hoopWidth * (1.0 - (1.0 - bottomWidthRatio) * yFrac);
-      final curDepth = hoopDepth * (1.0 - (1.0 - bottomWidthRatio) * yFrac);
-
-      final ribRect = Rect.fromCenter(
-        center: Offset(_currentSway * yFrac, curY),
-        width: curWidth,
-        height: curDepth,
-      );
-
-      canvas.drawArc(ribRect, math.pi, math.pi, false, rearNetPaint);
-    }
+    final net = _cachedBackboard?.net;
+    if (net == null) return;
+    net.drawMesh(canvas, _rearNetPaint, front: false);
   }
 }
