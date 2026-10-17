@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import '../basketball_game.dart';
 import '../performance/adaptive_quality.dart';
+import 'glow_sprite.dart';
 
 /// Streak tiers, matching the ball's existing effects:
 /// lightning 3–5, fire 6–9, inferno 10+.
@@ -322,6 +323,24 @@ class StreakCelebration extends PositionComponent
 
   void _renderSparks(Canvas canvas) {
     if (_activeSparks == 0) return;
+    // Fake bloom: a soft additive halo under each spark makes the spray read
+    // as light, not confetti. Dropped first on LOW (one sprite per spark).
+    if (game.quality.drawSparkBloom) {
+      for (int i = 0; i < _maxSparks; i++) {
+        if (_sActive[i] == 0) continue;
+        final life = _sLife[i];
+        final glow = _sSize[i] * (1.0 - life * 0.5) * 7.0;
+        GlowSprite.draw(
+          canvas,
+          _sx[i],
+          _sy[i],
+          glow,
+          glow,
+          _sTier[i],
+          (1.0 - life) * 0.42,
+        );
+      }
+    }
     for (int i = 0; i < _maxSparks; i++) {
       if (_sActive[i] == 0) continue;
       final life = _sLife[i];
