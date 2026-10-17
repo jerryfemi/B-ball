@@ -205,7 +205,10 @@ class AudioEngine {
         '[AudioEngine] SoLoud engine initialized with preloaded SFX and music track.',
       );
     } catch (e) {
-      _initCompleter?.completeError(e);
+      // Audio failing is never fatal: complete normally so nothing awaiting
+      // init() crashes; callers check [_initialized], and unlockAudio()
+      // retries init on the next tap.
+      _initCompleter?.complete();
       debugPrint('[AudioEngine] SoLoud preload error: $e');
     } finally {
       _isInitializing = false;
