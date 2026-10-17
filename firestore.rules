@@ -56,45 +56,136 @@ service cloud.firestore {
     match /matches/{matchId} {
 
       function isParticipant() {
-        return isAuthenticated() && 
+        return isAuthenticated() &&
           (request.auth.uid in resource.data.playerIds);
+      }
+
+      function changedKeys() {
+        return request.resource.data.diff(resource.data).affectedKeys();
+      }
+
+      // 'player1' or 'player2' map key belonging to the caller.
+      function myKey() {
+        return request.auth.uid == resource.data.player1.uid ? 'player1' : 'player2';
+      }
+
+      // playerIds after the write == playerIds before, minus the caller.
+      function removesOnlyMe() {
+        return request.resource.data.playerIds.toSet() ==
+          resource.data.playerIds.toSet().difference([request.auth.uid].toSet());
       }
 
       function isOpenForJoining() {
         return resource.data.status == 'waitingForOpponent';
       }
 
+      // Player 2 claims the empty seat. Cannot touch scores, telemetry or config.
       function isJoining() {
-        return isOpenForJoining() &&
+        return isAuthenticated() &&
+          isOpenForJoining() &&
           request.auth.uid != resource.data.player1.uid &&
+          changedKeys().hasOnly(['player2', 'playerIds', 'status', 'activeTurnPlayerUid', 'updatedAt']) &&
           request.resource.data.player2.uid == request.auth.uid &&
           request.resource.data.status == 'active' &&
           request.resource.data.playerIds.size() == 2 &&
-          request.resource.data.playerIds.hasAll([resource.data.player1.uid, request.auth.uid]);
+          request.resource.data.playerIds.hasAll([resource.data.player1.uid, request.auth.uid]) &&
+          request.resource.data.activeTurnPlayerUid in [resource.data.player1.uid, request.auth.uid];
       }
 
+      // The active shooter submits a round (transaction) or ticks the live score.
+      // May only write their OWN player map, and only by appending one round.
       function isSubmittingTurn() {
         return isParticipant() &&
-          (resource.data.status == 'active' || resource.data.status == 'waitingForOpponent') &&
+          resource.data.status in ['active', 'waitingForOpponent'] &&
           request.auth.uid == resource.data.activeTurnPlayerUid &&
-          request.resource.data.chat.size() <= 50;
+          changedKeys().hasOnly([
+            'currentRound', 'activeTurnPlayerUid', 'status', 'updatedAt', 'expireAt',
+            'latestTelemetry', 'latestTelemetryRound', 'latestTelemetryShooterUid',
+            'liveShooterScore', 'liveShooterUid', 'turnStartedAt',
+            myKey()
+          ]) &&
+          request.resource.data.status in ['active', 'waitingForOpponent', 'completed'] &&
+          request.resource.data.playerIds == resource.data.playerIds &&
+          (!('turnStartedAt' in request.resource.data) ||
+            !('turnStartedAt' in changedKeys()) ||
+            request.resource.data.turnStartedAt == request.time) &&
+          (!(myKey() in changedKeys()) || (
+            request.resource.data[myKey()].uid == request.auth.uid &&
+            request.resource.data[myKey()].roundScores.size() ==
+              resource.data[myKey()].roundScores.size() + 1
+          ));
       }
 
-      function isSendingBanter() {
-        return isParticipant() &&
-          request.resource.data.chat.size() <= 50 &&
-          request.resource.data.chat.size() == resource.data.chat.size() + 1;
-      }
-
+      // Lightweight chat-metadata mirror for inbox badges (messages live in the subcollection).
       function isTouchingTimestamp() {
         return isParticipant() &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          changedKeys().hasOnly([
             'updatedAt',
             'lastChatSenderUid',
             'lastChatTimestamp',
             'lastChatText',
             'expireAt'
           ]);
+      }
+
+      // A participant resigns (pause menu FORFEIT, or LEAVE on an active match).
+      function isForfeiting() {
+        return isParticipant() &&
+          resource.data.status in ['active', 'waitingForOpponent'] &&
+          changedKeys().hasOnly(['status', 'forfeitedBy', 'winnerUid', 'activeTurnPlayerUid', 'updatedAt', 'expireAt', 'playerIds']) &&
+          request.resource.data.status == 'forfeited' &&
+          request.resource.data.forfeitedBy == request.auth.uid &&
+          request.resource.data.winnerUid != request.auth.uid &&
+          request.resource.data.winnerUid in resource.data.playerIds &&
+          (request.resource.data.playerIds == resource.data.playerIds || removesOnlyMe());
+      }
+
+      // Spectator claims the win after the shooter abandoned a LIVE turn.
+      // Server-verified: the shooter must have started this turn (turnStartedAt is a
+      // server timestamp written on their first shot) and their full round clock
+      // plus a 10s grace must have elapsed on Firestore's clock.
+      function isClaimingAbandonedWin() {
+        return isParticipant() &&
+          resource.data.status == 'active' &&
+          resource.data.activeTurnPlayerUid != request.auth.uid &&
+          resource.data.activeTurnPlayerUid in resource.data.playerIds &&
+          resource.data.get('liveShooterUid', '') == resource.data.activeTurnPlayerUid &&
+          'turnStartedAt' in resource.data &&
+          request.time > resource.data.turnStartedAt +
+            duration.value(resource.data.roundDurationSeconds + 10, 's') &&
+          changedKeys().hasOnly(['status', 'forfeitedBy', 'winnerUid', 'activeTurnPlayerUid', 'updatedAt', 'expireAt']) &&
+          request.resource.data.status == 'forfeited' &&
+          request.resource.data.forfeitedBy == resource.data.activeTurnPlayerUid &&
+          request.resource.data.winnerUid == request.auth.uid;
+      }
+
+      // Host closes a room nobody has joined yet.
+      function isAbandoningRoom() {
+        return isParticipant() &&
+          resource.data.status == 'waitingForOpponent' &&
+          changedKeys().hasOnly(['playerIds', 'status', 'updatedAt']) &&
+          request.resource.data.status == 'abandoned' &&
+          removesOnlyMe();
+      }
+
+      // Removing a finished match from MY history (trash icon). The opponent keeps theirs.
+      // expireAt may only be set once nobody references the match any more.
+      function isDismissingFinished() {
+        return isParticipant() &&
+          resource.data.status in ['completed', 'forfeited', 'abandoned', 'declined'] &&
+          changedKeys().hasOnly(['playerIds', 'updatedAt', 'expireAt']) &&
+          removesOnlyMe() &&
+          (!('expireAt' in changedKeys()) || request.resource.data.playerIds.size() == 0);
+      }
+
+      // Challenged friend declines. They are not in playerIds yet, so we verify
+      // the challenge exists in their own match_invites inbox instead.
+      function isDecliningChallenge() {
+        return isAuthenticated() &&
+          resource.data.status == 'waitingForOpponent' &&
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)/match_invites/$(matchId)) &&
+          changedKeys().hasOnly(['status', 'updatedAt']) &&
+          request.resource.data.status == 'declined';
       }
 
       // Read allowed if player is authenticated (non-existent codes return cleanly)
@@ -110,11 +201,18 @@ service cloud.firestore {
         request.resource.data.activeTurnPlayerUid == request.auth.uid &&
         request.resource.data.chat.size() == 0;
 
-      // Update allowed for atomic join, active turn submission, banter, or activity heartbeat
-      allow update: if isJoining() || isSubmittingTurn() || isSendingBanter() || isTouchingTimestamp();
+      allow update: if isJoining() ||
+        isSubmittingTurn() ||
+        isTouchingTimestamp() ||
+        isForfeiting() ||
+        isClaimingAbandonedWin() ||
+        isAbandoningRoom() ||
+        isDismissingFinished() ||
+        isDecliningChallenge();
 
-      // Allow participants to evaporate completed match documents from Firestore
-      allow delete: if isParticipant() && resource.data.status == 'completed';
+      // Matches are never hard-deleted by clients: finished matches are permanent
+      // trophy history. Orphaned docs (no playerIds left) are cleaned by the expireAt TTL.
+      allow delete: if false;
 
       // Lightweight real-time chat messages subcollection
       match /messages/{messageId} {
