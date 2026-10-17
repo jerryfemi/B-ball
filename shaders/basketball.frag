@@ -6,6 +6,7 @@ uniform vec2 u_rotation; // x = yaw (spin around Y), y = pitch (spin around X)
 uniform float u_local_radius; // radius in local canvas coordinates
 uniform float u_fire_intensity; // 0.0 = normal leather, 1.0 = on fire
 uniform float u_detail; // 0..1 pebble detail from AdaptiveQuality (float index 7)
+uniform vec2 u_scale; // squash & stretch: x/y axis scale (float indices 8, 9)
 
 out vec4 fragColor;
 
@@ -20,6 +21,10 @@ void main() {
     } else {
         uv = (coord - u_center) / u_radius;
     }
+
+    // Squash & stretch: sample a deformed sphere (e.g. wider + flatter on a
+    // floor bounce). Clamped so an unset uniform can never divide by zero.
+    uv /= max(u_scale, vec2(0.5));
 
     float radius = length(uv);
     if (radius > 1.0) {
