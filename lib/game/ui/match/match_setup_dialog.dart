@@ -56,7 +56,10 @@ class MatchSetupDialog extends HookWidget {
     final codeError = useState<String?>(null);
     final showPickFriendHint = useState(false);
 
-    Future<void> generateUpfrontCode(UserProfile profile) async {
+    /// Works even if the player taps before sign-in has finished hydrating:
+    /// shows the generating spinner immediately and waits for the profile,
+    /// instead of leaving the button silently disabled.
+    Future<void> generateUpfrontCode(UserProfile? knownProfile) async {
       if (isGeneratingCode.value) return;
       codeError.value = null;
       if (!isDeviceOnline()) {
@@ -66,6 +69,9 @@ class MatchSetupDialog extends HookWidget {
       }
       isGeneratingCode.value = true;
       try {
+        final profile = knownProfile ??
+            AuthService.instance.currentUser ??
+            await AuthService.instance.initialize();
         final config = MatchConfig(
           totalRounds: selectedRounds.value,
           roundDurationSeconds: selectedDuration.value,
@@ -273,9 +279,7 @@ class MatchSetupDialog extends HookWidget {
                       key: const ValueKey('code-error'),
                       title: 'MATCH CODE UNAVAILABLE',
                       message: codeError.value!,
-                      onRetry: profile == null
-                          ? null
-                          : () => generateUpfrontCode(profile),
+                      onRetry: () => generateUpfrontCode(profile),
                       onDismiss: () => codeError.value = null,
                     )
                   : MatchCodeCard(
@@ -284,9 +288,7 @@ class MatchSetupDialog extends HookWidget {
                       isGeneratingCode: isGeneratingCode.value,
                       codeCopied: codeCopied.value,
                       profile: profile,
-                      onGenerateCode: () {
-                        if (profile != null) generateUpfrontCode(profile);
-                      },
+                      onGenerateCode: () => generateUpfrontCode(profile),
                       onCopyCode: copyCode,
                     ),
             )
