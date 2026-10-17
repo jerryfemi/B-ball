@@ -23,8 +23,22 @@ service cloud.firestore {
       }
 
       match /invites/{inviteId} {
-        // Any authenticated player can send or update a friend invite where inviteId is their own UID
-        allow create, update: if isAuthenticated() && request.auth.uid == inviteId;
+        // A sender writes into the recipient's inbox under their OWN uid:
+        //  - 'pending'  : a normal new friend request.
+        //  - 'accepted' : the reciprocal note sent when accepting. Only valid if the
+        //                 recipient (userId) really sent the writer a request first,
+        //                 i.e. that pending invite still sits in the writer's inbox.
+        //                 Blocks forging an "accepted" invite to auto-befriend someone.
+        allow create, update: if isAuthenticated() &&
+          request.auth.uid == inviteId &&
+          request.resource.data.senderUid == request.auth.uid &&
+          (
+            request.resource.data.status == 'pending' ||
+            (
+              request.resource.data.status == 'accepted' &&
+              exists(/databases/$(database)/documents/users/$(request.auth.uid)/invites/$(userId))
+            )
+          );
         // The recipient can read, accept, or decline/delete the invite
         allow read, write: if isUser(userId);
       }
@@ -46,10 +60,32 @@ service cloud.firestore {
           (request.auth.uid in resource.data.participants);
       }
 
+      // convId is always "<uidA>_<uidB>" for exactly the two participants.
+      function idMatchesParticipants(p) {
+        return p.size() == 2 &&
+          (convId == p[0] + '_' + p[1] || convId == p[1] + '_' + p[0]);
+      }
+
       allow read: if isAuthenticated() && (resource == null || isConvParticipant());
-      allow create: if isAuthenticated() && (request.auth.uid in request.resource.data.participants);
-      allow update: if isAuthenticated() && isConvParticipant();
+      allow create: if isAuthenticated() &&
+        (request.auth.uid in request.resource.data.participants) &&
+        idMatchesParticipants(request.resource.data.participants);
+      // Either friend may write [me, them] in their own order, so compare as sets.
+      allow update: if isAuthenticated() && isConvParticipant() &&
+        request.resource.data.participants.toSet() == resource.data.participants.toSet();
       allow delete: if false;
+
+      // One document per direct message (replaces the unbounded root `chat` array).
+      match /messages/{messageId} {
+        function isParentParticipant() {
+          return isAuthenticated() &&
+            request.auth.uid in get(/databases/$(database)/documents/conversations/$(convId)).data.participants;
+        }
+        allow read: if isParentParticipant();
+        allow create: if isParentParticipant() &&
+          request.resource.data.senderUid == request.auth.uid;
+        allow update, delete: if false;
+      }
     }
 
     // Match documents keyed by 6-character joinCode
