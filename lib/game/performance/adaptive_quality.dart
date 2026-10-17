@@ -52,6 +52,15 @@ class AdaptiveQuality {
   /// BALL STREAK FX toggle turns it off). Lighter tiers just thin the embers.
   double get emberDensity => tier == QualityTier.high ? 1.0 : 0.5;
 
+  /// Mirror reflection of the ball on the varnished floor (one extra small
+  /// ball draw, only while the ball is near the floor).
+  bool get drawFloorReflection => tier != QualityTier.low;
+
+  /// Fake-bloom halos around streak sparks (a glow sprite per spark). The
+  /// burning ball's own halo and floor light are part of the streak reward
+  /// and stay on at every tier, like the flame plume.
+  bool get drawSparkBloom => tier != QualityTier.low;
+
   /// Pebble/bump detail in the ball shader, 0..1 (the shader's most expensive
   /// per-pixel work). The shader additionally fades it by on-screen ball size.
   double get shaderDetail => switch (tier) {
