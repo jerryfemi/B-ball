@@ -50,11 +50,48 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
   final Vector2 _projScratch = Vector2.zero();
   final Vector2 _velScratch = Vector2.zero();
   final Paint _shaderPaint = Paint();
+  // Sized to fit squash & stretch (max ~1.16x on either axis); the shader
+  // discards pixels outside the deformed ball.
   late final Rect _shaderRect = Rect.fromCenter(
     center: Offset.zero,
-    width: radius * 2.02,
-    height: radius * 2.02,
+    width: radius * 2.4,
+    height: radius * 2.4,
   );
+
+  // ── Squash & stretch (visual only — physics is untouched) ──
+  double _squashAmp = 0.0;
+  double _squashT = 1e9;
+  bool _squashFromFloor = false;
+  double _scaleX = 1.0;
+  double _scaleY = 1.0;
+  double _floorAnchor = 0.0; // flatten amount used to keep the ball on the floor
+
+  static const double _squashDecay = 14.0;
+  static const double _squashFreq = 38.0;
+
+  /// Starts a jelly squash of [amp] (0.2 = 20% flatter); stronger hit wins.
+  void _kickSquash(double amp, {required bool fromFloor}) {
+    final current = _squashAmp * math.exp(-_squashT * _squashDecay);
+    if (amp <= current) return;
+    _squashAmp = amp;
+    _squashT = 0.0;
+    _squashFromFloor = fromFloor;
+  }
+
+  void _updateSquash(double dt) {
+    _squashT += dt;
+    final env = _squashAmp * math.exp(-_squashT * _squashDecay);
+    // Damped oscillation: flatten, overshoot into a stretch, settle.
+    final s = env > 0.002 ? env * math.cos(_squashT * _squashFreq) : 0.0;
+    final sy = 1.0 - s;
+    final sx = 1.0 + s * 0.7; // keep apparent volume roughly constant
+    _floorAnchor = _squashFromFloor ? s : 0.0;
+
+    // (Flight stretch removed after playtesting: a perfectly round ball in
+    // flight keeps the shot arc reading clean; squash on impacts stays.)
+    _scaleX = sx;
+    _scaleY = sy;
+  }
   static final Paint _fallbackPaint = Paint()..color = const Color(0xFFFF6F00);
 
   /// Precomputed black-with-alpha colors so shadow alpha changes never allocate.
@@ -173,6 +210,9 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     if (isSwish) {
       AudioEngine.playSwish();
     }
+    // Zoom-punch toward the hoop: bigger for swishes and hot streaks.
+    final onStreak = game.currentStreak + 1 >= 3;
+    game.screenFx.punch((isSwish ? 0.02 : 0.013) + (onStreak ? 0.008 : 0.0));
     game.registerScore(isSwish: isSwish, isBankShot: isBankShot);
   }
 
@@ -213,14 +253,27 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
       onRimImpact: (speed) {
         if (!isMounted) return;
         AudioEngine.playRimClank(speed);
+        _kickSquash((speed * 0.02).clamp(0.0, 0.12), fromFloor: false);
+        game.hoopFx.rimHit(speed);
+        game.backboardVisual?.net.kick((speed * 0.004).clamp(0.0, 0.03));
+        // Camera shake only for the player's own ball (ghost replays stay calm).
+        if (isLiveBall && speed > 2.5) {
+          game.screenFx.shake(((speed - 2.5) * 0.9).clamp(0.0, 3.0));
+        }
       },
       onBackboardImpact: (speed) {
         if (!isMounted) return;
         AudioEngine.playBackboardThud(speed);
+        _kickSquash((speed * 0.018).clamp(0.0, 0.10), fromFloor: false);
+        game.hoopFx.boardHit(speed);
+        if (isLiveBall && speed > 3.0) {
+          game.screenFx.shake(((speed - 3.0) * 0.5).clamp(0.0, 1.8));
+        }
       },
       onFloorImpact: (speed) {
         if (!isMounted) return;
         AudioEngine.playFloorBounce(speed);
+        _kickSquash((speed * 0.035).clamp(0.0, 0.22), fromFloor: true);
       },
       onScored: ({required bool isSwish, required bool isBankShot}) {
         if (!isMounted) return;
@@ -319,6 +372,7 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     if (isLaunched) {
       // 1. Advance the 3D physics engine (substeps, torus rim, backboard, floor)
       physics.update(dt);
+      _updateSquash(dt);
 
       // Update fiery flame trail and incandescent embers strictly during upward flight
       if (!isFlightOnFire) {
@@ -566,13 +620,14 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     }
 
     // Render fiery ribbon and incandescent embers right behind the ball during upward flight
-    if (isFlightOnFire && quality.drawFlameRibbon) {
+    // The streak plume shows at every GRAPHICS level (quality only thins embers).
+    if (isFlightOnFire) {
       fieryTrail.render(
         canvas,
         ballBodyPos: Offset(bodyX, bodyY),
         camera3D: cam,
         streak: activeStreak,
-        drawEmbers: quality.drawEmbers,
+        emberDensity: quality.emberDensity,
       );
     }
 
@@ -584,22 +639,38 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
 
     final shader = _shader;
     if (shader != null) {
-      // Calibrate the world→logical-pixel affine map once per screen size.
+      // The shader works in raw screen pixels and ignores canvas transforms,
+      // so the camera shake / zoom punch (ScreenFx) is folded in by hand:
+      //   screen = (base - origin) * fxScale + origin + fxOffset
+      final fx = game.screenFx;
+      final fxScale = fx.scale;
+
+      // Calibrate the world→logical-pixel affine map once per screen size
+      // (removing any ScreenFx transform active at that moment).
       final calibSize = _calibratedForSize;
       if (calibSize == null || calibSize != game.size) {
         final t = canvas.getTransform();
         final m =
-            math.sqrt(t[0] * t[0] + t[1] * t[1]) / scaleFactor;
+            math.sqrt(t[0] * t[0] + t[1] * t[1]) / (scaleFactor * fxScale);
         _calibMetersToPx = m;
-        _calibRootX = t[12] - m * bodyX;
-        _calibRootY = t[13] - m * bodyY;
+        _calibRootX =
+            (t[12] - fx.offsetX - fx.originX) / fxScale + fx.originX - m * bodyX;
+        _calibRootY =
+            (t[13] - fx.offsetY - fx.originY) / fxScale + fx.originY - m * bodyY;
         _calibratedForSize = game.size.clone();
       }
 
       final dpr = _cachedDpr;
-      final physicalCenterX = (_calibRootX + _calibMetersToPx * bodyX) * dpr;
-      final physicalCenterY = (_calibRootY + _calibMetersToPx * bodyY) * dpr;
-      final physicalRadius = radius * _calibMetersToPx * scaleFactor * dpr;
+      final baseX = _calibRootX + _calibMetersToPx * bodyX;
+      final baseY = _calibRootY + _calibMetersToPx * bodyY;
+      final physicalCenterX =
+          ((baseX - fx.originX) * fxScale + fx.originX + fx.offsetX) * dpr;
+      final physicalRadius =
+          radius * _calibMetersToPx * scaleFactor * fxScale * dpr;
+      // Floor squash keeps the ball's bottom planted on the hardwood.
+      final physicalCenterY =
+          ((baseY - fx.originY) * fxScale + fx.originY + fx.offsetY) * dpr +
+          physicalRadius * _floorAnchor;
 
       shader.setFloat(0, physicalCenterX);
       shader.setFloat(1, physicalCenterY);
@@ -613,6 +684,9 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
       shader.setFloat(6, fireUniform);
       // Pebble/bump detail level from AdaptiveQuality (0 = smooth leather).
       shader.setFloat(7, quality.shaderDetail);
+      // Squash & stretch (x, y) — the shader deforms the sphere itself.
+      shader.setFloat(8, _scaleX);
+      shader.setFloat(9, _scaleY);
 
       canvas.drawRect(_shaderRect, _shaderPaint);
     } else {
