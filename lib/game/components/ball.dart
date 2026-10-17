@@ -466,7 +466,9 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     // Only an actively in-flight ball heading toward the hoop (before floor bounce or netting)
     // evaluates or renders vertical plane shadows (backboard and back wall).
     // Bounced, rolling, or scored balls strictly skip this to eliminate GPU fill-rate waste.
+    final quality = game.quality;
     final bool canCastVerticalShadows =
+        quality.drawProximityShadows &&
         isLaunched &&
         !physics.isSettled &&
         physics.bounceCount == 0 &&
@@ -564,12 +566,13 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     }
 
     // Render fiery ribbon and incandescent embers right behind the ball during upward flight
-    if (isFlightOnFire) {
+    if (isFlightOnFire && quality.drawFlameRibbon) {
       fieryTrail.render(
         canvas,
         ballBodyPos: Offset(bodyX, bodyY),
         camera3D: cam,
         streak: activeStreak,
+        drawEmbers: quality.drawEmbers,
       );
     }
 
@@ -608,6 +611,8 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
           ? (activeStreak >= 10 ? 2.0 : 1.0)
           : 0.0;
       shader.setFloat(6, fireUniform);
+      // Pebble/bump detail level from AdaptiveQuality (0 = smooth leather).
+      shader.setFloat(7, quality.shaderDetail);
 
       canvas.drawRect(_shaderRect, _shaderPaint);
     } else {
