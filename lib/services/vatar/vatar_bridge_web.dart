@@ -29,9 +29,26 @@ class VatarPlatformBridge {
     return null;
   }
 
+  /// Waits for the async SDK loader in `web/index.html`
+  /// (`window.__vatarSdkReady`). Resolves instantly when not framed, so
+  /// standalone players never wait; capped at 4s as a safety net.
+  Future<void> _awaitSdkReady() async {
+    try {
+      if (!globalContext.hasProperty('__vatarSdkReady'.toJS).toDart) return;
+      final ready = globalContext['__vatarSdkReady'];
+      if (ready == null || !ready.isA<JSPromise>()) return;
+      await (ready as JSPromise<JSAny?>)
+          .toDart
+          .timeout(const Duration(seconds: 4));
+    } catch (e) {
+      debugPrint('[VatarBridge] SDK readiness wait ended: $e');
+    }
+  }
+
   /// Initializes the bridge.
   /// Rejects silently if called outside of a Lagos Life frame, falling back to standalone mode.
   Future<VatarSession?> init() async {
+    await _awaitSdkReady();
     final vatar = _vatar;
     if (vatar == null) {
       debugPrint('[VatarBridge] window.Vatar not found, running in standalone mode.');
