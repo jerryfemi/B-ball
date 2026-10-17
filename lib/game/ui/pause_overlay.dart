@@ -9,6 +9,7 @@ import '../../../services/firestore_match_service.dart';
 import '../audio/audio_engine.dart';
 import '../basketball_game.dart';
 import '../match/match_session.dart';
+import '../performance/adaptive_quality.dart';
 import '../physics/shot_difficulty.dart';
 import 'common/difficulty_stepped_slider.dart';
 
@@ -358,6 +359,11 @@ class PauseOverlay extends HookWidget {
                                       height: 14.0,
                                     ),
                                     _buildStreakFxRow(),
+                                    const Divider(
+                                      color: Color(0x2238BDF8),
+                                      height: 14.0,
+                                    ),
+                                    _buildGraphicsQualityRow(),
                                   ],
                                 ),
                               ),
@@ -615,6 +621,113 @@ class PauseOverlay extends HookWidget {
               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
           ],
+        );
+      },
+    );
+  }
+
+  /// GRAPHICS: AUTO / HIGH / LOW. In AUTO the subtitle shows the tier that
+  /// AdaptiveQuality has currently picked for this phone.
+  Widget _buildGraphicsQualityRow() {
+    return ValueListenableBuilder<QualityMode>(
+      valueListenable: game.quality.modeNotifier,
+      builder: (context, mode, _) {
+        return ValueListenableBuilder<QualityTier>(
+          valueListenable: game.quality.tierNotifier,
+          builder: (context, tier, _) {
+            final tierLabel = switch (tier) {
+              QualityTier.high => 'Full effects',
+              QualityTier.medium => 'Balanced',
+              QualityTier.low => 'Battery saver',
+            };
+            final subtitle = switch (mode) {
+              QualityMode.auto => 'Auto-adjusts to your phone • $tierLabel',
+              QualityMode.high => 'All effects on (may heat up)',
+              QualityMode.low => 'Fewer effects • smoother on hot phones',
+            };
+            final accent = mode == QualityMode.low
+                ? const Color(0xFF94A3B8)
+                : const Color(0xFF00FFCC);
+            return Row(
+              children: [
+                Container(
+                  width: 28.0,
+                  height: 28.0,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.13),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: accent.withValues(alpha: 0.4),
+                      width: 1.0,
+                    ),
+                  ),
+                  child: Icon(
+                    mode == QualityMode.auto
+                        ? Icons.auto_awesome_rounded
+                        : (mode == QualityMode.high
+                              ? Icons.high_quality_rounded
+                              : Icons.battery_saver_rounded),
+                    size: 15.0,
+                    color: accent,
+                  ),
+                ),
+                const SizedBox(width: 10.0),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'GRAPHICS',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 11.0,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                      const SizedBox(height: 1.0),
+                      Text(
+                        subtitle,
+                        style: const TextStyle(
+                          color: Color(0xFF94A3B8),
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                InkWell(
+                  borderRadius: BorderRadius.circular(999.0),
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    unawaited(game.quality.cycleMode());
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12.0,
+                      vertical: 6.0,
+                    ),
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(999.0),
+                      border: Border.all(color: accent, width: 1.0),
+                    ),
+                    child: Text(
+                      mode.label,
+                      style: TextStyle(
+                        color: accent,
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
         );
       },
     );
