@@ -5,6 +5,9 @@ uniform float u_radius; // radius of the ball in screen pixels
 uniform vec2 u_rotation; // x = yaw (spin around Y), y = pitch (spin around X)
 uniform float u_local_radius; // radius in local canvas coordinates
 uniform float u_fire_intensity; // 0.0 = normal leather, 1.0 = on fire
+uniform float u_detail; // 0..1 pebble detail from AdaptiveQuality (float index 7)
+uniform vec2 u_scale; // squash & stretch: x/y axis scale (float indices 8, 9).
+                      // A negative y mirrors the ball vertically (floor reflection).
 
 out vec4 fragColor;
 
@@ -18,6 +21,15 @@ void main() {
         uv = coord / u_local_radius;
     } else {
         uv = (coord - u_center) / u_radius;
+    }
+
+    // Squash & stretch: sample a deformed sphere (e.g. wider + flatter on a
+    // floor bounce). Clamped so an unset uniform can never divide by zero.
+    uv /= max(abs(u_scale), vec2(0.5));
+    // Mirrored draw (floor reflection): flip the image upside down, so the
+    // lit top of the ball shows at the far end of the reflection.
+    if (u_scale.y < 0.0) {
+        uv.y = -uv.y;
     }
 
     float radius = length(uv);
@@ -73,21 +85,31 @@ void main() {
     float seamRidge = smoothstep(lineThickness * 1.45, lineThickness, distToSeam) * (1.0 - seamMask) * 0.22;
     
     // --- 2. Microscopic Pebbled Leather Texture (Dimpled Bumps) ---
-    // Frequency tuned for authentic basketball pebble density
-    vec3 pebbleP = spherePos * 54.0;
-    vec3 f = fract(pebbleP) - 0.5;
-    float distToPebbleCenter = length(f);
-    
-    // Smooth hemispherical pebble dome
-    float pebbleBump = clamp(1.0 - distToPebbleCenter * 2.15, 0.0, 1.0);
-    pebbleBump = pebbleBump * pebbleBump * (3.0 - 2.0 * pebbleBump); // Smooth cubic S-curve
-    
-    // Suppress pebbles inside the rubber seam channel
-    pebbleBump *= (1.0 - seamMask);
+    // Level of detail: pebbles are finer than a pixel when the ball is small on
+    // screen (near the hoop), which shimmers as it spins. Fade them out by
+    // on-screen size, and by the AdaptiveQuality tier. When detail is ~0 the
+    // whole pebble block is skipped (cheapest path for struggling phones).
+    float detail = clamp(u_detail, 0.0, 1.0) * smoothstep(14.0, 30.0, u_radius);
+    float bumpShape = 0.5; // average pebble tone, used when detail is off
+    vec3 f = vec3(0.0);
+    if (detail > 0.01) {
+        // Frequency tuned for authentic basketball pebble density
+        vec3 pebbleP = spherePos * 54.0;
+        f = fract(pebbleP) - 0.5;
+        float distToPebbleCenter = length(f);
+
+        // Smooth hemispherical pebble dome
+        bumpShape = clamp(1.0 - distToPebbleCenter * 2.15, 0.0, 1.0);
+        bumpShape = bumpShape * bumpShape * (3.0 - 2.0 * bumpShape); // Smooth cubic S-curve
+    }
+
+    // Blend toward the average tone as detail fades so the overall leather
+    // color stays identical; suppress pebbles inside the rubber seam channel.
+    float pebbleBump = mix(0.5, bumpShape, detail) * (1.0 - seamMask);
     
     // --- 3. Normal Vector Perturbation (Bump Mapping) ---
     // Perturb the normal with pebble dome gradients so it catches highlights individually
-    vec3 bumpOffset = vec3(f.x, f.y, 0.0) * pebbleBump * 0.38;
+    vec3 bumpOffset = vec3(f.x, f.y, 0.0) * bumpShape * detail * (1.0 - seamMask) * 0.38;
     
     // Recess the seam into the sphere surface
     if (seamMask > 0.01) {
@@ -131,7 +153,7 @@ void main() {
     float broadSheen = pow(specDot, 10.0) * 0.09 * (1.0 - seamMask);
     
     // B. Sharp micro-glint highlights on individual pebble tops
-    float pebbleGlint = pow(specDot, 36.0) * pebbleBump * 0.24;
+    float pebbleGlint = pow(specDot, 36.0) * pebbleBump * 0.24 * detail;
     
     vec3 finalColor = litColor + vec3(broadSheen + pebbleGlint);
     

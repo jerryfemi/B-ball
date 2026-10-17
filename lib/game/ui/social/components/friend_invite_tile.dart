@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 
 import '../../../../models/friend_profile.dart';
 import '../../../../services/friends_service.dart';
 import '../../common/app_avatar.dart';
 
 /// Card tile representing an incoming friend request with accept and decline actions.
-class FriendInviteTile extends StatelessWidget {
+class FriendInviteTile extends HookWidget {
   final FriendInvite invite;
   final String myUid;
 
@@ -18,6 +19,10 @@ class FriendInviteTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Accepting flips the button into a confirmed "✓ FRIENDS" state in place;
+    // the tile then leaves the list as the invite stream updates.
+    final accepted = useState(false);
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
@@ -93,34 +98,36 @@ class FriendInviteTile extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           ElevatedButton(
-            onPressed: () async {
-              HapticFeedback.mediumImpact();
-              await FriendsService.instance.acceptFriendInvite(myUid, invite);
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Added ${invite.senderName} as a friend! 🎉'),
-                    backgroundColor: const Color(0xFF1E2638),
-                    behavior: SnackBarBehavior.floating,
-                    duration: const Duration(seconds: 2),
-                  ),
-                );
-              }
-            },
+            onPressed: accepted.value
+                ? null
+                : () async {
+                    HapticFeedback.mediumImpact();
+                    accepted.value = true;
+                    await FriendsService.instance.acceptFriendInvite(
+                      myUid,
+                      invite,
+                    );
+                  },
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF10B981),
               foregroundColor: const Color(0xFF0F172A),
+              disabledBackgroundColor: const Color(0x2600FFCC),
+              disabledForegroundColor: const Color(0xFF00FFCC),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
             ),
-            child: const Text(
-              'ACCEPT',
-              style: TextStyle(
-                fontWeight: FontWeight.w900,
-                fontSize: 11.5,
-                letterSpacing: 0.5,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: Text(
+                accepted.value ? '✓ FRIENDS' : 'ACCEPT',
+                key: ValueKey(accepted.value),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 11.5,
+                  letterSpacing: 0.5,
+                ),
               ),
             ),
           ),

@@ -6,6 +6,7 @@ import '../../../services/auth_service.dart';
 import '../common/app_button.dart';
 import '../common/app_modal_dialog.dart';
 import '../common/app_text_field.dart';
+import '../common/inline_feedback.dart';
 
 /// Modal dialog allowing the player to customize or randomize their unique Gamer Tag.
 class EditGamerTagDialog extends HookWidget {
@@ -26,6 +27,7 @@ class EditGamerTagDialog extends HookWidget {
     final controller = useTextEditingController(text: currentName);
     final errorText = useState<String?>(null);
     final isSaving = useState<bool>(false);
+    final savedTag = useState<String?>(null);
 
     void randomizeTag() {
       HapticFeedback.lightImpact();
@@ -52,15 +54,11 @@ class EditGamerTagDialog extends HookWidget {
       await AuthService.instance.updateProfile(displayName: clean);
 
       if (!context.mounted) return;
-      Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Gamer tag updated to "$clean"! 🎉'),
-          backgroundColor: const Color(0xFF1E2638),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 2),
-        ),
-      );
+      // Confirm inside the dialog itself, then close.
+      isSaving.value = false;
+      savedTag.value = clean;
+      await Future<void>.delayed(const Duration(milliseconds: 1100));
+      if (context.mounted) Navigator.of(context).pop();
     }
 
     return AppModalDialog(
@@ -72,7 +70,14 @@ class EditGamerTagDialog extends HookWidget {
       ),
       title: 'EDIT GAMER TAG',
       subtitle: 'Your public 1v1 player tag & name',
-      child: Column(
+      child: InlineFeedbackSwitcher(
+        child: savedTag.value != null
+            ? _SavedTagConfirmation(
+                key: const ValueKey('saved'),
+                tag: savedTag.value!,
+              )
+            : Column(
+        key: const ValueKey('form'),
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -117,6 +122,44 @@ class EditGamerTagDialog extends HookWidget {
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+      ),
+    );
+  }
+}
+
+/// In-dialog success state shown briefly after saving a new tag.
+class _SavedTagConfirmation extends StatelessWidget {
+  final String tag;
+
+  const _SavedTagConfirmation({super.key, required this.tag});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 18),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const CopiedBadge(visible: true, label: '✓ TAG UPDATED'),
+          const SizedBox(height: 14),
+          Text(
+            tag,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.6,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Friends will see your new tag on their next refresh.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
           ),
         ],
       ),

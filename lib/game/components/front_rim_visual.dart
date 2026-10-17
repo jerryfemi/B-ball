@@ -1,7 +1,9 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 
+import '../basketball_game.dart';
 import 'backboard_visual.dart';
 
 /// Renders the front half of the metal rim and front net cords.
@@ -10,13 +12,10 @@ import 'backboard_visual.dart';
 ///
 /// Highly optimized: Synchronizes net dynamics directly from [BackboardVisual]
 /// rather than redundantly scanning world children and solving duplicate springs.
-class FrontRimVisual extends PositionComponent {
+class FrontRimVisual extends PositionComponent
+    with HasGameReference<BasketballGame> {
   final double hoopWidth;
   final double hoopDepth;
-
-  double _currentNetDepth = 0.9;
-  double _currentBottomWidth = 0.55;
-  double _currentSway = 0.0;
 
   BackboardVisual? _cachedBackboard;
 
@@ -34,27 +33,52 @@ class FrontRimVisual extends PositionComponent {
   @override
   void update(double dt) {
     super.update(dt);
+    _cachedBackboard ??=
+        parent?.children.whereType<BackboardVisual>().firstOrNull;
+  }
 
-    _cachedBackboard ??= parent?.children.whereType<BackboardVisual>().firstOrNull;
-    if (_cachedBackboard != null) {
-      _currentNetDepth = _cachedBackboard!.currentNetDepth;
-      _currentBottomWidth = _cachedBackboard!.currentBottomWidth;
-      _currentSway = _cachedBackboard!.currentSway;
-    }
+  // ── Version-checked picture cache ──
+  // The rim metal never changes and the cloth net only moves for a moment
+  // after contact. The picture is re-recorded only when the net simulation
+  // reports a new version, so at rest the render loop allocates nothing.
+  // Rim wobble (HoopFx) is a translation applied at draw time — free.
+  ui.Picture? _picture;
+  int _recordedNetVersion = -1;
+
+  ui.Picture _recordPicture() {
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    // Shift origin so (0, 0) corresponds to the hoop center
+    canvas.translate(size.x / 2, size.y / 2);
+    _renderFrontNet(canvas);
+    _renderFrontRim(canvas);
+    _recordedNetVersion = _cachedBackboard?.net.version ?? -1;
+    return recorder.endRecording();
   }
 
   @override
   void render(Canvas canvas) {
     super.render(canvas);
+    final netVersion = _cachedBackboard?.net.version ?? -1;
+    if (_picture == null || netVersion != _recordedNetVersion) {
+      _picture?.dispose();
+      _picture = _recordPicture();
+    }
+    final fx = game.hoopFx;
+    final shaking = fx.rimOffsetX != 0.0 || fx.rimOffsetY != 0.0;
+    if (shaking) {
+      canvas.save();
+      canvas.translate(fx.rimOffsetX, fx.rimOffsetY);
+    }
+    canvas.drawPicture(_picture!);
+    if (shaking) canvas.restore();
+  }
 
-    canvas.save();
-    // Shift origin so (0, 0) corresponds to the hoop center
-    canvas.translate(size.x / 2, size.y / 2);
-
-    _renderFrontNet(canvas);
-    _renderFrontRim(canvas);
-
-    canvas.restore();
+  @override
+  void onRemove() {
+    _picture?.dispose();
+    _picture = null;
+    super.onRemove();
   }
 
   void _renderFrontRim(Canvas canvas) {
@@ -124,70 +148,21 @@ class FrontRimVisual extends PositionComponent {
     canvas.drawCircle(Offset(hoopWidth / 2, 0), 0.045, pivotPaint);
   }
 
+  static final Paint _netCordPaint = Paint()
+    ..color = const Color(0xF2FFFFFF)
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round
+    ..strokeWidth = 0.035;
+
+  static final Paint _knotPaint = Paint()
+    ..color = const Color(0xFFE2E8F0)
+    ..style = PaintingStyle.fill;
+
+  /// Front half of the cloth net (drawn over the ball inside the hoop).
   void _renderFrontNet(Canvas canvas) {
-    final netCordPaint = Paint()
-      ..color = const Color(0xF2FFFFFF)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.035;
-
-    final knotPaint = Paint()
-      ..color = const Color(0xFFE2E8F0)
-      ..style = PaintingStyle.fill;
-
-    const cordCount = 8;
-    final netDepth = _currentNetDepth;
-    final bottomWidthRatio = _currentBottomWidth;
-
-    final topPoints = <Offset>[];
-    final bottomPoints = <Offset>[];
-
-    // Compute attachment loops along front rim arc (0 to pi)
-    for (int i = 0; i <= cordCount; i++) {
-      final t = i / cordCount;
-      final angle = t * math.pi;
-      final x = (hoopWidth / 2) * math.cos(angle);
-      final y = (hoopDepth / 2) * math.sin(angle);
-      topPoints.add(Offset(x, y));
-
-      final bx = x * bottomWidthRatio + _currentSway;
-      final by = netDepth;
-      bottomPoints.add(Offset(bx, by));
-    }
-
-    // 1. Draw cross-hatched cord mesh
-    for (int i = 0; i < cordCount; i++) {
-      canvas.drawLine(topPoints[i], bottomPoints[i + 1], netCordPaint);
-      canvas.drawLine(topPoints[i + 1], bottomPoints[i], netCordPaint);
-    }
-
-    // 2. Draw front horizontal loop ribs
-    for (double yFrac = 0.25; yFrac <= 0.85; yFrac += 0.25) {
-      final curY = netDepth * yFrac;
-      final curWidth = hoopWidth * (1.0 - (1.0 - bottomWidthRatio) * yFrac);
-      final curDepth = hoopDepth * (1.0 - (1.0 - bottomWidthRatio) * yFrac);
-
-      final ribRect = Rect.fromCenter(
-        center: Offset(_currentSway * yFrac, curY),
-        width: curWidth,
-        height: curDepth,
-      );
-
-      canvas.drawArc(
-        ribRect,
-        0,
-        math.pi,
-        false,
-        netCordPaint,
-      );
-
-      // Knots along the horizontal rib
-      for (int k = 1; k < cordCount; k++) {
-        final t = k / cordCount;
-        final angle = t * math.pi;
-        final kx = _currentSway * yFrac + (curWidth / 2) * math.cos(angle);
-        final ky = curY + (curDepth / 2) * math.sin(angle);
-        canvas.drawCircle(Offset(kx, ky), 0.02, knotPaint);
-      }
-    }
+    final net = _cachedBackboard?.net;
+    if (net == null) return;
+    net.drawMesh(canvas, _netCordPaint, front: true);
+    net.drawKnots(canvas, _knotPaint, 0.02);
   }
 }

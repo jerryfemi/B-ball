@@ -13,6 +13,8 @@ import '../basketball_game.dart';
 import '../physics/ball_physics_3d.dart';
 import '../physics/perspective_camera.dart';
 import '../physics/launch_solver.dart';
+import '../fx/glow_sprite.dart';
+import '../fx/streak_celebration.dart' show streakTierFor;
 import 'fiery_trail.dart';
 import 'wall_impact_puff.dart';
 
@@ -36,9 +38,107 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     if (_cachedCamera == null || _lastCameraSize != game.size) {
       _lastCameraSize = game.size.clone();
       _cachedCamera = PerspectiveCamera3D.standard(game.size.x, game.size.y);
+      // Device pixel ratio only changes alongside a resize/zoom, so it is read
+      // here (rarely) instead of 60x per second inside render().
+      final views = WidgetsBinding.instance.platformDispatcher.views;
+      _cachedDpr = views.isNotEmpty ? views.first.devicePixelRatio : 1.0;
     }
     return _cachedCamera!;
   }
+
+  double _cachedDpr = 1.0;
+
+  // ── Zero-allocation scratch state (reused every frame) ──
+  final Vector2 _projScratch = Vector2.zero();
+  final Vector2 _velScratch = Vector2.zero();
+  final Paint _shaderPaint = Paint();
+  // Sized to fit squash & stretch (max ~1.16x on either axis); the shader
+  // discards pixels outside the deformed ball.
+  late final Rect _shaderRect = Rect.fromCenter(
+    center: Offset.zero,
+    width: radius * 2.4,
+    height: radius * 2.4,
+  );
+
+  // ── Squash & stretch (visual only — physics is untouched) ──
+  double _squashAmp = 0.0;
+  double _squashT = 1e9;
+  bool _squashFromFloor = false;
+  double _scaleX = 1.0;
+  double _scaleY = 1.0;
+  double _floorAnchor = 0.0; // flatten amount used to keep the ball on the floor
+
+  static const double _squashDecay = 14.0;
+  static const double _squashFreq = 38.0;
+
+  /// Starts a jelly squash of [amp] (0.2 = 20% flatter); stronger hit wins.
+  void _kickSquash(double amp, {required bool fromFloor}) {
+    final current = _squashAmp * math.exp(-_squashT * _squashDecay);
+    if (amp <= current) return;
+    _squashAmp = amp;
+    _squashT = 0.0;
+    _squashFromFloor = fromFloor;
+  }
+
+  void _updateSquash(double dt) {
+    _squashT += dt;
+    final env = _squashAmp * math.exp(-_squashT * _squashDecay);
+    // Damped oscillation: flatten, overshoot into a stretch, settle.
+    final s = env > 0.002 ? env * math.cos(_squashT * _squashFreq) : 0.0;
+    final sy = 1.0 - s;
+    final sx = 1.0 + s * 0.7; // keep apparent volume roughly constant
+    _floorAnchor = _squashFromFloor ? s : 0.0;
+
+    // (Flight stretch removed after playtesting: a perfectly round ball in
+    // flight keeps the shot arc reading clean; squash on impacts stays.)
+    _scaleX = sx;
+    _scaleY = sy;
+  }
+  static final Paint _fallbackPaint = Paint()..color = const Color(0xFFFF6F00);
+
+  // ── Floor reflection (second shader instance, mirrored below the floor) ──
+  ui.FragmentShader? _reflShader;
+  final Paint _reflPaint = Paint()..colorFilter = _reflTint;
+
+  /// Varnished maple reflects darker and warmer than the ball itself.
+  static const ColorFilter _reflTint = ColorFilter.mode(
+    Color(0xFFD9B48E),
+    BlendMode.modulate,
+  );
+
+  /// Peak reflection opacity (ball resting on the floor) and how fast it
+  /// fades as the ball rises (meters of height for a 1/e falloff).
+  static const double _reflMaxAlpha = 0.30;
+  static const double _reflFalloff = 0.45;
+
+  /// Precomputed white-with-alpha colors: Paint.color's opacity scales the
+  /// shader output, so this sets reflection strength with zero allocations.
+  static final List<Color> _whiteAlpha = List<Color>.generate(
+    256,
+    (i) => Color.fromARGB(i, 255, 255, 255),
+    growable: false,
+  );
+
+  /// Precomputed black-with-alpha colors so shadow alpha changes never allocate.
+  static final List<Color> _blackAlpha = List<Color>.generate(
+    256,
+    (i) => Color.fromARGB(i, 0, 0, 0),
+    growable: false,
+  );
+
+  // Canvas→logical-pixel mapping, calibrated once per screen size from a single
+  // getTransform() call (instead of one Float64List per ball per frame).
+  // The Flame camera is a fixed affine map: logical = root + m * world.
+  static Vector2? _calibratedForSize;
+  static double _calibRootX = 0.0;
+  static double _calibRootY = 0.0;
+  static double _calibMetersToPx = 1.0;
+
+  /// Retirement age (seconds since launch). Shared by update() and render() so
+  /// the fade-out always completes right as the ball is removed.
+  double get _maxLifetime =>
+      (physics.isSettled || physics.bounceCount >= 2) ? 1.8 : 4.0;
+  static const double _fadeOutDuration = 0.6;
 
   // ── Static GPU Shader Program Cache ──
   static Future<ui.FragmentProgram?>? _programFuture;
@@ -46,7 +146,6 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
 
   // ── Static Shadow Sprite Cache (Eliminates per-frame ui.Gradient.radial recompilations) ──
   static ui.Image? _cachedShadowSprite;
-  static const Rect _shadowSrcRect = Rect.fromLTWH(0, 0, 64, 64);
   static final Paint _sharedShadowPaint = Paint()
     ..filterQuality = FilterQuality.low;
 
@@ -136,6 +235,9 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     if (isSwish) {
       AudioEngine.playSwish();
     }
+    // Zoom-punch toward the hoop: bigger for swishes and hot streaks.
+    final onStreak = game.currentStreak + 1 >= 3;
+    game.screenFx.punch((isSwish ? 0.02 : 0.013) + (onStreak ? 0.008 : 0.0));
     game.registerScore(isSwish: isSwish, isBankShot: isBankShot);
   }
 
@@ -176,14 +278,27 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
       onRimImpact: (speed) {
         if (!isMounted) return;
         AudioEngine.playRimClank(speed);
+        _kickSquash((speed * 0.02).clamp(0.0, 0.12), fromFloor: false);
+        game.hoopFx.rimHit(speed);
+        game.backboardVisual?.net.kick((speed * 0.004).clamp(0.0, 0.03));
+        // Camera shake only for the player's own ball (ghost replays stay calm).
+        if (isLiveBall && speed > 2.5) {
+          game.screenFx.shake(((speed - 2.5) * 0.9).clamp(0.0, 3.0));
+        }
       },
       onBackboardImpact: (speed) {
         if (!isMounted) return;
         AudioEngine.playBackboardThud(speed);
+        _kickSquash((speed * 0.018).clamp(0.0, 0.10), fromFloor: false);
+        game.hoopFx.boardHit(speed);
+        if (isLiveBall && speed > 3.0) {
+          game.screenFx.shake(((speed - 3.0) * 0.5).clamp(0.0, 1.8));
+        }
       },
       onFloorImpact: (speed) {
         if (!isMounted) return;
         AudioEngine.playFloorBounce(speed);
+        _kickSquash((speed * 0.035).clamp(0.0, 0.22), fromFloor: true);
       },
       onScored: ({required bool isSwish, required bool isBankShot}) {
         if (!isMounted) return;
@@ -216,6 +331,8 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     fieryTrail.reset();
     _shader?.dispose();
     _shader = null;
+    _reflShader?.dispose();
+    _reflShader = null;
     super.onRemove();
   }
 
@@ -224,6 +341,11 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     await super.onLoad();
     _program = _cachedProgram ?? await loadProgram();
     _shader = _program?.fragmentShader();
+    if (_shader != null) _shaderPaint.shader = _shader;
+    // Separate instance so the mirrored draw never shares uniforms with the
+    // ball's own draw in the same frame.
+    _reflShader = _program?.fragmentShader();
+    if (_reflShader != null) _reflPaint.shader = _reflShader;
   }
 
   @override
@@ -272,18 +394,16 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
       }
       final t = Curves.easeOutCubic.transform(enterProgress);
       physics.pos.y = ui.lerpDouble(-0.4, 0.25, t)!;
-      final f2d = camera3D.projectToForge2D(
-        physics.pos.x,
-        physics.pos.y,
-        physics.pos.z,
-      );
-      body.setTransform(Vector2(f2d.dx, f2d.dy), const forge2d.Rot.identity());
+      camera3D.projectToForge2DFast(physics.pos.x, physics.pos.y, physics.pos.z);
+      _projScratch.setValues(camera3D.projX, camera3D.projY);
+      body.setTransform(_projScratch, const forge2d.Rot.identity());
       return;
     }
 
     if (isLaunched) {
       // 1. Advance the 3D physics engine (substeps, torus rim, backboard, floor)
       physics.update(dt);
+      _updateSquash(dt);
 
       // Update fiery flame trail and incandescent embers strictly during upward flight
       if (!isFlightOnFire) {
@@ -312,27 +432,22 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
       // 2. Lifecycle cleanup:
       // Active in-flight balls get up to 4.0s full flight time.
       // Once settled on the floor or after 2+ bounces, retire within 1.8s to allow natural bounces and roll.
-      final double maxLifetime = (physics.isSettled || physics.bounceCount >= 2)
-          ? 1.8
-          : 4.0;
-      if (physics.timeSinceLaunch > maxLifetime) {
+      if (physics.timeSinceLaunch > _maxLifetime) {
         removeFromParent();
         return;
       }
 
-      // 3. Project 3D coordinate to Forge2D world meters
-      final f2d = camera3D.projectToForge2D(
-        physics.pos.x,
-        physics.pos.y,
-        physics.pos.z,
-      );
-      body.setTransform(Vector2(f2d.dx, f2d.dy), const forge2d.Rot.identity());
+      // 3. Project 3D coordinate to Forge2D world meters (into reused scratch)
+      camera3D.projectToForge2DFast(physics.pos.x, physics.pos.y, physics.pos.z);
+      _projScratch.setValues(camera3D.projX, camera3D.projY);
+      body.setTransform(_projScratch, const forge2d.Rot.identity());
 
       // Downward velocity in Forge2D space (+Y is down)
       final f2dVelY = physics.vel.y < 0
           ? physics.vel.y.abs() * 1.5
           : -physics.vel.y * 1.5;
-      body.linearVelocity = Vector2(physics.vel.x, f2dVelY);
+      _velScratch.setValues(physics.vel.x, f2dVelY);
+      body.linearVelocity = _velScratch;
 
       // 4. Dynamic 3D depth layering
       _updateRenderPriority();
@@ -365,15 +480,33 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     }
   }
 
+  /// Draws the cached radial shadow sprite centered at ([cx], [cy]) with size
+  /// [w] x [h], using canvas transforms instead of allocating a Rect.
+  static void _drawShadowSprite(
+    Canvas canvas,
+    ui.Image sprite,
+    double cx,
+    double cy,
+    double w,
+    double h,
+    double alpha,
+  ) {
+    _sharedShadowPaint.color = _blackAlpha[(alpha * 255).round().clamp(0, 255).toInt()];
+    canvas.save();
+    canvas.translate(cx, cy);
+    canvas.scale(w / 64.0, h / 64.0);
+    canvas.drawImage(sprite, const Offset(-32, -32), _sharedShadowPaint);
+    canvas.restore();
+  }
+
   @override
   void render(Canvas canvas) {
-    // Dynamic fade out over the final 0.8s of the ball's lifetime
-    final double maxLifetime = (physics.isSettled || physics.bounceCount >= 2)
-        ? 3.5
-        : 5.0;
-    final double fadeOutStart = maxLifetime - 0.8;
+    // Fade out over the final [_fadeOutDuration] of the ball's lifetime,
+    // finishing exactly when update() retires it.
+    final double fadeOutStart = _maxLifetime - _fadeOutDuration;
     final double fadeOut = physics.timeSinceLaunch > fadeOutStart
-        ? (1.0 - (physics.timeSinceLaunch - fadeOutStart) / 0.8).clamp(0.0, 1.0)
+        ? (1.0 - (physics.timeSinceLaunch - fadeOutStart) / _fadeOutDuration)
+              .clamp(0.0, 1.0)
         : 1.0;
 
     final double effectiveOpacity = (baseOpacity * fadeOut).clamp(0.0, 1.0);
@@ -381,43 +514,110 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
 
     _ensureShadowSprite();
     final shadowImage = _cachedShadowSprite;
+    final cam = camera3D;
+    final bodyX = body.position.x;
+    final bodyY = body.position.y;
+    final quality = game.quality;
+    final bool onFire = isFlightOnFire;
+    final int fireTier = onFire ? streakTierFor(activeStreak).index : 0;
+    // Perspective foreshortening based on exact 3D Z-depth
+    final double scaleFactor = 1.38 * cam.scaleAtDepth(physics.pos.z);
+    final double bottomHeight = physics.pos.y - physics.radius;
 
-    // 1. Continuous Hardwood Floor Drop Shadow
-    // Shadow is calculated at (physics.pos.x, 0.0, physics.pos.z) on the court floor
     final bool onCourtFloor =
         physics.pos.z <= BallPhysics3D.wallZ &&
         physics.pos.x.abs() <= BallPhysics3D.halfWidth;
 
-    if (onCourtFloor) {
-      final floorF2D = camera3D.projectToForge2D(
-        physics.pos.x,
-        0.0,
-        physics.pos.z,
+    // 0a. Fire light on the floor: a burning ball lights the hardwood under
+    //     it (one additive sprite; part of the streak reward, all tiers).
+    if (onFire && onCourtFloor) {
+      final h = bottomHeight.clamp(0.0, 8.0);
+      cam.projectToForge2DFast(physics.pos.x, 0.0, physics.pos.z);
+      final floorX = cam.projX - bodyX;
+      final floorY = cam.projY - bodyY;
+      final vr = radius * cam.scaleAtDepth(physics.pos.z) * 1.38;
+      final flicker = 0.88 + 0.12 * math.sin(physics.timeSinceLaunch * 31.0);
+      final strength = fireTier >= 3 ? 0.62 : 0.5;
+      final w = vr * (5.0 + h * 1.1);
+      GlowSprite.draw(
+        canvas,
+        floorX,
+        floorY,
+        w,
+        w * 0.32, // lies flat on the floor
+        fireTier,
+        strength / (1.0 + h * 0.45) * flicker * effectiveOpacity,
       );
-      final shadowLocalOffset = Offset(
-        floorF2D.dx - body.position.x,
-        floorF2D.dy - body.position.y,
-      );
+    }
 
+    // 0b. Floor reflection: the ball mirrored through the floor plane at
+    //     (x, -y, z), so it lines up at every depth. Faint, warm-tinted,
+    //     smooth (no pebble detail), fading out by ~1.3m of height.
+    final reflShader = _reflShader;
+    if (reflShader != null &&
+        quality.drawFloorReflection &&
+        onCourtFloor &&
+        bottomHeight > -physics.radius * 0.1) {
+      final double reflAlpha =
+          _reflMaxAlpha *
+          math.exp(-bottomHeight.clamp(0.0, 8.0) / _reflFalloff) *
+          effectiveOpacity;
+      if (reflAlpha > 0.02) {
+        _ensureCalibration(canvas, 1.0);
+        // Offset from the ball's own projection, so the reflection stays
+        // locked to the ball even where the body was placed directly.
+        cam.projectToForge2DFast(physics.pos.x, physics.pos.y, physics.pos.z);
+        final selfX = cam.projX;
+        final selfY = cam.projY;
+        cam.projectToForge2DFast(physics.pos.x, -physics.pos.y, physics.pos.z);
+        final mirrorX = bodyX + (cam.projX - selfX);
+        final mirrorY = bodyY + (cam.projY - selfY);
+
+        final fx = game.screenFx;
+        final physicalRadius =
+            radius * _calibMetersToPx * scaleFactor * fx.scale * _cachedDpr;
+        _setBallUniforms(
+          reflShader,
+          worldX: mirrorX,
+          worldY: mirrorY,
+          physicalRadius: physicalRadius,
+          // Mirror of the floor squash: the reflection flattens upward.
+          anchorShift: -physicalRadius * _floorAnchor,
+          fire: onFire,
+          detail: 0.0,
+          scaleY: -_scaleY,
+        );
+        _reflPaint.color =
+            _whiteAlpha[(reflAlpha * 255).round().clamp(0, 255).toInt()];
+        canvas.save();
+        canvas.translate(mirrorX - bodyX, mirrorY - bodyY);
+        canvas.scale(scaleFactor);
+        canvas.drawRect(_shaderRect, _reflPaint);
+        canvas.restore();
+      }
+    }
+
+    // 1. Continuous Hardwood Floor Drop Shadow
+    // Shadow is calculated at (physics.pos.x, 0.0, physics.pos.z) on the court floor
+    if (onCourtFloor && shadowImage != null) {
       final heightAboveFloor = (physics.pos.y - physics.radius).clamp(0.0, 8.0);
       final shadowAlpha = ((0.52 / (1.0 + heightAboveFloor * 0.40)) * opacity)
           .clamp(0.0, 0.52);
 
-      if (shadowAlpha > 0.01 && shadowImage != null) {
-        final zScale = camera3D.scaleAtDepth(physics.pos.z);
+      if (shadowAlpha > 0.01) {
+        cam.projectToForge2DFast(physics.pos.x, 0.0, physics.pos.z);
+        _projScratch.setValues(cam.projX, cam.projY);
+        final zScale = cam.scaleAtDepth(physics.pos.z);
         final visualRadius = radius * zScale * 1.38;
         final shadowScale = 1.0 + heightAboveFloor * 0.16;
-        final shadowRect = Rect.fromCenter(
-          center: shadowLocalOffset,
-          width: visualRadius * 2.2 * shadowScale,
-          height: visualRadius * 0.42 * shadowScale, // Perspective flattening
-        );
-
-        canvas.drawImageRect(
+        _drawShadowSprite(
+          canvas,
           shadowImage,
-          _shadowSrcRect,
-          shadowRect,
-          _sharedShadowPaint..color = Color.fromRGBO(0, 0, 0, shadowAlpha),
+          _projScratch.x - bodyX,
+          _projScratch.y - bodyY,
+          visualRadius * 2.2 * shadowScale,
+          visualRadius * 0.42 * shadowScale, // Perspective flattening
+          shadowAlpha,
         );
       }
     }
@@ -427,13 +627,14 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     // evaluates or renders vertical plane shadows (backboard and back wall).
     // Bounced, rolling, or scored balls strictly skip this to eliminate GPU fill-rate waste.
     final bool canCastVerticalShadows =
+        quality.drawProximityShadows &&
         isLaunched &&
         !physics.isSettled &&
         physics.bounceCount == 0 &&
         !physics.passedThroughRim &&
         physics.pos.z >= 3.40;
 
-    if (canCastVerticalShadows) {
+    if (canCastVerticalShadows && shadowImage != null) {
       // 2. Dynamic Backboard Acrylic Contact Shadow (Convergence Depth Cue)
       // Cast on the white acrylic backboard as the ball approaches within ~1.20m (Z >= 3.76m).
       final double distToBoard =
@@ -447,8 +648,7 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
       );
 
       if (distToBoard < 1.20 &&
-          physics.pos.z <= BallPhysics3D.backboardZ + 0.05 &&
-          shadowImage != null) {
+          physics.pos.z <= BallPhysics3D.backboardZ + 0.05) {
         final double offsetX = (1.0 - boardProximity) * 0.14;
         final double offsetY = -(1.0 - boardProximity) * 0.24;
         final double shadowWorldX = physics.pos.x + offsetX;
@@ -464,31 +664,20 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
               (math.pow(boardProximity, 0.6) * 0.65 * opacity).clamp(0.0, 0.65);
 
           if (boardShadowAlpha > 0.02) {
-            final boardF2D = camera3D.projectToForge2D(
-              shadowWorldX,
-              shadowWorldY,
-              BallPhysics3D.backboardZ,
-            );
-            final boardShadowOffset = Offset(
-              boardF2D.dx - body.position.x,
-              boardF2D.dy - body.position.y,
-            );
-
-            final boardZScale = camera3D.scaleAtDepth(BallPhysics3D.backboardZ);
+            cam.projectToForge2DFast(shadowWorldX, shadowWorldY, BallPhysics3D.backboardZ);
+            _projScratch.setValues(cam.projX, cam.projY);
+            final boardZScale = cam.scaleAtDepth(BallPhysics3D.backboardZ);
             final boardVisualRadius = radius * boardZScale * 1.38;
             final shadowSpread = 1.0 + (1.0 - boardProximity) * 0.55;
-
-            final boardShadowRect = Rect.fromCenter(
-              center: boardShadowOffset,
-              width: boardVisualRadius * 2.0 * shadowSpread,
-              height: boardVisualRadius * 2.0 * shadowSpread,
-            );
-            canvas.drawImageRect(
+            final d = boardVisualRadius * 2.0 * shadowSpread;
+            _drawShadowSprite(
+              canvas,
               shadowImage,
-              _shadowSrcRect,
-              boardShadowRect,
-              _sharedShadowPaint
-                ..color = Color.fromRGBO(0, 0, 0, boardShadowAlpha),
+              _projScratch.x - bodyX,
+              _projScratch.y - bodyY,
+              d,
+              d,
+              boardShadowAlpha,
             );
           }
         }
@@ -514,100 +703,142 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
         final bool occludedByBoard =
             inBackboardFrame && physics.pos.z < BallPhysics3D.backboardZ;
 
-        if (!occludedByBoard && wallShadowAlpha > 0.01 && shadowImage != null) {
+        if (!occludedByBoard && wallShadowAlpha > 0.01) {
           final double shadowY = physics.pos.y - (0.04 + distToWall * 0.08);
-          final wallF2D = camera3D.projectToForge2D(
-            physics.pos.x,
-            shadowY,
-            BallPhysics3D.wallZ,
-          );
-          final wallShadowOffset = Offset(
-            wallF2D.dx - body.position.x,
-            wallF2D.dy - body.position.y,
-          );
-
-          final wallZScale = camera3D.scaleAtDepth(BallPhysics3D.wallZ);
+          cam.projectToForge2DFast(physics.pos.x, shadowY, BallPhysics3D.wallZ);
+          _projScratch.setValues(cam.projX, cam.projY);
+          final wallZScale = cam.scaleAtDepth(BallPhysics3D.wallZ);
           final wallVisualRadius = radius * wallZScale * 1.38;
           final shadowSpread = 1.0 + (1.0 - wallProximity) * 0.35;
-
-          final wallShadowRect = Rect.fromCenter(
-            center: wallShadowOffset,
-            width: wallVisualRadius * 2.0 * shadowSpread,
-            height: wallVisualRadius * 2.0 * shadowSpread,
-          );
-          canvas.drawImageRect(
+          final d = wallVisualRadius * 2.0 * shadowSpread;
+          _drawShadowSprite(
+            canvas,
             shadowImage,
-            _shadowSrcRect,
-            wallShadowRect,
-            _sharedShadowPaint
-              ..color = Color.fromRGBO(0, 0, 0, wallShadowAlpha),
+            _projScratch.x - bodyX,
+            _projScratch.y - bodyY,
+            d,
+            d,
+            wallShadowAlpha,
           );
         }
       }
     }
 
     // Render fiery ribbon and incandescent embers right behind the ball during upward flight
-    if (isFlightOnFire) {
+    // The streak plume shows at every GRAPHICS level (quality only thins embers).
+    if (onFire) {
       fieryTrail.render(
         canvas,
-        ballBodyPos: Offset(body.position.x, body.position.y),
-        camera3D: camera3D,
+        ballBodyPos: Offset(bodyX, bodyY),
+        camera3D: cam,
         streak: activeStreak,
+        emberDensity: quality.emberDensity,
+      );
+
+      // Fake bloom: soft additive halo so the burning ball reads as a light
+      // source (behind the ball, over the plume). All tiers, like the plume.
+      final glow = radius * scaleFactor * 2.0 * 2.7;
+      final pulse = 0.85 + 0.15 * math.sin(physics.timeSinceLaunch * 24.0);
+      GlowSprite.draw(
+        canvas,
+        0.0,
+        0.0,
+        glow,
+        glow,
+        fireTier,
+        (fireTier >= 3 ? 0.6 : 0.48) * pulse * effectiveOpacity,
       );
     }
-
-    // 3. Monotonic Perspective Foreshortening based on exact 3D Z-depth
-    final scaleFactor = 1.38 * camera3D.scaleAtDepth(physics.pos.z);
 
     canvas.save();
     canvas.scale(scaleFactor);
 
-    if (_shader != null) {
-      final shader = _shader!;
-
-      final transform = canvas.getTransform();
-      final logicalCenterX = transform[12];
-      final logicalCenterY = transform[13];
-      final logicalScale = math.sqrt(
-        transform[0] * transform[0] + transform[1] * transform[1],
+    final shader = _shader;
+    if (shader != null) {
+      _ensureCalibration(canvas, scaleFactor);
+      final physicalRadius =
+          radius * _calibMetersToPx * scaleFactor * game.screenFx.scale *
+          _cachedDpr;
+      _setBallUniforms(
+        shader,
+        worldX: bodyX,
+        worldY: bodyY,
+        physicalRadius: physicalRadius,
+        // Floor squash keeps the ball's bottom planted on the hardwood.
+        anchorShift: physicalRadius * _floorAnchor,
+        fire: onFire,
+        // Pebble/bump detail level from AdaptiveQuality (0 = smooth leather).
+        detail: quality.shaderDetail,
+        scaleY: _scaleY,
       );
-
-      final dpr = WidgetsBinding
-          .instance
-          .platformDispatcher
-          .views
-          .first
-          .devicePixelRatio;
-
-      final physicalCenterX = logicalCenterX * dpr;
-      final physicalCenterY = logicalCenterY * dpr;
-      final physicalRadius = radius * logicalScale * dpr;
-
-      shader.setFloat(0, physicalCenterX);
-      shader.setFloat(1, physicalCenterY);
-      shader.setFloat(2, physicalRadius);
-      shader.setFloat(3, physics.yaw);
-      shader.setFloat(4, physics.pitch);
-      shader.setFloat(5, radius);
-      final double fireUniform = isFlightOnFire
-          ? (activeStreak >= 10 ? 2.0 : 1.0)
-          : 0.0;
-      shader.setFloat(6, fireUniform);
-
-      final paint = Paint()..shader = shader;
-      final rect = Rect.fromCenter(
-        center: Offset.zero,
-        width: radius * 2.02,
-        height: radius * 2.02,
-      );
-      canvas.drawRect(rect, paint);
+      canvas.drawRect(_shaderRect, _shaderPaint);
     } else {
-      const fallbackColor = Color(0xFFFF6F00);
-      final paint = Paint()..color = fallbackColor;
-      canvas.drawCircle(Offset.zero, radius, paint);
+      canvas.drawCircle(Offset.zero, radius, _fallbackPaint);
     }
 
     canvas.restore();
+  }
+
+  /// Calibrates the world→logical-pixel affine map once per screen size from
+  /// the current canvas transform ([extraScale] = any local scale applied on
+  /// top of the body transform), removing any ScreenFx transform active at
+  /// that moment.
+  void _ensureCalibration(Canvas canvas, double extraScale) {
+    final calibSize = _calibratedForSize;
+    if (calibSize != null && calibSize == game.size) return;
+    final fx = game.screenFx;
+    final fxScale = fx.scale;
+    final bodyX = body.position.x;
+    final bodyY = body.position.y;
+    final t = canvas.getTransform();
+    final m = math.sqrt(t[0] * t[0] + t[1] * t[1]) / (extraScale * fxScale);
+    _calibMetersToPx = m;
+    _calibRootX =
+        (t[12] - fx.offsetX - fx.originX) / fxScale + fx.originX - m * bodyX;
+    _calibRootY =
+        (t[13] - fx.offsetY - fx.originY) / fxScale + fx.originY - m * bodyY;
+    _calibratedForSize = game.size.clone();
+  }
+
+  /// Writes the ball shader uniforms for a draw centered on Forge2D world
+  /// point ([worldX], [worldY]).
+  ///
+  /// The shader works in raw screen pixels and ignores canvas transforms, so
+  /// the camera shake / zoom punch (ScreenFx) is folded in by hand:
+  ///   screen = (base - origin) * fxScale + origin + fxOffset
+  void _setBallUniforms(
+    ui.FragmentShader shader, {
+    required double worldX,
+    required double worldY,
+    required double physicalRadius,
+    required double anchorShift,
+    required bool fire,
+    required double detail,
+    required double scaleY,
+  }) {
+    final fx = game.screenFx;
+    final fxScale = fx.scale;
+    final dpr = _cachedDpr;
+    final baseX = _calibRootX + _calibMetersToPx * worldX;
+    final baseY = _calibRootY + _calibMetersToPx * worldY;
+    shader.setFloat(
+      0,
+      ((baseX - fx.originX) * fxScale + fx.originX + fx.offsetX) * dpr,
+    );
+    shader.setFloat(
+      1,
+      ((baseY - fx.originY) * fxScale + fx.originY + fx.offsetY) * dpr +
+          anchorShift,
+    );
+    shader.setFloat(2, physicalRadius);
+    shader.setFloat(3, physics.yaw);
+    shader.setFloat(4, physics.pitch);
+    shader.setFloat(5, radius);
+    shader.setFloat(6, fire ? (activeStreak >= 10 ? 2.0 : 1.0) : 0.0);
+    shader.setFloat(7, detail);
+    // Squash (x, y) — the shader deforms the sphere; negative y mirrors it.
+    shader.setFloat(8, _scaleX);
+    shader.setFloat(9, scaleY);
   }
 
   @override

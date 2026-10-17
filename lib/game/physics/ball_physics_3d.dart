@@ -7,7 +7,7 @@ import 'perspective_camera.dart';
 import 'launch_solver.dart';
 
 /// 3D point-mass basketball physics simulator featuring:
-/// - Fixed 1/240s timestep accumulator for deterministic simulation
+/// - Fixed 1/120s timestep accumulator for deterministic simulation
 /// - Impulse-based contact model with restitution + Coulomb friction + spin coupling
 /// - Exact 3D Torus Rim collision detection
 /// - 3D Backboard vertical plane collision
@@ -115,7 +115,7 @@ class BallPhysics3D {
   }
 
   /// Steps the 3D physics simulation forward by [dt] seconds
-  /// using a fixed 1/240s timestep accumulator for deterministic physics.
+  /// using a fixed 1/120s timestep accumulator for deterministic physics.
   void update(double dt) {
     if (!isLaunched) return;
 
@@ -152,41 +152,65 @@ class BallPhysics3D {
   /// Spin coupling: backspin naturally produces "kiss and drop" off back rim,
   /// front rim grazes roll in correctly, bank shots bounce at the physical
   /// angle of incidence — all without any scripted velocity overrides.
-  void _contact(Vector3 n, {required double e, required double mu}) {
-    final vn = vel.dot(n);
+  ///
+  /// Zero-allocation scalar form: runs up to 4x per frame per ball at 120Hz, so
+  /// it must not create any Vector3 temporaries (GC pauses on mobile web).
+  void _contact(
+    double nx,
+    double ny,
+    double nz, {
+    required double e,
+    required double mu,
+  }) {
+    final vn = vel.x * nx + vel.y * ny + vel.z * nz;
     if (vn >= 0) return; // Separating — no contact impulse needed
 
     // ── Normal impulse (unit-mass ball) ──
     final jn = -(1 + e) * vn;
-    vel.addScaled(n, jn);
+    vel.x += nx * jn;
+    vel.y += ny * jn;
+    vel.z += nz * jn;
 
     // ── Friction impulse with spin coupling ──
-    // rVec: vector from ball center to contact point (-radius along the normal)
-    final rVec = n.scaled(-radius);
+    // r: vector from ball center to contact point (-radius along the normal)
+    final rx = nx * -radius;
+    final ry = ny * -radius;
+    final rz = nz * -radius;
 
     // Surface velocity at contact point = translational vel + ω × r
-    final omegaCrossR = Vector3.zero();
-    angularVel.crossInto(rVec, omegaCrossR);
-    final surf = vel + omegaCrossR;
+    final wx = angularVel.x;
+    final wy = angularVel.y;
+    final wz = angularVel.z;
+    final surfX = vel.x + (wy * rz - wz * ry);
+    final surfY = vel.y + (wz * rx - wx * rz);
+    final surfZ = vel.z + (wx * ry - wy * rx);
 
     // Tangential slip: remove normal component from surface velocity
-    final surfDotN = surf.dot(n);
-    final slip = surf - n.scaled(surfDotN);
-    final s = slip.length;
+    final surfDotN = surfX * nx + surfY * ny + surfZ * nz;
+    final slipX = surfX - nx * surfDotN;
+    final slipY = surfY - ny * surfDotN;
+    final slipZ = surfZ - nz * surfDotN;
+    final s = math.sqrt(slipX * slipX + slipY * slipY + slipZ * slipZ);
 
     if (s > 1e-4) {
       // Friction impulse capped by Coulomb limit
       // Thin hollow-shell sphere: 1/m + r²/I = 2.5 (since I = 2/3 mr²)
       final jt = math.min(mu * jn, s / 2.5);
-      final t = slip.scaled(-1.0 / s); // Unit tangent opposing slip direction
+      final invS = -1.0 / s;
+      final tx = slipX * invS; // Unit tangent opposing slip direction
+      final ty = slipY * invS;
+      final tz = slipZ * invS;
 
       // Apply tangential impulse to translational velocity
-      vel.addScaled(t, jt);
+      vel.x += tx * jt;
+      vel.y += ty * jt;
+      vel.z += tz * jt;
 
       // Apply tangential impulse to angular velocity: Δω = (r × t) * jt / I
-      final rCrossT = Vector3.zero();
-      rVec.crossInto(t, rCrossT);
-      angularVel.addScaled(rCrossT, jt / (2.0 / 3.0 * radius * radius));
+      final k = jt / (2.0 / 3.0 * radius * radius);
+      angularVel.x += (ry * tz - rz * ty) * k;
+      angularVel.y += (rz * tx - rx * tz) * k;
+      angularVel.z += (rx * ty - ry * tx) * k;
     }
   }
 
@@ -201,7 +225,7 @@ class BallPhysics3D {
     final prevY = pos.y;
 
     // 2. Position step
-    pos.add(vel * dt);
+    pos.addScaled(vel, dt); // in-place: no temporary Vector3
 
     // 3. Spin-driven visual rotation (constant airborne ω in flight)
     if (pos.y > radius + 0.01) {
@@ -273,15 +297,18 @@ class BallPhysics3D {
       // Front rim grazes that should roll in DO roll in — the normal handles it.
       // Side rattles produce unique bounces based on contact geometry.
       final impactSpeed = vel.length;
-      final n = Vector3(nx, ny, nz);
-      _contact(n, e: 0.44, mu: 0.28);
+      _contact(nx, ny, nz, e: 0.44, mu: 0.28);
 
       // Shooter's Touch: soft grazes lose excess upward velocity and roll inward toward the cylinder
       if (impactSpeed < 3.2 && pos.y >= rimCenter.y - 0.05) {
         vel.y = math.min(vel.y, 0.22);
-        final toCenter = (rimCenter - pos)..y = 0.0;
-        if (toCenter.length > 1e-4) {
-          vel.addScaled(toCenter.normalized(), 0.38);
+        final tcx = rimCenter.x - pos.x;
+        final tcz = rimCenter.z - pos.z;
+        final tcLen = math.sqrt(tcx * tcx + tcz * tcz);
+        if (tcLen > 1e-4) {
+          final k = 0.38 / tcLen;
+          vel.x += tcx * k;
+          vel.z += tcz * k;
         }
       }
 
@@ -314,8 +341,7 @@ class BallPhysics3D {
               pos.y <= bankZoneMaxY;
 
           // Physical tempered-glass impulse contact (e=0.62, μ=0.12)
-          final n = Vector3(0.0, 0.0, -1.0);
-          _contact(n, e: 0.62, mu: 0.12);
+          _contact(0.0, 0.0, -1.0, e: 0.62, mu: 0.12);
           onBackboardImpact?.call(impactSpeed);
 
           if (isBankZone) {
@@ -329,7 +355,7 @@ class BallPhysics3D {
             // t_drop = (vy + sqrt(vy^2 + 2 * g * dy)) / g
             // vz = -dz / t_drop
             final dy = math.max(0.04, pos.y - (rimCenter.y + radius));
-            final g = LaunchSolver.gravity; // 30.0 m/s^2 Forge2D gravity
+            final g = LaunchSolver.gravity; // 13.0 m/s^2 ballistic gravity (shared with LaunchSolver)
             final vVertical = vel.y.clamp(-1.5, 0.4);
 
             // Compute time until ball reaches rim plane
@@ -360,8 +386,7 @@ class BallPhysics3D {
           pos.z = boardBackZ + radius + 0.001;
           isDeadBall = true;
           final impactSpeed = vel.length;
-          final n = Vector3(0.0, 0.0, 1.0);
-          _contact(n, e: 0.40, mu: 0.30);
+          _contact(0.0, 0.0, 1.0, e: 0.40, mu: 0.30);
           onBackboardImpact?.call(impactSpeed);
         }
       }
@@ -424,8 +449,7 @@ class BallPhysics3D {
         pos.z = poleZ + nz * (contactDist + 0.001);
 
         // Steel pole contact: normal pointing radially outward
-        final n = Vector3(nx, 0.0, nz);
-        _contact(n, e: 0.58, mu: 0.25);
+        _contact(nx, 0.0, nz, e: 0.58, mu: 0.25);
       }
     }
   }
@@ -444,8 +468,7 @@ class BallPhysics3D {
 
       // Solid brick wall contact: normal pointing toward the player (-Z)
       // High masonry restitution (e=0.55) repels the ball back forward into the court
-      final n = Vector3(0.0, 0.0, -1.0);
-      _contact(n, e: 0.55, mu: 0.40);
+      _contact(0.0, 0.0, -1.0, e: 0.55, mu: 0.40);
     }
   }
 
@@ -454,12 +477,10 @@ class BallPhysics3D {
   void _checkSideWallsCollision() {
     if (pos.x + radius >= halfWidth) {
       pos.x = halfWidth - radius - 0.001;
-      final n = Vector3(-1.0, 0.0, 0.0);
-      _contact(n, e: 0.55, mu: 0.40);
+      _contact(-1.0, 0.0, 0.0, e: 0.55, mu: 0.40);
     } else if (pos.x - radius <= -halfWidth) {
       pos.x = -halfWidth + radius + 0.001;
-      final n = Vector3(1.0, 0.0, 0.0);
-      _contact(n, e: 0.55, mu: 0.40);
+      _contact(1.0, 0.0, 0.0, e: 0.55, mu: 0.40);
     }
   }
 
@@ -468,8 +489,7 @@ class BallPhysics3D {
   void _checkCeilingCollision() {
     if (pos.y + radius >= ceilingY) {
       pos.y = ceilingY - radius - 0.001;
-      final n = Vector3(0.0, -1.0, 0.0);
-      _contact(n, e: 0.35, mu: 0.20);
+      _contact(0.0, -1.0, 0.0, e: 0.35, mu: 0.20);
     }
   }
 
@@ -487,8 +507,7 @@ class BallPhysics3D {
         if (impactSpeed > 0.35) {
           bounceCount++;
           // Floor contact: normal pointing up, hardwood restitution + high friction
-          final n = Vector3(0, 1, 0);
-          _contact(n, e: 0.62, mu: 0.50);
+          _contact(0.0, 1.0, 0.0, e: 0.62, mu: 0.50);
           onFloorImpact?.call(impactSpeed);
         } else {
           // Very low bounce energy — transition to rolling and settling

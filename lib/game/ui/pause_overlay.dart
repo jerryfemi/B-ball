@@ -9,6 +9,7 @@ import '../../../services/firestore_match_service.dart';
 import '../audio/audio_engine.dart';
 import '../basketball_game.dart';
 import '../match/match_session.dart';
+import '../performance/adaptive_quality.dart';
 import '../physics/shot_difficulty.dart';
 import 'common/difficulty_stepped_slider.dart';
 
@@ -350,12 +351,19 @@ class PauseOverlay extends HookWidget {
                                           AudioEngine.musicVolume = val,
                                     ),
                                     const SizedBox(height: 6.0),
+                                    _buildTrackSelector(),
+                                    const SizedBox(height: 6.0),
                                     _buildMuteToggle(),
                                     const Divider(
                                       color: Color(0x2238BDF8),
                                       height: 14.0,
                                     ),
                                     _buildStreakFxRow(),
+                                    const Divider(
+                                      color: Color(0x2238BDF8),
+                                      height: 14.0,
+                                    ),
+                                    _buildGraphicsQualityRow(),
                                   ],
                                 ),
                               ),
@@ -376,6 +384,119 @@ class PauseOverlay extends HookWidget {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildTrackSelector() {
+    return ValueListenableBuilder<int>(
+      valueListenable: AudioEngine.currentTrackIndexNotifier,
+      builder: (context, selectedIdx, _) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2.0),
+          child: Container(
+            decoration: BoxDecoration(
+              color: const Color(0x1538BDF8),
+              borderRadius: BorderRadius.circular(10.0),
+              border: Border.all(
+                color: const Color(0x3338BDF8),
+                width: 1.0,
+              ),
+            ),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 10.0,
+              vertical: 2.0,
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.queue_music_rounded,
+                  size: 15.0,
+                  color: Color(0xFF38BDF8),
+                ),
+                const SizedBox(width: 8.0),
+                const Text(
+                  'TRACK',
+                  style: TextStyle(
+                    color: Color(0xFF94A3B8),
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+                const SizedBox(width: 8.0),
+                Expanded(
+                  child: Theme(
+                    data: Theme.of(context).copyWith(
+                      canvasColor: const Color(0xFF0F172A),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<int>(
+                        value: selectedIdx.clamp(
+                          0,
+                          AudioEngine.availableTracks.length - 1,
+                        ),
+                        isDense: true,
+                        isExpanded: true,
+                        dropdownColor: const Color(0xFF0F172A),
+                        borderRadius: BorderRadius.circular(12.0),
+                        icon: const Icon(
+                          Icons.arrow_drop_down_rounded,
+                          color: Color(0xFF38BDF8),
+                          size: 20.0,
+                        ),
+                        items: List.generate(
+                          AudioEngine.availableTracks.length,
+                          (index) {
+                            final track = AudioEngine.availableTracks[index];
+                            final isSelected = index == selectedIdx;
+                            return DropdownMenuItem<int>(
+                              value: index,
+                              child: Row(
+                                children: [
+                                  if (isSelected)
+                                    const Padding(
+                                      padding: EdgeInsets.only(right: 6.0),
+                                      child: Icon(
+                                        Icons.check_rounded,
+                                        size: 13.0,
+                                        color: Color(0xFF38BDF8),
+                                      ),
+                                    ),
+                                  Expanded(
+                                    child: Text(
+                                      'Track ${index + 1}: ${track.title}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: isSelected
+                                            ? const Color(0xFF38BDF8)
+                                            : const Color(0xFFE2E8F0),
+                                        fontSize: 10.5,
+                                        fontWeight: isSelected
+                                            ? FontWeight.w800
+                                            : FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                        onChanged: (newIndex) {
+                          if (newIndex != null) {
+                            AudioEngine.selectTrack(newIndex);
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -500,6 +621,113 @@ class PauseOverlay extends HookWidget {
               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
           ],
+        );
+      },
+    );
+  }
+
+  /// GRAPHICS: AUTO / HIGH / LOW. In AUTO the subtitle shows the tier that
+  /// AdaptiveQuality has currently picked for this phone.
+  Widget _buildGraphicsQualityRow() {
+    return ValueListenableBuilder<QualityMode>(
+      valueListenable: game.quality.modeNotifier,
+      builder: (context, mode, _) {
+        return ValueListenableBuilder<QualityTier>(
+          valueListenable: game.quality.tierNotifier,
+          builder: (context, tier, _) {
+            final tierLabel = switch (tier) {
+              QualityTier.high => 'Full effects',
+              QualityTier.medium => 'Balanced',
+              QualityTier.low => 'Battery saver',
+            };
+            final subtitle = switch (mode) {
+              QualityMode.auto => 'Auto-adjusts to your phone • $tierLabel',
+              QualityMode.high => 'All effects on (may heat up)',
+              QualityMode.low => 'Fewer effects • smoother on hot phones',
+            };
+            final accent = mode == QualityMode.low
+                ? const Color(0xFF94A3B8)
+                : const Color(0xFF00FFCC);
+            return Row(
+              children: [
+                Container(
+                  width: 28.0,
+                  height: 28.0,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.13),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: accent.withValues(alpha: 0.4),
+                      width: 1.0,
+                    ),
+                  ),
+                  child: Icon(
+                    mode == QualityMode.auto
+                        ? Icons.auto_awesome_rounded
+                        : (mode == QualityMode.high
+                              ? Icons.high_quality_rounded
+                              : Icons.battery_saver_rounded),
+                    size: 15.0,
+                    color: accent,
+                  ),
+                ),
+                const SizedBox(width: 10.0),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'GRAPHICS',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 11.0,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                      const SizedBox(height: 1.0),
+                      Text(
+                        subtitle,
+                        style: const TextStyle(
+                          color: Color(0xFF94A3B8),
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                InkWell(
+                  borderRadius: BorderRadius.circular(999.0),
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    unawaited(game.quality.cycleMode());
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12.0,
+                      vertical: 6.0,
+                    ),
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(999.0),
+                      border: Border.all(color: accent, width: 1.0),
+                    ),
+                    child: Text(
+                      mode.label,
+                      style: TextStyle(
+                        color: accent,
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
         );
       },
     );
@@ -701,15 +929,9 @@ class PauseOverlay extends HookWidget {
         );
       }
 
+      // The explicit CONFIRM FORFEIT dialog is the confirmation; returning to
+      // the court is the outcome — no floating SnackBar.
       game.exitToSoloMode();
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('You forfeited the match.'),
-          backgroundColor: Color(0xFFEF4444),
-          duration: Duration(seconds: 3),
-        ),
-      );
     }
   }
 }

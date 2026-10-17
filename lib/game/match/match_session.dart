@@ -227,8 +227,23 @@ class MatchSession {
     final isWaiting = isP1 && cloudMatch.player2 == null;
     final isMyTurn = cloudMatch.isMyTurn(myUid);
 
+    // Restore an explicit winner (forfeits / abandoned-claims) so the podium
+    // crowns the right player even when the score line says otherwise.
+    PlayerMatchState? restoredWinner;
+    final isDecidedByForfeit =
+        cloudMatch.status == MatchStatus.forfeited ||
+        (cloudMatch.customWinnerUid?.isNotEmpty ?? false);
+    final storedWinnerUid = isDecidedByForfeit ? cloudMatch.winnerUid : null;
+    if (storedWinnerUid != null && storedWinnerUid.isNotEmpty) {
+      if (storedWinnerUid == p1State.id) {
+        restoredWinner = p1State;
+      } else if (storedWinnerUid == p2State.id) {
+        restoredWinner = p2State;
+      }
+    }
+
     final MatchTurnPhase initialPhase;
-    if (cloudMatch.status == MatchStatus.completed) {
+    if (cloudMatch.isFinished) {
       initialPhase = MatchTurnPhase.matchComplete;
     } else if (isMyTurn) {
       if (hasOpponentTelemetry) {
@@ -259,6 +274,7 @@ class MatchSession {
       phase: initialPhase,
       player1: p1State,
       player2: p2State,
+      forfeitWinner: restoredWinner,
       config: MatchConfig(
         totalRounds: cloudMatch.totalRounds,
         roundDurationSeconds: cloudMatch.roundDurationSeconds,

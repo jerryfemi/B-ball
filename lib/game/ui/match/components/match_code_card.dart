@@ -139,9 +139,9 @@ class MatchCodeCard extends StatelessWidget {
           SizedBox(
             height: 36.0,
             child: OutlinedButton.icon(
-              onPressed: isGeneratingCode || profile == null
-                  ? null
-                  : onGenerateCode,
+              // Never a silent dead click: the parent waits for sign-in to
+              // hydrate if the profile isn't ready yet.
+              onPressed: isGeneratingCode ? null : onGenerateCode,
               icon: isGeneratingCode
                   ? const SizedBox(
                       width: 14,

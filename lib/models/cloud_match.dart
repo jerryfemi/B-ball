@@ -301,6 +301,11 @@ class CloudMatch {
     this.customWinnerUid,
   });
 
+  /// Whether the match has reached a final result that belongs in the
+  /// player's permanent trophy history (played out OR decided by forfeit).
+  bool get isFinished =>
+      status == MatchStatus.completed || status == MatchStatus.forfeited;
+
   bool isMyTurn(String myUid) =>
       status == MatchStatus.active && activeTurnPlayerUid == myUid;
   bool isParticipant(String myUid) => playerIds.contains(myUid);

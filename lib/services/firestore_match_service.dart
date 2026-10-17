@@ -549,15 +549,22 @@ class FirestoreMatchService {
       final ttl7Days = Timestamp.fromDate(
         DateTime.now().add(const Duration(days: 7)),
       );
+      final isConcluding = nextStatus == MatchStatus.completed;
       final updateData = <String, dynamic>{
         'currentRound': nextRound,
         'activeTurnPlayerUid': nextTurnUid,
         'status': nextStatus.key,
         'updatedAt': now,
-        'expireAt': ttl7Days,
+        // Finished matches are permanent trophy history: drop the TTL entirely.
+        'expireAt': isConcluding ? FieldValue.delete() : ttl7Days,
         'latestTelemetry': telemetry.toJson(),
         'latestTelemetryRound': match.currentRound,
         'latestTelemetryShooterUid': shooterUid,
+        // Reset the live-shooter ticker so the next spectator never inherits
+        // this turn's score (it is re-armed by [markTurnStarted]).
+        'liveShooterScore': FieldValue.delete(),
+        'liveShooterUid': FieldValue.delete(),
+        'turnStartedAt': FieldValue.delete(),
         if (isP1) ...{
           'player1.roundScores': updatedP1Scores,
           'player1.roundSummaries': updatedP1Summaries.map((s) => s.toMap()).toList(),
@@ -589,12 +596,13 @@ class FirestoreMatchService {
         ...newMsg.toMap(),
         'expireAt': ttl7Days,
       });
+      // Root mirror deliberately omits expireAt: the turn transaction above owns
+      // the TTL, and re-adding it here would re-expire a just-finished match.
       await docRef.update({
         'updatedAt': now,
         'lastChatSenderUid': shooterUid,
         'lastChatTimestamp': now,
         'lastChatText': optionalChatMessage.trim(),
-        'expireAt': ttl7Days,
       });
     }
   }
@@ -616,13 +624,13 @@ class FirestoreMatchService {
       ...message.toMap(),
       'expireAt': ttl7Days,
     });
-    // Touch updatedAt and mirror lightweight chat metadata on root for notification badges
+    // Touch updatedAt and mirror lightweight chat metadata on root for notification badges.
+    // No expireAt here: banter on a finished match must not put it back on a TTL.
     await docRef.update({
       'updatedAt': DateTime.now().millisecondsSinceEpoch,
       'lastChatSenderUid': message.senderUid,
       'lastChatTimestamp': message.timestamp,
       'lastChatText': message.text,
-      'expireAt': ttl7Days,
     });
   }
 
@@ -659,19 +667,14 @@ class FirestoreMatchService {
     return CloudMatch.fromFirestore(doc);
   }
 
-  /// Evaporates (deletes) a match room document from Firestore to free up cloud storage
-  /// and reduce unnecessary listener/read load once a match is completed and dismissed.
-  Future<void> deleteMatch(String matchId) async {
-    final clean = matchId.trim().toUpperCase();
-    await _matchesRef.doc(clean).delete();
-    _cachedUserMatches.removeWhere((key, list) {
-      list.removeWhere((m) => m.id == clean);
-      return false;
-    });
-  }
-
-  /// Leaves or dismisses a match from the current player's inbox.
-  /// Removes the player's UID from `playerIds` and marks the match as abandoned if not completed.
+  /// Removes the current player from a match, following the match lifecycle rules:
+  ///
+  /// - **Finished** (completed / forfeited / abandoned / declined): only removes
+  ///   [myUid] from `playerIds`, so it disappears from *my* history while the
+  ///   opponent keeps their trophy record. Once nobody references the match it is
+  ///   handed to the TTL sweeper (`expireAt` = +24h) instead of being deleted.
+  /// - **Waiting for opponent**: the room is closed (`abandoned`).
+  /// - **Active**: leaving is a resignation, recorded as a forfeit to the opponent.
   Future<void> leaveOrDismissMatch({
     required String matchId,
     required String myUid,
@@ -680,23 +683,39 @@ class FirestoreMatchService {
     try {
       final doc = await _matchesRef.doc(clean).get();
       if (!doc.exists) return;
-      final data = doc.data();
-      final currentStatus = data?['status'] as String?;
-      final isAlreadyDone = currentStatus == MatchStatus.completed.key ||
-          currentStatus == MatchStatus.abandoned.key;
+      final match = CloudMatch.fromFirestore(doc);
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final isTerminal = match.isFinished ||
+          match.status == MatchStatus.abandoned ||
+          match.status == MatchStatus.declined;
 
-      if (isAlreadyDone) {
-        // Just remove user from playerIds so it disappears from their inbox stream
+      if (isTerminal) {
+        final remaining = match.playerIds.where((id) => id != myUid).toList();
         await _matchesRef.doc(clean).update({
           'playerIds': FieldValue.arrayRemove([myUid]),
-          'updatedAt': DateTime.now().millisecondsSinceEpoch,
+          'updatedAt': now,
+          if (remaining.isEmpty)
+            'expireAt': Timestamp.fromDate(
+              DateTime.now().add(const Duration(hours: 24)),
+            ),
         });
-      } else {
-        // Mark abandoned and remove user
+      } else if (match.status == MatchStatus.waitingForOpponent ||
+          match.player2 == null) {
         await _matchesRef.doc(clean).update({
           'playerIds': FieldValue.arrayRemove([myUid]),
           'status': MatchStatus.abandoned.key,
-          'updatedAt': DateTime.now().millisecondsSinceEpoch,
+          'updatedAt': now,
+        });
+      } else {
+        final opponentUid = match.opponentPlayer(myUid)?.uid ?? '';
+        await _matchesRef.doc(clean).update({
+          'playerIds': FieldValue.arrayRemove([myUid]),
+          'status': MatchStatus.forfeited.key,
+          'forfeitedBy': myUid,
+          'winnerUid': opponentUid,
+          'activeTurnPlayerUid': '',
+          'updatedAt': now,
+          'expireAt': FieldValue.delete(),
         });
       }
       _cachedUserMatches.forEach((key, list) {
@@ -707,17 +726,46 @@ class FirestoreMatchService {
     }
   }
 
-  /// Atomically marks a match completed and records winnerUid when opponent abandons or times out.
+  /// Arms the live-shooter ticker when the active shooter fires the first shot
+  /// of a turn. `turnStartedAt` is a server timestamp so Firestore rules can
+  /// verify an "opponent abandoned" claim against trusted time.
+  Future<void> markTurnStarted({
+    required String matchId,
+    required String shooterUid,
+  }) async {
+    final cleanId = matchId.trim().toUpperCase();
+    try {
+      await _matchesRef.doc(cleanId).update({
+        'liveShooterUid': shooterUid,
+        'liveShooterScore': 0,
+        'turnStartedAt': FieldValue.serverTimestamp(),
+        'updatedAt': DateTime.now().millisecondsSinceEpoch,
+      });
+    } catch (e) {
+      debugPrint('[FirestoreMatchService] markTurnStarted error: $e');
+    }
+  }
+
+  /// Records a win for the spectator after the active shooter abandoned their
+  /// live turn (clock expired + grace period, no submission).
+  ///
+  /// Stored as a forfeit by [forfeiterUid] so it lands in both players'
+  /// history with the correct outcome. Firestore rules only accept this once
+  /// the shooter's round clock (from server-side `turnStartedAt`) has elapsed.
   Future<void> claimForfeitVictory({
     required String matchId,
     required String winnerUid,
+    required String forfeiterUid,
   }) async {
     final clean = matchId.trim().toUpperCase();
     try {
       await _matchesRef.doc(clean).update({
-        'status': MatchStatus.completed.key,
+        'status': MatchStatus.forfeited.key,
+        'forfeitedBy': forfeiterUid,
         'winnerUid': winnerUid,
+        'activeTurnPlayerUid': '',
         'updatedAt': DateTime.now().millisecondsSinceEpoch,
+        'expireAt': FieldValue.delete(),
       });
       debugPrint('[FirestoreMatchService] Forfeit victory claimed for $clean by $winnerUid');
     } catch (e) {
@@ -728,6 +776,7 @@ class FirestoreMatchService {
   /// Gracefully forfeits / resigns an active match.
   ///
   /// Marks document as [MatchStatus.forfeited], designates [forfeitedBy], and names [winnerUid].
+  /// If there is no opponent yet ([winnerUid] empty) the room is simply closed as abandoned.
   Future<void> forfeitMatch({
     required String matchId,
     required String forfeiterUid,
@@ -735,11 +784,21 @@ class FirestoreMatchService {
   }) async {
     final clean = matchId.trim().toUpperCase();
     try {
+      if (winnerUid.isEmpty) {
+        await _matchesRef.doc(clean).update({
+          'playerIds': FieldValue.arrayRemove([forfeiterUid]),
+          'status': MatchStatus.abandoned.key,
+          'updatedAt': DateTime.now().millisecondsSinceEpoch,
+        });
+        return;
+      }
       await _matchesRef.doc(clean).update({
         'status': MatchStatus.forfeited.key,
         'forfeitedBy': forfeiterUid,
         'winnerUid': winnerUid,
+        'activeTurnPlayerUid': '',
         'updatedAt': DateTime.now().millisecondsSinceEpoch,
+        'expireAt': FieldValue.delete(),
       });
       debugPrint(
         '[FirestoreMatchService] Match $clean forfeited by $forfeiterUid; winner: $winnerUid',
@@ -755,32 +814,86 @@ class FirestoreMatchService {
   List<CloudMatch> getCachedUserMatches(String userUid) =>
       _cachedUserMatches[userUid] ?? const [];
 
-  /// Streams active matches for the Match Inbox ("Your Turn" vs "Waiting for Opponent").
+  /// Streams the player's matches for the Match Inbox as one merged list.
   ///
-  /// Query is now bounded: only active/waiting matches are streamed, with a
-  /// hard limit of 20 documents to prevent downloading hundreds of historical matches.
-  /// Completed matches can still be fetched on-demand via [getMatch].
+  /// Two independent listeners so a growing trophy history can never crowd
+  /// live games out of the inbox:
+  /// - **Live**: every active / waiting match (naturally small).
+  /// - **History**: the 20 most recently finished (completed + forfeited),
+  ///   newest first. Needs the composite index in `firestore.indexes.json`;
+  ///   if it is missing, live matches keep working and the error (with the
+  ///   one-click index link) is printed to the console.
   Stream<List<CloudMatch>> streamUserMatches(String userUid) {
     if (userUid.isEmpty) {
       return Stream.value(const <CloudMatch>[]);
     }
-    return _matchesRef
+
+    final liveQuery = _matchesRef
         .where('playerIds', arrayContains: userUid)
         .where('status', whereIn: [
           MatchStatus.active.key,
           MatchStatus.waitingForOpponent.key,
+        ]);
+
+    final historyQuery = _matchesRef
+        .where('playerIds', arrayContains: userUid)
+        .where('status', whereIn: [
           MatchStatus.completed.key,
+          MatchStatus.forfeited.key,
         ])
-        .limit(20)
-        .snapshots()
-        .map((snapshot) {
-      final matches = snapshot.docs
-          .map((doc) => CloudMatch.fromFirestore(doc))
-          .toList();
-      matches.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-      _cachedUserMatches[userUid] = matches;
-      return matches;
-    });
+        .orderBy('updatedAt', descending: true)
+        .limit(20);
+
+    List<CloudMatch>? liveMatches;
+    List<CloudMatch>? historyMatches;
+    StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? liveSub;
+    StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? historySub;
+    late final StreamController<List<CloudMatch>> controller;
+
+    void emit() {
+      if (controller.isClosed) return;
+      if (liveMatches == null && historyMatches == null) return;
+      final merged = <CloudMatch>[...?liveMatches, ...?historyMatches]
+        ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      _cachedUserMatches[userUid] = merged;
+      controller.add(merged);
+    }
+
+    controller = StreamController<List<CloudMatch>>(
+      onListen: () {
+        liveSub = liveQuery.snapshots().listen(
+          (snap) {
+            liveMatches =
+                snap.docs.map((d) => CloudMatch.fromFirestore(d)).toList();
+            emit();
+          },
+          onError: (Object e) {
+            debugPrint('[FirestoreMatchService] Live matches stream error: $e');
+            liveMatches ??= const [];
+            emit();
+          },
+        );
+        historySub = historyQuery.snapshots().listen(
+          (snap) {
+            historyMatches =
+                snap.docs.map((d) => CloudMatch.fromFirestore(d)).toList();
+            emit();
+          },
+          onError: (Object e) {
+            // Most likely a missing composite index — the message contains the creation link.
+            debugPrint('[FirestoreMatchService] Match history stream error: $e');
+            historyMatches ??= const [];
+            emit();
+          },
+        );
+      },
+      onCancel: () async {
+        await liveSub?.cancel();
+        await historySub?.cancel();
+      },
+    );
+
+    return controller.stream;
   }
 
   /// Broadcasts a live shot impulse micro-packet to the `live_shots` subcollection.
@@ -817,7 +930,14 @@ class FirestoreMatchService {
   ///
   /// Uses Firestore document changes (`DocumentChangeType.added`) filtered by timestamp
   /// to ensure only newly launched shots are received and spawned as ghost balls.
-  Stream<RecordedShot> streamLiveShots(String matchId, {int? sinceTimestampMs}) {
+  ///
+  /// When [shooterUid] is given, packets from anyone else are ignored, so a
+  /// third party who knows the join code cannot inject ghost balls.
+  Stream<RecordedShot> streamLiveShots(
+    String matchId, {
+    int? sinceTimestampMs,
+    String? shooterUid,
+  }) {
     if (matchId.isEmpty) return const Stream.empty();
     final cleanId = matchId.trim().toUpperCase();
     final start = sinceTimestampMs ?? (DateTime.now().millisecondsSinceEpoch - 1500);
@@ -833,6 +953,11 @@ class FirestoreMatchService {
           final data = change.doc.data();
           final shotMap = data?['shot'] as Map<String, dynamic>?;
           if (shotMap == null) return null;
+          if (shooterUid != null &&
+              shooterUid.isNotEmpty &&
+              data?['shooterUid'] != shooterUid) {
+            return null;
+          }
 
           final createdAt = (data?['createdAt'] as num?)?.toInt() ?? 0;
           final nowMs = DateTime.now().millisecondsSinceEpoch;

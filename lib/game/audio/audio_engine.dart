@@ -1,16 +1,23 @@
 import 'dart:async';
-import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Represents a background soundtrack item with instant-start bundled asset support.
 class MusicTrack {
   final String title;
+  final String subtitle;
   final String assetPath;
+  final double durationSeconds;
 
-  const MusicTrack({required this.title, required this.assetPath});
+  const MusicTrack({
+    required this.title,
+    this.subtitle = '',
+    required this.assetPath,
+    required this.durationSeconds,
+  });
 }
 
 /// Centralized audio and haptics coordinator for basketball collisions,
@@ -26,17 +33,17 @@ class AudioEngine {
   static bool get isMuted => isMutedNotifier.value;
   static set isMuted(bool value) => isMutedNotifier.value = value;
 
-  /// Volume scale for sound effects (0.0 to 1.0). Default 45%.
+  /// Volume scale for sound effects (0.0 to 1.0). Default 60%.
   static final ValueNotifier<double> sfxVolumeNotifier = ValueNotifier<double>(
-    0.45,
+    0.60,
   );
   static double get sfxVolume => sfxVolumeNotifier.value;
   static set sfxVolume(double value) =>
       sfxVolumeNotifier.value = value.clamp(0.0, 1.0);
 
-  /// Volume scale for background music (0.0 to 1.0). Default 35%.
+  /// Volume scale for background music (0.0 to 1.0). Default 68%.
   static final ValueNotifier<double> musicVolumeNotifier =
-      ValueNotifier<double>(0.35);
+      ValueNotifier<double>(0.68);
   static double get musicVolume => musicVolumeNotifier.value;
   static set musicVolume(double value) {
     musicVolumeNotifier.value = value.clamp(0.0, 1.0);
@@ -72,48 +79,40 @@ class AudioEngine {
   static AudioSource? _buzzerSource;
   static AudioSource? _preloadedMusicSource;
 
-  // ── Background Music Jukebox (Afrobeats / Naija Soundtrack) ──
-  static final List<MusicTrack> _playlist = [
-    const MusicTrack(
-      title: '5 Star - Adekunle Gold',
-      assetPath: 'assets/music/Adekunle Gold - 5 Star [Official Audio] - Adekunle Gold.mp3',
+  // ── Available Background Music Tracks ──
+  static const List<MusicTrack> availableTracks = [
+    MusicTrack(
+      title: 'Back Outside',
+      subtitle: 'BNXN, Sarz (98 BPM)',
+      assetPath: 'assets/music/short/BNXN, Sarz - Back Outside.mp3',
+      durationSeconds: 39.0,
     ),
-    const MusicTrack(
-      title: 'Never Stopped - Bnxn (Buju)',
-      assetPath: 'assets/music/Buju - Never Stopped (Audio) - Bnxn TYE.mp3',
+    MusicTrack(
+      title: 'Back To Life',
+      subtitle: 'Soul II Soul - Instrumental (101 BPM)',
+      assetPath:
+          'assets/music/short/Back To Life - Soul II Soul (Instrumental).mp3',
+      durationSeconds: 30.0,
     ),
-    const MusicTrack(
-      title: 'Fountains - Drake ft. Tems',
-      assetPath: 'assets/music/Drake - Fountains (Audio) ft. Tems - DrakeVEVO.mp3',
-    ),
-    const MusicTrack(
-      title: 'Masculine - J Hus ft. Burna Boy',
-      assetPath: 'assets/music/J Hus - Masculine (Official Audio) ft. Burna Boy - JHusVEVO.mp3',
-    ),
-    const MusicTrack(
-      title: 'Green Light - Olamide',
-      assetPath: 'assets/music/Olamide - Green Light [Audio] - Miziki.mp3',
-    ),
-    const MusicTrack(
-      title: 'Infinity - Olamide ft. Omah Lay',
-      assetPath: 'assets/music/Olamide feat. Omah Lay -  Infinity (Audio) - Olamide.mp3',
-    ),
-    const MusicTrack(
-      title: 'Ozumba Mbadiwe - Reekado Banks',
-      assetPath: 'assets/music/Reekado Banks - Ozumba Mbadiwe (Official Audio) - Reekado Banks.mp3',
-    ),
-    const MusicTrack(
-      title: 'Free Mind - Tems',
-      assetPath: 'assets/music/Tems - Free Mind (Lyrics) - life + lyrics.mp3',
+    MusicTrack(
+      title: 'WAIT FOR U',
+      subtitle: 'Future ft. Drake, Tems (83 BPM)',
+      assetPath:
+          'assets/music/short/Future - WAIT FOR U ft. Drake, Tems.mp3',
+      durationSeconds: 55.0,
     ),
   ];
 
-  static final Random _rng = Random();
+  /// Reactive notifier for the currently selected music track index.
+  static final ValueNotifier<int> currentTrackIndexNotifier =
+      ValueNotifier<int>(0);
+  static int get currentTrackIndex => currentTrackIndexNotifier.value;
+
+  static const String _prefKeyMusicTrack = 'selected_music_track_index';
+
+  static int _currentTrackIndex = 0;
   static SoundHandle? _musicHandle;
   static AudioSource? _currentMusicSource;
-  static StreamSubscription? _musicEventSub;
-  static List<int> _shuffledIndices = [];
-  static int _currentShufflePos = 0;
   static bool _musicStarted = false;
   static int _musicGen = 0;
 
@@ -172,17 +171,28 @@ class AudioEngine {
       _bounceSource = results[3];
       _buzzerSource = results[4];
 
-      // Pre-warm initial track into RAM during startup so the first touch/swipe has 0ms audio latency
-      if (_playlist.isNotEmpty) {
-        _reshufflePlaylist();
-        final initialTrack = _playlist[_shuffledIndices[_currentShufflePos]];
+      // Restore user's preferred track from SharedPreferences
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final savedIndex = prefs.getInt(_prefKeyMusicTrack) ?? 0;
+        if (savedIndex >= 0 && savedIndex < availableTracks.length) {
+          currentTrackIndexNotifier.value = savedIndex;
+          _currentTrackIndex = savedIndex;
+        }
+      } catch (e) {
+        debugPrint('[AudioEngine] Music preference read error: $e');
+      }
+
+      // Pre-warm the preferred track into RAM during startup for 0ms audio latency
+      if (availableTracks.isNotEmpty) {
+        final preferredTrack = availableTracks[currentTrackIndexNotifier.value];
         try {
           _preloadedMusicSource = await SoLoud.instance.loadAsset(
-            initialTrack.assetPath,
+            preferredTrack.assetPath,
             mode: LoadMode.memory,
           );
           debugPrint(
-            '[AudioEngine] 🎵 Pre-warmed initial track: ${initialTrack.title}',
+            '[AudioEngine] 🎵 Pre-warmed preferred track: ${preferredTrack.title}',
           );
         } catch (e) {
           debugPrint('[AudioEngine] Music pre-warm notice: $e');
@@ -222,122 +232,151 @@ class AudioEngine {
     }
   }
 
-  // ─────────────────────────── Background Music Jukebox ───────────────────────────
+  // ─────────────────────────── Background Music Player ───────────────────────────
 
-  /// Generates a new random shuffle of track indices.
-  static void _reshufflePlaylist() {
-    _shuffledIndices = List<int>.generate(_playlist.length, (i) => i)
-      ..shuffle(_rng);
-    _currentShufflePos = 0;
-  }
-
-  /// Starts the background music jukebox with a fresh, random shuffle of all tracks.
-  static void _startMusic() {
-    if (_playlist.isEmpty || !SoLoud.instance.isInitialized) return;
-    _musicStarted = true;
-
-    // Fast-path: If initial track was pre-warmed during init, play immediately with 0ms decode latency
-    if (_preloadedMusicSource != null) {
-      final source = _preloadedMusicSource!;
-      _preloadedMusicSource = null;
-      _currentMusicSource = source;
-
-      final effectiveVolume = isMuted
-          ? 0.0
-          : (musicVolume * 0.6).clamp(0.0, 1.0);
-      final gen = ++_musicGen;
-
-      _musicHandle = SoLoud.instance.play(
-        source,
-        volume: effectiveVolume,
-        looping: false,
-      );
-
-      _musicEventSub = source.soundEvents.listen((event) {
-        if (event.event == SoundEventType.handleIsNoMoreValid &&
-            gen == _musicGen) {
-          _onTrackComplete();
-        }
-      });
-
-      final track = _playlist[_shuffledIndices[_currentShufflePos]];
-      debugPrint(
-        '[AudioEngine] 🎵 Now playing (instant pre-warmed): ${track.title} '
-        '(${_currentShufflePos + 1}/${_shuffledIndices.length})',
-      );
+  /// Selects and switches to the track at [index].
+  ///
+  /// Immediately loads the selected track into RAM with [LoadMode.memory],
+  /// disposes the previous track to maintain a low RAM footprint (<15 MB),
+  /// and saves the player's preference to [SharedPreferences].
+  static Future<void> selectTrack(int index) async {
+    if (index < 0 || index >= availableTracks.length) return;
+    if (index == currentTrackIndexNotifier.value &&
+        _currentMusicSource != null &&
+        _musicHandle != null) {
       return;
     }
 
-    _reshufflePlaylist();
-    _playCurrentTrack();
-  }
+    currentTrackIndexNotifier.value = index;
+    _currentTrackIndex = index;
 
-  /// Plays the track at the current shuffle position.
-  static Future<void> _playCurrentTrack() async {
+    // Persist choice to local storage
+    unawaited(
+      SharedPreferences.getInstance().then((prefs) {
+        prefs.setInt(_prefKeyMusicTrack, index);
+      }).catchError((e) {
+        debugPrint('[AudioEngine] Failed to save track preference: $e');
+      }),
+    );
+
+    if (!SoLoud.instance.isInitialized) return;
+
+    final track = availableTracks[index];
     final gen = ++_musicGen;
+
     try {
-      if (!SoLoud.instance.isInitialized) return;
-
-      // Stop and dispose previous track to conserve memory
-      await _cleanupCurrentMusicTrack();
-
-      if (_currentShufflePos >= _shuffledIndices.length) {
-        _currentShufflePos = 0;
-      }
-      final track = _playlist[_shuffledIndices[_currentShufflePos]];
-
-      // Pre-decode active music track into RAM buffer (LoadMode.memory) for zero-latency,
-      // glitch-free playback without real-time disk streaming or CPU buffer underruns.
-      final source = await SoLoud.instance.loadAsset(
+      // 1. Preload new track into RAM
+      final newSource = await SoLoud.instance.loadAsset(
         track.assetPath,
         mode: LoadMode.memory,
       );
 
-      // Race guard: if another track was requested while loading, discard this one
       if (gen != _musicGen) {
-        unawaited(SoLoud.instance.disposeSource(source));
+        unawaited(SoLoud.instance.disposeSource(newSource));
+        return;
+      }
+
+      // 2. Clean up old track voice and RAM source
+      await _cleanupCurrentMusicTrack();
+
+      _currentMusicSource = newSource;
+
+      // 3. Play or hold ready
+      if (_musicStarted) {
+        final effectiveVolume =
+            isMuted ? 0.0 : (musicVolume * 0.6).clamp(0.0, 1.0);
+
+        _musicHandle = SoLoud.instance.play(
+          newSource,
+          volume: effectiveVolume,
+          looping: true,
+        );
+        _syncMusicPauseState();
+
+        debugPrint(
+          '[AudioEngine] 🎵 Now looping preferred track: ${track.title}',
+        );
+      } else {
+        _preloadedMusicSource = newSource;
+        debugPrint(
+          '[AudioEngine] 🎵 Pre-warmed preferred track: ${track.title}',
+        );
+      }
+    } catch (e) {
+      debugPrint('[AudioEngine] Error selecting track: $e');
+    }
+  }
+
+  /// Starts background music playback using the selected track.
+  static void _startMusic() {
+    if (availableTracks.isEmpty || !SoLoud.instance.isInitialized) return;
+    _musicStarted = true;
+    _currentTrackIndex = currentTrackIndexNotifier.value.clamp(
+      0,
+      availableTracks.length - 1,
+    );
+
+    if (_preloadedMusicSource != null) {
+      _playCurrentTrack(usePreloaded: true);
+      return;
+    }
+
+    _playCurrentTrack();
+  }
+
+  /// Plays the currently selected track on an infinite native loop.
+  static Future<void> _playCurrentTrack({bool usePreloaded = false}) async {
+    final gen = ++_musicGen;
+    try {
+      if (!SoLoud.instance.isInitialized) return;
+
+      await _cleanupCurrentMusicTrack();
+
+      _currentTrackIndex = currentTrackIndexNotifier.value.clamp(
+        0,
+        availableTracks.length - 1,
+      );
+      final track = availableTracks[_currentTrackIndex];
+
+      AudioSource? source;
+      if (usePreloaded && _preloadedMusicSource != null) {
+        source = _preloadedMusicSource;
+        _preloadedMusicSource = null;
+      } else {
+        source = await SoLoud.instance.loadAsset(
+          track.assetPath,
+          mode: LoadMode.memory,
+        );
+      }
+
+      if (gen != _musicGen || source == null) {
+        if (source != null) unawaited(SoLoud.instance.disposeSource(source));
         return;
       }
 
       _currentMusicSource = source;
-
-      final effectiveVolume = isMuted
-          ? 0.0
-          : (musicVolume * 0.6).clamp(0.0, 1.0);
+      final effectiveVolume =
+          isMuted ? 0.0 : (musicVolume * 0.6).clamp(0.0, 1.0);
 
       _musicHandle = SoLoud.instance.play(
         source,
         volume: effectiveVolume,
-        looping: false,
+        looping: true,
       );
-
-      // Auto-advance to next track when playback finishes
-      _musicEventSub = source.soundEvents.listen((event) {
-        if (event.event == SoundEventType.handleIsNoMoreValid &&
-            gen == _musicGen) {
-          _onTrackComplete();
-        }
-      });
+      _syncMusicPauseState();
 
       debugPrint(
-        '[AudioEngine] 🎵 Now playing: ${track.title} '
-        '(${_currentShufflePos + 1}/${_shuffledIndices.length})',
+        '[AudioEngine] 🎵 Playing: ${track.title} (Continuous Loop)',
       );
     } catch (e) {
       debugPrint('[AudioEngine] Music playback error: $e');
-      if (_audioUnlocked && _musicStarted) {
-        Future.delayed(const Duration(seconds: 2), () {
-          if (gen == _musicGen) _onTrackComplete();
-        });
-      }
     }
   }
 
-  /// Cleans up current music handle and source.
-  static Future<void> _cleanupCurrentMusicTrack() async {
-    await _musicEventSub?.cancel();
-    _musicEventSub = null;
 
+
+  /// Cleans up the active music handle and disposes its source from RAM.
+  static Future<void> _cleanupCurrentMusicTrack() async {
     if (_musicHandle != null && SoLoud.instance.isInitialized) {
       try {
         if (SoLoud.instance.getIsValidVoiceHandle(_musicHandle!)) {
@@ -355,42 +394,45 @@ class AudioEngine {
     }
   }
 
-  /// Called when a track finishes — advances to the next in the shuffle.
-  static void _onTrackComplete() {
-    if (!_musicStarted) return;
-    _currentShufflePos++;
-    if (_currentShufflePos >= _shuffledIndices.length) {
-      final lastTrackIdx = _shuffledIndices.isNotEmpty
-          ? _shuffledIndices.last
-          : -1;
-      _reshufflePlaylist();
-      // Avoid playing the exact same track back-to-back across reshuffles
-      if (_shuffledIndices.length > 1 &&
-          _shuffledIndices.first == lastTrackIdx) {
-        _shuffledIndices.add(_shuffledIndices.removeAt(0));
-      }
-    }
-    _playCurrentTrack();
-  }
+  /// Whether the soundtrack voice should currently be producing audio.
+  /// At 0% music volume ("Spotify mode") the voice is PAUSED, not just
+  /// silenced, so the WASM mixer spends zero cycles decoding/mixing it.
+  static bool get _musicShouldPlay =>
+      !isMuted && !_isBackgrounded && musicVolume > 0.001;
 
-  /// Applies the current music volume to the active player.
-  static void _applyMusicVolume() {
-    if (_musicHandle == null || !SoLoud.instance.isInitialized) return;
+  static bool _isBackgrounded = false;
+
+  /// Pauses or resumes the music voice to match [_musicShouldPlay].
+  static void _syncMusicPauseState() {
+    if (!SoLoud.instance.isInitialized) return;
     try {
-      if (SoLoud.instance.getIsValidVoiceHandle(_musicHandle!)) {
-        final effectiveVolume = isMuted
-            ? 0.0
-            : (musicVolume * 0.6).clamp(0.0, 1.0);
-        SoLoud.instance.setVolume(_musicHandle!, effectiveVolume);
+      if (_musicHandle != null &&
+          SoLoud.instance.getIsValidVoiceHandle(_musicHandle!)) {
+        SoLoud.instance.setPause(_musicHandle!, !_musicShouldPlay);
       }
     } catch (_) {}
   }
 
+  /// Applies the current music volume to the active player.
+  static void _applyMusicVolume() {
+    if (!SoLoud.instance.isInitialized) return;
+    final baseVolume = isMuted ? 0.0 : (musicVolume * 0.6).clamp(0.0, 1.0);
+
+    try {
+      if (_musicHandle != null &&
+          SoLoud.instance.getIsValidVoiceHandle(_musicHandle!)) {
+        SoLoud.instance.setVolume(_musicHandle!, baseVolume);
+      }
+    } catch (_) {}
+    _syncMusicPauseState();
+  }
+
   /// Pauses the background music (used when muting or backgrounding).
   static void _pauseMusic() {
-    if (_musicHandle == null || !SoLoud.instance.isInitialized) return;
+    if (!SoLoud.instance.isInitialized) return;
     try {
-      if (SoLoud.instance.getIsValidVoiceHandle(_musicHandle!)) {
+      if (_musicHandle != null &&
+          SoLoud.instance.getIsValidVoiceHandle(_musicHandle!)) {
         SoLoud.instance.setPause(_musicHandle!, true);
       }
     } catch (_) {}
@@ -401,11 +443,10 @@ class AudioEngine {
     if (!SoLoud.instance.isInitialized) return;
     if (_musicStarted && _musicHandle != null) {
       try {
-        if (SoLoud.instance.getIsValidVoiceHandle(_musicHandle!)) {
-          _applyMusicVolume();
-          SoLoud.instance.setPause(_musicHandle!, false);
-          return;
-        }
+        // Applies volume and un-pauses only if music should be audible
+        // (stays paused at 0% volume).
+        _applyMusicVolume();
+        return;
       } catch (_) {}
     }
     if (_audioUnlocked) {
@@ -415,11 +456,13 @@ class AudioEngine {
 
   /// Call when app goes to background or browser tab is hidden.
   static void onAppBackground() {
+    _isBackgrounded = true;
     _pauseMusic();
   }
 
   /// Call when app returns to foreground.
   static void onAppForeground() {
+    _isBackgrounded = false;
     if (!isMuted) {
       _resumeMusic();
     }
@@ -510,10 +553,7 @@ class AudioEngine {
 
   /// Releases all audio resources, stops music, and deinits SoLoud engine.
   static void dispose() {
-    _musicEventSub?.cancel();
-    _musicEventSub = null;
-    _musicHandle = null;
-    _currentMusicSource = null;
+    unawaited(_cleanupCurrentMusicTrack());
     _preloadedMusicSource = null;
     _musicStarted = false;
 

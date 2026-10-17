@@ -550,10 +550,10 @@ class MatchInboxSheet extends HookConsumerWidget {
                         );
                       }
                       final liveMatches = allMatches
-                          .where((m) => m.status != MatchStatus.completed)
+                          .where((m) => !m.isFinished)
                           .toList();
                       final completedMatches = allMatches
-                          .where((m) => m.status == MatchStatus.completed)
+                          .where((m) => m.isFinished)
                           .toList();
 
                       // Sort live matches so your turns appear at the top
@@ -583,7 +583,7 @@ class MatchInboxSheet extends HookConsumerWidget {
                             match: match,
                             myUid: myUid,
                             onTap: () {
-                              if (match.status == MatchStatus.completed) {
+                              if (match.isFinished) {
                                 Navigator.of(context).pop();
                                 onViewPodium?.call(match);
                               } else {
@@ -612,7 +612,7 @@ class MatchInboxSheet extends HookConsumerWidget {
                             },
                             onLeave: () {
                               final isDone =
-                                  match.status == MatchStatus.completed;
+                                  match.isFinished;
                               showDialog(
                                 context: context,
                                 builder: (dialogCtx) => AlertDialog(

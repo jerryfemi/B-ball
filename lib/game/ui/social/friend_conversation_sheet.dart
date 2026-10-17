@@ -315,7 +315,7 @@ class FriendConversationSheet extends HookConsumerWidget {
     VoidCallback onCreateChallenge,
   ) {
     if (match == null ||
-        match.status == MatchStatus.completed ||
+        match.isFinished ||
         match.status == MatchStatus.abandoned ||
         match.status == MatchStatus.declined) {
       return Container(
@@ -378,7 +378,7 @@ class FriendConversationSheet extends HookConsumerWidget {
     }
 
     final isMyTurn = match.isMyTurn(myUid);
-    final isCompleted = match.status == MatchStatus.completed;
+    final isCompleted = match.isFinished;
     final myPlayer = match.myPlayer(myUid);
     final opponent = match.opponentPlayer(myUid);
     final myScore = myPlayer?.totalScore ?? 0;

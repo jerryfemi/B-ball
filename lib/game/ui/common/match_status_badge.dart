@@ -30,7 +30,7 @@ class MatchStatusBadge extends StatelessWidget {
     required String myUid,
     double fontSize = 9.5,
   }) {
-    if (match.status == MatchStatus.completed) {
+    if (match.isFinished) {
       final isTie = match.outcome == MatchOutcome.tie;
       final isWinner = match.winnerUid == myUid;
 

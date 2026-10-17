@@ -49,7 +49,7 @@ class MatchInboxCard extends StatelessWidget {
     final snippetSender = latestChat?.senderName ??
         (match.lastChatSenderUid == myUid ? (myPlayer?.displayName ?? 'You') : opponentName);
 
-    final isCompleted = match.status == MatchStatus.completed;
+    final isCompleted = match.isFinished;
     final isWaitingOpponent = match.status == MatchStatus.waitingForOpponent;
 
     final borderColor = isMyTurn && !isCompleted

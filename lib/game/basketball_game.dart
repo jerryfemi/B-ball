@@ -24,6 +24,9 @@ import 'components/ball.dart';
 import 'components/ghost_ball.dart';
 import 'components/ground.dart';
 import 'match/match_session.dart';
+import 'fx/game_feel.dart';
+import 'fx/streak_celebration.dart';
+import 'performance/adaptive_quality.dart';
 import 'physics/shot_difficulty.dart';
 import 'telemetry/shot_telemetry.dart';
 import 'ui/match/live_turn_transition_overlay.dart';
@@ -205,6 +208,23 @@ class BasketballGame extends Forge2DGame {
   String? _currentSubscribedMatchId;
   String? _currentActiveTurnUid;
 
+  /// Frame-pacing monitor that steps visual effects down on struggling phones.
+  final AdaptiveQuality quality = AdaptiveQuality();
+
+  /// Camera shake + zoom punch (applied to the game canvas only, not the HUD).
+  final ScreenFx screenFx = ScreenFx();
+
+  /// Rim / backboard vibration after impacts.
+  final HoopFx hoopFx = HoopFx();
+
+  /// The backboard owns the cloth net; balls kick it on rim clanks.
+  BackboardVisual? backboardVisual;
+
+  /// Streak rewards at the hoop (shockwaves, sparks, rim glow, tier-up flash).
+  StreakCelebration? streakCelebration;
+  static final Paint _flashPaint = Paint()..blendMode = BlendMode.plus;
+  Rect _flashRect = Rect.zero;
+
   /// Difficulty preset for solo play (configurable in the pause menu).
   final ValueNotifier<ShotDifficulty> soloDifficultyNotifier =
       ValueNotifier<ShotDifficulty>(ShotDifficulty.easy);
@@ -297,6 +317,15 @@ class BasketballGame extends Forge2DGame {
         session.cloudMatchId != null &&
         session.phase == MatchTurnPhase.playingTurn) {
       final myUid = AuthService.instance.currentUser?.uid ?? '';
+      if (_currentRoundShots.length == 1) {
+        // First shot of this turn: arm the spectator ticker with a server timestamp.
+        unawaited(
+          FirestoreMatchService.instance.markTurnStarted(
+            matchId: session.cloudMatchId!,
+            shooterUid: myUid,
+          ),
+        );
+      }
       unawaited(
         FirestoreMatchService.instance.broadcastLiveShot(
           matchId: session.cloudMatchId!,
@@ -323,9 +352,9 @@ class BasketballGame extends Forge2DGame {
 
     // Regulation GamePigeon scoring rules:
     // Base basket: 2 pts. Swish bonus: +1 pt (3 pts total). Bank shot bonus: +1 pt (3 pts total).
-    // Consecutive streak bonus: +1 additional point for streaks of 3 or more.
+    // Streak bonus: a flat +1 on every make while on a streak of 3 or more.
     final basePoints = isSwish ? 3 : (isBankShot ? 3 : 2);
-    final streakBonus = currentStreak >= 3 ? (currentStreak - 2) : 0;
+    final streakBonus = currentStreak >= 3 ? 1 : 0;
     final points = basePoints + streakBonus;
     score += points;
 
@@ -351,6 +380,10 @@ class BasketballGame extends Forge2DGame {
     streakNotifier.value = currentStreak;
     scoreEventNotifier.value = event;
     onScoreEvent?.call(event);
+
+    if (streakFxEnabledNotifier.value) {
+      streakCelebration?.onMake(streak: currentStreak, isLocalPlayer: true);
+    }
 
     final session = matchSessionNotifier.value;
     if (session != null &&
@@ -390,6 +423,10 @@ class BasketballGame extends Forge2DGame {
 
   @override
   void update(double dt) {
+    // Raw dt (before any clamping) is the truest signal of thermal/GPU stalls.
+    quality.recordFrame(dt);
+    screenFx.update(dt);
+    hoopFx.update(dt);
     super.update(dt);
 
     final session = matchSessionNotifier.value;
@@ -528,7 +565,12 @@ class BasketballGame extends Forge2DGame {
     required int points,
     required bool isSwish,
     required bool isBankShot,
+    int streak = 0,
   }) {
+    // Opponent / replay streaks get the hoop burst too (no flash or punch).
+    if (streak >= 3) {
+      streakCelebration?.onMake(streak: streak, isLocalPlayer: false);
+    }
     final session = matchSessionNotifier.value;
     final is1v1Spectating =
         session != null &&
@@ -665,9 +707,8 @@ class BasketballGame extends Forge2DGame {
               .set({
                 'highScore': newBest,
                 'updatedAt': DateTime.now().millisecondsSinceEpoch,
-                'expireAt': Timestamp.fromDate(
-                  DateTime.now().add(const Duration(days: 30)),
-                ),
+                // Profile docs are permanent (friends + high score): clear legacy TTL.
+                'expireAt': FieldValue.delete(),
               }, SetOptions(merge: true));
         }
       } catch (e) {
@@ -973,7 +1014,8 @@ class BasketballGame extends Forge2DGame {
       // Trigger interstitial countdown
       _triggerLiveTurnTransition(
         isMyTurnNow: isMyTurn,
-        opponentName: session.opponentPlayer.name,
+        // Cloud sessions always seat me as player1 and the opponent as player2.
+        opponentName: session.player2.name,
         currentRound: updatedMatch.currentRound,
         totalRounds: updatedMatch.totalRounds,
         onFinished: () {
@@ -988,17 +1030,18 @@ class BasketballGame extends Forge2DGame {
     }
 
     // Sync live scoreboard ticks if opponent is shooting and we are spectating
+    // Only trust the ticker when it belongs to the opponent's current turn —
+    // a leftover value from my own previous turn must never land in their bay.
     if (session.phase == MatchTurnPhase.watchingLiveOpponent &&
-        updatedMatch.liveShooterScore != null) {
-      final oppBase = session.opponentPlayer.scoreUpToRound(
+        updatedMatch.liveShooterScore != null &&
+        updatedMatch.liveShooterUid == session.player2.id) {
+      // While spectating, activePlayerIndex == 1 so `opponentPlayer` would
+      // resolve to *me*; in cloud mode the opponent is always player2.
+      final oppBase = session.player2.scoreUpToRound(
         session.currentRoundIndex,
       );
-      final totalLive = oppBase + updatedMatch.liveShooterScore!;
-      if (session.activePlayerIndex == 1) {
-        player2MatchScoreNotifier.value = totalLive;
-      } else {
-        player1MatchScoreNotifier.value = totalLive;
-      }
+      player2MatchScoreNotifier.value =
+          oppBase + updatedMatch.liveShooterScore!;
     }
   }
 
@@ -1061,7 +1104,10 @@ class BasketballGame extends Forge2DGame {
     _liveShotSubscription?.cancel();
     if (session.cloudMatchId != null) {
       _liveShotSubscription = FirestoreMatchService.instance
-          .streamLiveShots(session.cloudMatchId!)
+          .streamLiveShots(
+            session.cloudMatchId!,
+            shooterUid: session.player2.id,
+          )
           .listen(
             (shot) {
               _lastLiveShotReceivedAt = DateTime.now();
@@ -1277,11 +1323,13 @@ class BasketballGame extends Forge2DGame {
 
     final matchId = session.cloudMatchId;
     final myUid = AuthService.instance.currentUser?.uid ?? session.player1.id;
-    if (matchId != null) {
+    final abandonedByUid = session.player2.id;
+    if (matchId != null && abandonedByUid.isNotEmpty) {
       unawaited(
         FirestoreMatchService.instance.claimForfeitVictory(
           matchId: matchId,
           winnerUid: myUid,
+          forfeiterUid: abandonedByUid,
         ),
       );
     }
@@ -1337,6 +1385,30 @@ class BasketballGame extends Forge2DGame {
   @override
   Color backgroundColor() => const Color(0xFF090D16);
 
+  /// Applies [screenFx] (shake + zoom punch) to the whole court — background,
+  /// hoop and balls — while Flutter HUD overlays stay perfectly still.
+  @override
+  void render(Canvas canvas) {
+    final fx = screenFx;
+    if (!fx.isActive) {
+      super.render(canvas);
+    } else {
+      canvas.save();
+      canvas.translate(fx.offsetX + fx.originX, fx.offsetY + fx.originY);
+      canvas.scale(fx.scale);
+      canvas.translate(-fx.originX, -fx.originY);
+      super.render(canvas);
+      canvas.restore();
+    }
+
+    // Tier-up flash: a brief additive tint over the court (HUD stays clear).
+    final flash = streakCelebration?.flashColor;
+    if (flash != null) {
+      _flashPaint.color = flash;
+      canvas.drawRect(_flashRect, _flashPaint);
+    }
+  }
+
   @override
   Future<void> onLoad() async {
     await super.onLoad();
@@ -1346,6 +1418,8 @@ class BasketballGame extends Forge2DGame {
       DistantWallRenderer.loadBrickImage(),
       CourtFloorRenderer.loadFloorImage(),
     ]);
+
+    unawaited(quality.load());
 
     // Bind Lagos Life frame pause and resume events
     VatarBridge.instance.onPause(() {
@@ -1423,12 +1497,12 @@ class BasketballGame extends Forge2DGame {
 
     // 5. 2.5D Layering Pipeline:
     // Priority 1: Backboard, pole, glass plate, target rectangle, wall shadows
-    world.add(
-      BackboardVisual(
-        position: hoopCenterInMeters,
-        hoopWidth: hoopWidthInMeters,
-      ),
+    final backboard = BackboardVisual(
+      position: hoopCenterInMeters,
+      hoopWidth: hoopWidthInMeters,
     );
+    backboardVisual = backboard;
+    world.add(backboard);
 
     // Priority 3: Rear rim arc, mounting bracket flange, and rear net mesh
     world.add(
@@ -1457,6 +1531,15 @@ class BasketballGame extends Forge2DGame {
         hoopWidth: hoopWidthInMeters,
       ),
     );
+
+    // Streak celebration: same priority as the front rim but added after it,
+    // so sparks/rings draw over the rim yet under foreground balls (6).
+    final celebration = StreakCelebration(
+      hoopCenter: hoopCenterInMeters,
+      hoopWidth: hoopWidthInMeters,
+    );
+    streakCelebration = celebration;
+    world.add(celebration);
   }
 
   double _lastSpawnX = 0.0;
@@ -1545,6 +1628,12 @@ class BasketballGame extends Forge2DGame {
   @override
   void onGameResize(Vector2 size) {
     super.onGameResize(size);
+    // Zoom-punch origin = the hoop (Forge2D (0, 5) with a top-center anchor).
+    screenFx
+      ..originX = size.x / 2
+      ..originY = 5.0 * size.y / worldHeightInMeters
+      ..viewportWidth = size.x;
+    _flashRect = Rect.fromLTWH(0, 0, size.x, size.y);
     if (isLoaded) {
       final viewfinder = camera.viewfinder as Forge2DViewfinder;
       viewfinder.metersToPixels = size.y / worldHeightInMeters;
@@ -1574,6 +1663,7 @@ class BasketballGame extends Forge2DGame {
     player2MatchScoreNotifier.dispose();
     spectatorStatusNotifier.dispose();
     spectatorGraceSecondsNotifier.dispose();
+    quality.dispose();
     super.onRemove();
   }
 }

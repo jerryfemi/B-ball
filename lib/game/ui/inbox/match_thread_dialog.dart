@@ -12,6 +12,7 @@ import '../common/app_avatar.dart';
 import '../common/app_modal_sheet.dart';
 import '../common/chat/chat_bubble_list.dart';
 import '../common/chat/chat_input_bar.dart';
+import '../common/inline_feedback.dart';
 
 /// Modal sheet showing the live game conversation thread, round score breakdown, and banter chat.
 class MatchThreadDialog extends HookConsumerWidget {
@@ -58,6 +59,7 @@ class MatchThreadDialog extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final msgController = useTextEditingController();
+    final codeCopiedFlash = useFlashFlag();
     final scrollController = useScrollController();
 
     useEffect(() {
@@ -113,7 +115,7 @@ class MatchThreadDialog extends HookConsumerWidget {
             );
         final opponent = match.opponentPlayer(myUid);
         final isMyTurn = match.isMyTurn(myUid);
-        final isCompleted = match.status == MatchStatus.completed;
+        final isCompleted = match.isFinished;
 
         return AppModalSheet(
           heightFactor: 0.85,
@@ -162,18 +164,18 @@ class MatchThreadDialog extends HookConsumerWidget {
                                 ClipboardData(text: match.joinCode),
                               );
                               HapticFeedback.lightImpact();
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    'Match code ${match.joinCode} copied! 📋',
-                                  ),
-                                  duration: const Duration(seconds: 2),
-                                  behavior: SnackBarBehavior.floating,
-                                  backgroundColor: const Color(0xFF1E2638),
-                                ),
-                              );
+                              codeCopiedFlash.flash();
                             },
-                            child: Padding(
+                            // The code chip itself morphs into the glowing
+                            // "✓ CODE COPIED" badge for a moment.
+                            child: InlineFeedbackSwitcher(
+                              child: codeCopiedFlash.isOn
+                                  ? const CopiedBadge(
+                                      key: ValueKey('copied'),
+                                      visible: true,
+                                    )
+                                  : Padding(
+                              key: const ValueKey('code'),
                               padding: const EdgeInsets.symmetric(
                                 vertical: 2,
                                 horizontal: 2,
@@ -199,6 +201,7 @@ class MatchThreadDialog extends HookConsumerWidget {
                                 ],
                               ),
                             ),
+                            ),
                           ),
                           const Text(
                             ' • ',
@@ -221,17 +224,17 @@ class MatchThreadDialog extends HookConsumerWidget {
                 ),
                 IconButton(
                   icon: Icon(
-                    match.status == MatchStatus.completed
+                    match.isFinished
                         ? Icons.delete_outline_rounded
                         : Icons.logout_rounded,
                     color: const Color(0xFF94A3B8),
                     size: 20,
                   ),
-                  tooltip: match.status == MatchStatus.completed
+                  tooltip: match.isFinished
                       ? 'Remove Match'
                       : 'Leave Match',
                   onPressed: () {
-                    final isDone = match.status == MatchStatus.completed;
+                    final isDone = match.isFinished;
                     showDialog(
                       context: context,
                       builder: (dialogCtx) => AlertDialog(

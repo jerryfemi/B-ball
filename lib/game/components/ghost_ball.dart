@@ -48,6 +48,10 @@ class GhostBasketball extends Basketball {
       points: pts,
       isSwish: isSwish,
       isBankShot: isBankShot,
+      // shot.streak is the streak heading into this shot; this callback only
+      // fires on a make, so the make extends it (works for live shots too,
+      // which are broadcast at launch before isMake is known).
+      streak: shot.streak + 1,
     );
   }
 }

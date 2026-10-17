@@ -49,9 +49,9 @@ class FriendsService {
         'displayNameLower': profile.displayName.toLowerCase().trim(),
         'avatarEmoji': profile.avatarEmoji,
         'updatedAt': DateTime.now().millisecondsSinceEpoch,
-        'expireAt': Timestamp.fromDate(
-          DateTime.now().add(const Duration(days: 30)),
-        ),
+        // The user doc holds the friends list and high score — it must never
+        // auto-expire. Actively clear any TTL left by older builds.
+        'expireAt': FieldValue.delete(),
       }, SetOptions(merge: true));
     } catch (e) {
       debugPrint(
@@ -291,14 +291,10 @@ class FriendsService {
       addedAt: DateTime.now().millisecondsSinceEpoch,
     );
     await addFriend(myUid, friend);
-    try {
-      await _usersRef
-          .doc(myUid)
-          .collection('invites')
-          .doc(invite.senderUid)
-          .delete();
-    } catch (_) {}
 
+    // Order matters: the reciprocal "accepted" note must be written while the
+    // original pending invite still exists in MY inbox — Firestore rules check
+    // for it, so nobody can forge an "accepted" invite into someone's inbox.
     if (effectiveProfile != null) {
       try {
         final reciprocate = FriendInvite(
@@ -317,6 +313,14 @@ class FriendsService {
         debugPrint('[FriendsService] Reciprocate friend acceptance notice: $e');
       }
     }
+
+    try {
+      await _usersRef
+          .doc(myUid)
+          .collection('invites')
+          .doc(invite.senderUid)
+          .delete();
+    } catch (_) {}
   }
 
   /// Declines and discards an incoming friend invite.
@@ -351,29 +355,44 @@ class FriendsService {
   String getConversationId(String uid1, String uid2) =>
       (uid1.compareTo(uid2) < 0) ? '${uid1}_$uid2' : '${uid2}_$uid1';
 
+  /// How many recent direct messages a conversation view loads.
+  static const int directChatWindow = 100;
+
+  CollectionReference<Map<String, dynamic>> get _conversationsRef =>
+      _firestore.collection('conversations');
+
   /// Sends a direct banter/chat message between two friends.
   ///
-  /// Writes to a single canonical `conversations/{convId}` document.
-  /// No longer dual-writes to user outbox documents.
+  /// Each message is its own document in `conversations/{convId}/messages`,
+  /// mirroring how match chat works. The root `conversations/{convId}` doc only
+  /// carries lightweight metadata for inbox badges, so it can never approach
+  /// Firestore's 1 MB document cap and badge listeners never download history.
   Future<void> sendDirectMessage({
     required String fromUid,
     required String toUid,
     required CloudChatMessage message,
   }) async {
     final convId = getConversationId(fromUid, toUid);
-    final msgMap = message.toMap();
+    final convRef = _conversationsRef.doc(convId);
+    final ttl7Days = Timestamp.fromDate(
+      DateTime.now().add(const Duration(days: 7)),
+    );
 
     try {
-      await _firestore.collection('conversations').doc(convId).set({
+      // Root first: the messages rule checks `participants` on this doc.
+      await convRef.set({
         'participants': [fromUid, toUid],
-        'chat': FieldValue.arrayUnion([msgMap]),
         'updatedAt': DateTime.now().millisecondsSinceEpoch,
         'lastMsgSenderUid': fromUid,
         'lastMsgTimestamp': message.timestamp,
-        'expireAt': Timestamp.fromDate(
-          DateTime.now().add(const Duration(days: 7)),
-        ),
+        'lastMsgText': message.text,
+        'expireAt': ttl7Days,
       }, SetOptions(merge: true));
+
+      await convRef.collection('messages').doc(message.id).set({
+        ...message.toMap(),
+        'expireAt': ttl7Days,
+      });
     } catch (e) {
       debugPrint('[FriendsService] Send direct message error: $e');
     }
@@ -381,45 +400,88 @@ class FriendsService {
 
   /// Streams direct conversation banter between two players in real time.
   ///
-  /// Uses a single `conversations/{convId}` document listener instead of
-  /// the previous 3-stream pattern (conversations + my outbox + friend outbox).
-  /// This reduces Firestore listener count by 66% and eliminates manual merging.
+  /// Reads the latest [directChatWindow] messages from the `messages`
+  /// subcollection. Conversations created by older builds still keep their
+  /// messages in a root `chat` array; those are merged in (de-duplicated by id)
+  /// until the 7-day conversation TTL retires them.
   Stream<List<CloudChatMessage>> streamDirectChat({
     required String myUid,
     required String friendUid,
   }) {
-    final convId = getConversationId(myUid, friendUid);
+    final convRef = _conversationsRef.doc(getConversationId(myUid, friendUid));
 
-    return _firestore
-        .collection('conversations')
-        .doc(convId)
-        .snapshots()
-        .map((doc) {
-          if (!doc.exists || doc.data() == null) {
-            return const <CloudChatMessage>[];
-          }
-          final rawChat = doc.data()!['chat'] as List<dynamic>?;
-          if (rawChat == null || rawChat.isEmpty) {
-            return const <CloudChatMessage>[];
-          }
-          final messages = rawChat
-              .map((e) =>
-                  CloudChatMessage.fromMap(e as Map<String, dynamic>))
-              .toList()
-            ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
-          return messages;
-        })
-        .handleError((e) {
-          debugPrint('[FriendsService] Stream direct chat error: $e');
-          return const <CloudChatMessage>[];
-        });
+    List<CloudChatMessage> legacy = const [];
+    List<CloudChatMessage> current = const [];
+    StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? rootSub;
+    StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? msgSub;
+    late final StreamController<List<CloudChatMessage>> controller;
+
+    void emit() {
+      if (controller.isClosed) return;
+      final byId = <String, CloudChatMessage>{};
+      for (final m in legacy) {
+        byId[m.id] = m;
+      }
+      for (final m in current) {
+        byId[m.id] = m;
+      }
+      final merged = byId.values.toList()
+        ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+      controller.add(merged);
+    }
+
+    controller = StreamController<List<CloudChatMessage>>(
+      onListen: () {
+        rootSub = convRef.snapshots().listen(
+          (doc) {
+            final rawChat = doc.data()?['chat'] as List<dynamic>?;
+            legacy = rawChat == null
+                ? const []
+                : rawChat
+                      .map((e) =>
+                          CloudChatMessage.fromMap(e as Map<String, dynamic>))
+                      .toList();
+            emit();
+          },
+          onError: (Object e) {
+            debugPrint('[FriendsService] Stream direct chat root error: $e');
+            emit();
+          },
+        );
+        msgSub = convRef
+            .collection('messages')
+            .orderBy('timestamp')
+            .limitToLast(directChatWindow)
+            .snapshots()
+            .listen(
+              (snap) {
+                current = snap.docs
+                    .map((d) => CloudChatMessage.fromMap(d.data()))
+                    .toList();
+                emit();
+              },
+              onError: (Object e) {
+                debugPrint('[FriendsService] Stream direct chat error: $e');
+                emit();
+              },
+            );
+      },
+      onCancel: () async {
+        await rootSub?.cancel();
+        await msgSub?.cancel();
+      },
+    );
+
+    return controller.stream;
   }
 
   /// Streams metadata for all direct conversations involving [myUid].
+  ///
+  /// Reads only root metadata fields; the legacy `chat` array is consulted
+  /// solely as a fallback for conversations written by older builds.
   Stream<List<DirectConversationSummary>> streamUserConversations(String myUid) {
     if (myUid.isEmpty) return Stream.value(const []);
-    return _firestore
-        .collection('conversations')
+    return _conversationsRef
         .where('participants', arrayContains: myUid)
         .snapshots()
         .map((snap) => snap.docs.map((doc) {
@@ -432,19 +494,19 @@ class FriendsService {
                 (p) => p != myUid,
                 orElse: () => '',
               );
+              CloudChatMessage? legacyLast;
               final rawChat = data['chat'] as List<dynamic>?;
-              CloudChatMessage? lastMessage;
               if (rawChat != null && rawChat.isNotEmpty) {
-                lastMessage = CloudChatMessage.fromMap(
+                legacyLast = CloudChatMessage.fromMap(
                   rawChat.last as Map<String, dynamic>,
                 );
               }
               final lastSenderUid = data['lastMsgSenderUid'] as String? ??
-                  lastMessage?.senderUid ??
+                  legacyLast?.senderUid ??
                   '';
               final lastTimestamp =
                   (data['lastMsgTimestamp'] as num?)?.toInt() ??
-                      lastMessage?.timestamp ??
+                      legacyLast?.timestamp ??
                       (data['updatedAt'] as num?)?.toInt() ??
                       0;
               return DirectConversationSummary(
@@ -452,7 +514,8 @@ class FriendsService {
                 friendUid: otherUid,
                 lastSenderUid: lastSenderUid,
                 lastTimestamp: lastTimestamp,
-                lastMessageText: lastMessage?.text,
+                lastMessageText:
+                    data['lastMsgText'] as String? ?? legacyLast?.text,
               );
             }).toList())
         .handleError((e) {

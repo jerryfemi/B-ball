@@ -177,7 +177,7 @@ class GameRulesDialog extends StatelessWidget {
                   const SizedBox(height: 10.0),
                   const _RuleRow(
                     icon: '⚡',
-                    title: 'Streak Multiplier',
+                    title: 'Streak Bonus (+1)',
                     desc: 'Sink 3+ in a row to earn +1 extra bonus point per consecutive basket!',
                   ),
                   const SizedBox(height: 16.0),

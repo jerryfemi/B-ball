@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 
 import '../../../models/friend_profile.dart';
 import '../../../services/auth_service.dart';
@@ -9,6 +10,7 @@ import '../../../services/firestore_match_service.dart';
 import '../../basketball_game.dart';
 import '../../match/match_session.dart';
 import '../common/app_avatar.dart';
+import '../common/inline_feedback.dart';
 import 'match_lobby_dialog.dart';
 import 'match_setup_dialog.dart';
 import 'podium/podium_score_matrix.dart';
@@ -16,7 +18,7 @@ import 'podium/podium_stats_comparison.dart';
 import 'podium/podium_trophy_header.dart';
 
 /// Grand celebration podium overlay shown upon match conclusion.
-class MatchWinnerPodiumOverlay extends StatelessWidget {
+class MatchWinnerPodiumOverlay extends HookWidget {
   final BasketballGame game;
   final MatchSession session;
 
@@ -26,20 +28,24 @@ class MatchWinnerPodiumOverlay extends StatelessWidget {
     required this.session,
   });
 
+  /// Leaves the podium and returns to solo shootaround.
+  ///
+  /// The match document is intentionally left untouched: finished matches stay
+  /// in both players' COMPLETED trophy history. Removal only happens when a
+  /// player explicitly taps the trash icon in the inbox.
   Future<void> _handleCloseOrDismiss(BuildContext context) async {
-    final matchId = session.cloudMatchId;
-    if (matchId != null) {
-      try {
-        await FirestoreMatchService.instance.deleteMatch(matchId);
-      } catch (e) {
-        debugPrint('Error evaporating match: $e');
-      }
-    }
     game.exitToSoloMode();
   }
 
-  Future<void> _handleInstantRematch(BuildContext context) async {
+  Future<void> _handleInstantRematch(
+    BuildContext context,
+    ValueNotifier<String?> rematchError,
+    ValueNotifier<bool> isRematching,
+  ) async {
+    if (isRematching.value) return;
     HapticFeedback.mediumImpact();
+    rematchError.value = null;
+    isRematching.value = true;
     final profile = AuthService.instance.currentUser;
     final myUid = profile?.uid ?? '';
 
@@ -80,6 +86,7 @@ class MatchWinnerPodiumOverlay extends StatelessWidget {
       );
 
       if (context.mounted) {
+        isRematching.value = false;
         game.exitToSoloMode();
 
         MatchLobbyDialog.show(
@@ -97,12 +104,11 @@ class MatchWinnerPodiumOverlay extends StatelessWidget {
     } catch (e) {
       debugPrint('[Podium] Failed to create instant rematch: $e');
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to initiate rematch: $e'),
-            backgroundColor: const Color(0xFFEF4444),
-            behavior: SnackBarBehavior.floating,
-          ),
+        isRematching.value = false;
+        // The rematch button morphs into an inline error card with RETRY.
+        rematchError.value = InlineErrorPanel.friendlyMessage(
+          e,
+          fallback: 'Couldn\'t create the rematch room. Check your connection.',
         );
       }
     }
@@ -110,6 +116,8 @@ class MatchWinnerPodiumOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final rematchError = useState<String?>(null);
+    final isRematching = useState(false);
     final winner = session.overallWinner;
     final isTie = session.isTie;
     final isP1Winner = winner == session.player1;
@@ -230,10 +238,30 @@ class MatchWinnerPodiumOverlay extends StatelessWidget {
                     if (session.cloudMatchId != null) ...[
                       // Primary Action: INSTANT REMATCH (Host-only) or Waiting status (Guest)
                       if (session.isHost)
-                        SizedBox(
+                        InlineFeedbackSwitcher(
+                          child: rematchError.value != null
+                              ? InlineErrorPanel(
+                                  key: const ValueKey('rematch-error'),
+                                  title: 'REMATCH FAILED',
+                                  message: rematchError.value!,
+                                  onRetry: () => _handleInstantRematch(
+                                    context,
+                                    rematchError,
+                                    isRematching,
+                                  ),
+                                  onDismiss: () => rematchError.value = null,
+                                )
+                              : SizedBox(
+                          key: const ValueKey('rematch-button'),
                           width: double.infinity,
                           child: ElevatedButton(
-                            onPressed: () => _handleInstantRematch(context),
+                            onPressed: isRematching.value
+                                ? null
+                                : () => _handleInstantRematch(
+                                      context,
+                                      rematchError,
+                                      isRematching,
+                                    ),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: bannerColor,
                               foregroundColor: Colors.black,
@@ -264,6 +292,7 @@ class MatchWinnerPodiumOverlay extends StatelessWidget {
                               ],
                             ),
                           ),
+                        ),
                         )
                       else
                         Container(
@@ -310,7 +339,7 @@ class MatchWinnerPodiumOverlay extends StatelessWidget {
                           onPressed: () => _handleCloseOrDismiss(context),
                           icon: const Icon(Icons.close_rounded, size: 17),
                           label: const Text(
-                            'CLOSE ROOM & EXIT',
+                            'BACK TO COURT',
                             style: TextStyle(
                               fontSize: 13.0,
                               fontWeight: FontWeight.w800,

@@ -30,7 +30,7 @@ class FriendCardTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final hasActiveMatch =
         match != null &&
-        match!.status != MatchStatus.completed &&
+        !match!.isFinished &&
         match!.status != MatchStatus.abandoned &&
         match!.status != MatchStatus.declined;
     final isMyTurn = hasActiveMatch && match!.isMyTurn(myUid);

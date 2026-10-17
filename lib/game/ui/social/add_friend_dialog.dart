@@ -10,6 +10,7 @@ import '../../../services/friends_service.dart';
 import '../common/app_avatar.dart';
 import '../common/app_modal_dialog.dart';
 import '../common/app_text_field.dart';
+import '../common/inline_feedback.dart';
 
 /// Modal dialog to search and add friends by display name or player tag,
 /// and share one's own tag with others.
@@ -44,6 +45,10 @@ class AddFriendDialog extends HookWidget {
     final results = useState<List<FriendProfile>>([]);
     final isSearching = useState<bool>(false);
     final invitedUids = useState<Set<String>>({});
+    // Inline invite failure (+ who to retry for) and transient "tag copied" badge.
+    final inviteError =
+        useState<({String message, FriendProfile? retryFor})?>(null);
+    final tagCopied = useFlashFlag();
     final friendUids = useMemoized(
       () => Set<String>.from(existingFriendUids),
       [existingFriendUids],
@@ -75,48 +80,33 @@ class AddFriendDialog extends HookWidget {
 
     Future<void> handleSendInvite(FriendProfile friend) async {
       HapticFeedback.mediumImpact();
+      inviteError.value = null;
       final myProfile = AuthService.instance.currentUser;
       if (myProfile == null) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Please sign in to send invites'),
-              backgroundColor: Color(0xFF7F1D1D),
-              behavior: SnackBarBehavior.floating,
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
+        inviteError.value = (
+          message: 'Your player profile is still connecting. Try again in a moment.',
+          retryFor: friend,
+        );
         return;
       }
-      // Optimistically mark as invited for instant feedback
+      // Optimistically mark as invited — the row's own "invited" state is the
+      // success confirmation, so no extra toast is needed.
       invitedUids.value = {...invitedUids.value, friend.uid};
       try {
         await FriendsService.instance.sendFriendInvite(
           targetUid: friend.uid,
           myProfile: myProfile,
         );
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Friend invite sent to ${friend.displayName}! 📨'),
-              backgroundColor: const Color(0xFF1E2638),
-              behavior: SnackBarBehavior.floating,
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        }
       } catch (e) {
-        // Revert optimistic update on failure
+        // Revert optimistic update and show the failure inline with RETRY.
         invitedUids.value = {...invitedUids.value}..remove(friend.uid);
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Failed to send invite: $e'),
-              backgroundColor: const Color(0xFF7F1D1D),
-              behavior: SnackBarBehavior.floating,
-              duration: const Duration(seconds: 3),
+          inviteError.value = (
+            message: InlineErrorPanel.friendlyMessage(
+              e,
+              fallback: 'Couldn\'t send the invite. Check your connection.',
             ),
+            retryFor: friend,
           );
         }
       }
@@ -127,13 +117,7 @@ class AddFriendDialog extends HookWidget {
       if (user == null) return;
       Clipboard.setData(ClipboardData(text: user.displayName));
       HapticFeedback.lightImpact();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Copied "${user.displayName}" to clipboard!'),
-          backgroundColor: const Color(0xFF1E2638),
-          duration: const Duration(seconds: 2),
-        ),
-      );
+      tagCopied.flash();
     }
     final myUser = AuthService.instance.currentUser;
     final myName = myUser?.displayName ?? 'Player';
@@ -193,7 +177,15 @@ class AddFriendDialog extends HookWidget {
                         ],
                       ),
                     ),
-                    InkWell(
+                    InlineFeedbackSwitcher(
+                      child: tagCopied.isOn
+                          ? const CopiedBadge(
+                              key: ValueKey('tag-copied'),
+                              visible: true,
+                              label: '✓ TAG COPIED',
+                            )
+                          : InkWell(
+                      key: const ValueKey('tag-copy'),
                       onTap: copyMyTag,
                       borderRadius: BorderRadius.circular(8),
                       child: Container(
@@ -226,6 +218,7 @@ class AddFriendDialog extends HookWidget {
                         ),
                       ),
                     ),
+                    ),
                   ],
                 ),
               ),
@@ -256,6 +249,26 @@ class AddFriendDialog extends HookWidget {
                     : null,
               ),
               const SizedBox(height: 12),
+
+              // Inline invite failure (replaces floating SnackBars)
+              InlineFeedbackSwitcher(
+                child: inviteError.value == null
+                    ? const SizedBox.shrink(key: ValueKey('no-invite-error'))
+                    : Padding(
+                        key: const ValueKey('invite-error'),
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: InlineErrorPanel(
+                          title: 'INVITE NOT SENT',
+                          message: inviteError.value!.message,
+                          onRetry: inviteError.value!.retryFor == null
+                              ? null
+                              : () => handleSendInvite(
+                                    inviteError.value!.retryFor!,
+                                  ),
+                          onDismiss: () => inviteError.value = null,
+                        ),
+                      ),
+              ),
 
               // Search results list
               ConstrainedBox(
