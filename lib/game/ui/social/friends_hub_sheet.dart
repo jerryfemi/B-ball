@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../../models/cloud_match.dart';
@@ -13,6 +14,7 @@ import 'edit_gamer_tag_dialog.dart';
 import 'friend_conversation_sheet.dart';
 import '../common/app_avatar.dart';
 import '../common/app_modal_sheet.dart';
+import '../common/inline_feedback.dart';
 
 /// Dedicated Friends Management sheet for launching 1v1 challenges and banter chat.
 class FriendsHubSheet extends ConsumerWidget {
@@ -408,74 +410,84 @@ class FriendsHubSheet extends ConsumerWidget {
             ),
             if (user != null) ...[
               const SizedBox(height: 24),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF161F2E),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFF26334A)),
-                ),
-                child: Row(
-                  children: [
-                    AppAvatar(avatar: user.avatarEmoji, size: 20),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'YOUR PLAYER TAG',
-                            style: TextStyle(
-                              color: Color(0xFF64748B),
-                              fontSize: 9.5,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.8,
-                            ),
-                          ),
-                          Text(
-                            user.displayName,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(
-                        Icons.copy_rounded,
-                        color: Color(0xFF38BDF8),
-                        size: 16,
-                      ),
-                      tooltip: 'Copy Tag',
-                      onPressed: () {
-                        Clipboard.setData(
-                          ClipboardData(text: user.displayName),
-                        );
-                        HapticFeedback.lightImpact();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              'Copied "${user.displayName}" to clipboard!',
-                            ),
-                            duration: const Duration(seconds: 2),
-                            backgroundColor: const Color(0xFF1E2638),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
+              _MyTagCard(user: user),
             ],
           ],
         ),
       ),
     );
+  }
+}
+
+/// "Your player tag" card with an inline "✓ TAG COPIED" confirmation.
+/// Its own HookWidget so the flash state never depends on the parent's
+/// conditional build path.
+class _MyTagCard extends HookWidget {
+  final UserProfile user;
+
+  const _MyTagCard({required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    final copied = useFlashFlag();
+    return Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 12,
+        ),
+        decoration: BoxDecoration(
+          color: const Color(0xFF161F2E),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFF26334A)),
+        ),
+        child: Row(
+          children: [
+            AppAvatar(avatar: user.avatarEmoji, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'YOUR PLAYER TAG',
+                    style: TextStyle(
+                      color: Color(0xFF64748B),
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                  Text(
+                    user.displayName,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (copied.isOn)
+              const CopiedBadge(visible: true, label: '✓ TAG COPIED')
+            else
+            IconButton(
+              icon: const Icon(
+                Icons.copy_rounded,
+                color: Color(0xFF38BDF8),
+                size: 16,
+              ),
+              tooltip: 'Copy Tag',
+              onPressed: () {
+                Clipboard.setData(
+                  ClipboardData(text: user.displayName),
+                );
+                HapticFeedback.lightImpact();
+                copied.flash();
+              },
+            ),
+          ],
+        ),
+      );
   }
 }
