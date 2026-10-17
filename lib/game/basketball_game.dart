@@ -24,6 +24,8 @@ import 'components/ball.dart';
 import 'components/ghost_ball.dart';
 import 'components/ground.dart';
 import 'match/match_session.dart';
+import 'fx/game_feel.dart';
+import 'fx/streak_celebration.dart';
 import 'performance/adaptive_quality.dart';
 import 'physics/shot_difficulty.dart';
 import 'telemetry/shot_telemetry.dart';
@@ -209,6 +211,20 @@ class BasketballGame extends Forge2DGame {
   /// Frame-pacing monitor that steps visual effects down on struggling phones.
   final AdaptiveQuality quality = AdaptiveQuality();
 
+  /// Camera shake + zoom punch (applied to the game canvas only, not the HUD).
+  final ScreenFx screenFx = ScreenFx();
+
+  /// Rim / backboard vibration after impacts.
+  final HoopFx hoopFx = HoopFx();
+
+  /// The backboard owns the cloth net; balls kick it on rim clanks.
+  BackboardVisual? backboardVisual;
+
+  /// Streak rewards at the hoop (shockwaves, sparks, rim glow, tier-up flash).
+  StreakCelebration? streakCelebration;
+  static final Paint _flashPaint = Paint()..blendMode = BlendMode.plus;
+  Rect _flashRect = Rect.zero;
+
   /// Difficulty preset for solo play (configurable in the pause menu).
   final ValueNotifier<ShotDifficulty> soloDifficultyNotifier =
       ValueNotifier<ShotDifficulty>(ShotDifficulty.easy);
@@ -365,6 +381,10 @@ class BasketballGame extends Forge2DGame {
     scoreEventNotifier.value = event;
     onScoreEvent?.call(event);
 
+    if (streakFxEnabledNotifier.value) {
+      streakCelebration?.onMake(streak: currentStreak, isLocalPlayer: true);
+    }
+
     final session = matchSessionNotifier.value;
     if (session != null &&
         session.phase != MatchTurnPhase.waitingForOpponentTurn) {
@@ -405,6 +425,8 @@ class BasketballGame extends Forge2DGame {
   void update(double dt) {
     // Raw dt (before any clamping) is the truest signal of thermal/GPU stalls.
     quality.recordFrame(dt);
+    screenFx.update(dt);
+    hoopFx.update(dt);
     super.update(dt);
 
     final session = matchSessionNotifier.value;
@@ -543,7 +565,12 @@ class BasketballGame extends Forge2DGame {
     required int points,
     required bool isSwish,
     required bool isBankShot,
+    int streak = 0,
   }) {
+    // Opponent / replay streaks get the hoop burst too (no flash or punch).
+    if (streak >= 3) {
+      streakCelebration?.onMake(streak: streak, isLocalPlayer: false);
+    }
     final session = matchSessionNotifier.value;
     final is1v1Spectating =
         session != null &&
@@ -1358,6 +1385,30 @@ class BasketballGame extends Forge2DGame {
   @override
   Color backgroundColor() => const Color(0xFF090D16);
 
+  /// Applies [screenFx] (shake + zoom punch) to the whole court — background,
+  /// hoop and balls — while Flutter HUD overlays stay perfectly still.
+  @override
+  void render(Canvas canvas) {
+    final fx = screenFx;
+    if (!fx.isActive) {
+      super.render(canvas);
+    } else {
+      canvas.save();
+      canvas.translate(fx.offsetX + fx.originX, fx.offsetY + fx.originY);
+      canvas.scale(fx.scale);
+      canvas.translate(-fx.originX, -fx.originY);
+      super.render(canvas);
+      canvas.restore();
+    }
+
+    // Tier-up flash: a brief additive tint over the court (HUD stays clear).
+    final flash = streakCelebration?.flashColor;
+    if (flash != null) {
+      _flashPaint.color = flash;
+      canvas.drawRect(_flashRect, _flashPaint);
+    }
+  }
+
   @override
   Future<void> onLoad() async {
     await super.onLoad();
@@ -1446,12 +1497,12 @@ class BasketballGame extends Forge2DGame {
 
     // 5. 2.5D Layering Pipeline:
     // Priority 1: Backboard, pole, glass plate, target rectangle, wall shadows
-    world.add(
-      BackboardVisual(
-        position: hoopCenterInMeters,
-        hoopWidth: hoopWidthInMeters,
-      ),
+    final backboard = BackboardVisual(
+      position: hoopCenterInMeters,
+      hoopWidth: hoopWidthInMeters,
     );
+    backboardVisual = backboard;
+    world.add(backboard);
 
     // Priority 3: Rear rim arc, mounting bracket flange, and rear net mesh
     world.add(
@@ -1480,6 +1531,15 @@ class BasketballGame extends Forge2DGame {
         hoopWidth: hoopWidthInMeters,
       ),
     );
+
+    // Streak celebration: same priority as the front rim but added after it,
+    // so sparks/rings draw over the rim yet under foreground balls (6).
+    final celebration = StreakCelebration(
+      hoopCenter: hoopCenterInMeters,
+      hoopWidth: hoopWidthInMeters,
+    );
+    streakCelebration = celebration;
+    world.add(celebration);
   }
 
   double _lastSpawnX = 0.0;
@@ -1568,6 +1628,12 @@ class BasketballGame extends Forge2DGame {
   @override
   void onGameResize(Vector2 size) {
     super.onGameResize(size);
+    // Zoom-punch origin = the hoop (Forge2D (0, 5) with a top-center anchor).
+    screenFx
+      ..originX = size.x / 2
+      ..originY = 5.0 * size.y / worldHeightInMeters
+      ..viewportWidth = size.x;
+    _flashRect = Rect.fromLTWH(0, 0, size.x, size.y);
     if (isLoaded) {
       final viewfinder = camera.viewfinder as Forge2DViewfinder;
       viewfinder.metersToPixels = size.y / worldHeightInMeters;
