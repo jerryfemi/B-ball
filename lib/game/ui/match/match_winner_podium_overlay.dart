@@ -26,15 +26,12 @@ class MatchWinnerPodiumOverlay extends StatelessWidget {
     required this.session,
   });
 
+  /// Leaves the podium and returns to solo shootaround.
+  ///
+  /// The match document is intentionally left untouched: finished matches stay
+  /// in both players' COMPLETED trophy history. Removal only happens when a
+  /// player explicitly taps the trash icon in the inbox.
   Future<void> _handleCloseOrDismiss(BuildContext context) async {
-    final matchId = session.cloudMatchId;
-    if (matchId != null) {
-      try {
-        await FirestoreMatchService.instance.deleteMatch(matchId);
-      } catch (e) {
-        debugPrint('Error evaporating match: $e');
-      }
-    }
     game.exitToSoloMode();
   }
 
