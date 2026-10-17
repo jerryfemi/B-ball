@@ -291,6 +291,7 @@ class AudioEngine {
           volume: effectiveVolume,
           looping: true,
         );
+        _syncMusicPauseState();
 
         debugPrint(
           '[AudioEngine] 🎵 Now looping preferred track: ${track.title}',
@@ -362,6 +363,7 @@ class AudioEngine {
         volume: effectiveVolume,
         looping: true,
       );
+      _syncMusicPauseState();
 
       debugPrint(
         '[AudioEngine] 🎵 Playing: ${track.title} (Continuous Loop)',
@@ -392,6 +394,25 @@ class AudioEngine {
     }
   }
 
+  /// Whether the soundtrack voice should currently be producing audio.
+  /// At 0% music volume ("Spotify mode") the voice is PAUSED, not just
+  /// silenced, so the WASM mixer spends zero cycles decoding/mixing it.
+  static bool get _musicShouldPlay =>
+      !isMuted && !_isBackgrounded && musicVolume > 0.001;
+
+  static bool _isBackgrounded = false;
+
+  /// Pauses or resumes the music voice to match [_musicShouldPlay].
+  static void _syncMusicPauseState() {
+    if (!SoLoud.instance.isInitialized) return;
+    try {
+      if (_musicHandle != null &&
+          SoLoud.instance.getIsValidVoiceHandle(_musicHandle!)) {
+        SoLoud.instance.setPause(_musicHandle!, !_musicShouldPlay);
+      }
+    } catch (_) {}
+  }
+
   /// Applies the current music volume to the active player.
   static void _applyMusicVolume() {
     if (!SoLoud.instance.isInitialized) return;
@@ -403,6 +424,7 @@ class AudioEngine {
         SoLoud.instance.setVolume(_musicHandle!, baseVolume);
       }
     } catch (_) {}
+    _syncMusicPauseState();
   }
 
   /// Pauses the background music (used when muting or backgrounding).
@@ -421,10 +443,9 @@ class AudioEngine {
     if (!SoLoud.instance.isInitialized) return;
     if (_musicStarted && _musicHandle != null) {
       try {
+        // Applies volume and un-pauses only if music should be audible
+        // (stays paused at 0% volume).
         _applyMusicVolume();
-        if (SoLoud.instance.getIsValidVoiceHandle(_musicHandle!)) {
-          SoLoud.instance.setPause(_musicHandle!, false);
-        }
         return;
       } catch (_) {}
     }
@@ -435,11 +456,13 @@ class AudioEngine {
 
   /// Call when app goes to background or browser tab is hidden.
   static void onAppBackground() {
+    _isBackgrounded = true;
     _pauseMusic();
   }
 
   /// Call when app returns to foreground.
   static void onAppForeground() {
+    _isBackgrounded = false;
     if (!isMuted) {
       _resumeMusic();
     }
