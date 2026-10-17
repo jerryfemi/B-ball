@@ -101,6 +101,33 @@ class PerspectiveCamera3D {
     return Offset(screenX, screenY);
   }
 
+  /// Result of the last [projectToForge2DFast] call, in Forge2D world meters.
+  double projX = 0.0;
+  double projY = 0.0;
+
+  /// Zero-allocation variant of [projectToForge2D] for per-frame hot paths:
+  /// writes the Forge2D world position into [projX]/[projY] instead of
+  /// creating intermediate [Offset]s. Math is identical to [projectCoords].
+  ///
+  /// Deliberately returns plain doubles rather than filling a `Vector2`:
+  /// forge2d uses `package:vector_math` (32-bit) while this file uses
+  /// `vector_math_64`, and the two `Vector2` types are not interchangeable.
+  void projectToForge2DFast(double x, double y, double z) {
+    final s = scaleAtDepth(z);
+    final heightWeight = ((y - 0.8) / 1.7).clamp(0.0, 1.0);
+    final depthWeight = ((z - 2.0) / 2.2).clamp(0.0, 1.0);
+    final elevationCorrectionForge2D =
+        -0.805 * (z - 4.50) * heightWeight * depthWeight;
+    final metersToPixels = screenHeight / 20.0;
+    final elevationCorrectionPx = elevationCorrectionForge2D * metersToPixels;
+    final screenY = horizonScreenY +
+        ((eyeHeightInMeters - y) * pixelsPerMeter * s) +
+        elevationCorrectionPx;
+    // screenX - screenWidth / 2 simplifies to the lateral term alone.
+    projX = (x * pixelsPerMeter * s) / metersToPixels;
+    projY = screenY / metersToPixels;
+  }
+
   /// Projects a 3D coordinate to Forge2D world meters (20m total height, (0,0) at top-center).
   Offset projectToForge2D(double x, double y, double z) {
     final screenPos = projectCoords(x, y, z);
