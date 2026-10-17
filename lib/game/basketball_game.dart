@@ -24,6 +24,7 @@ import 'components/ball.dart';
 import 'components/ghost_ball.dart';
 import 'components/ground.dart';
 import 'match/match_session.dart';
+import 'performance/adaptive_quality.dart';
 import 'physics/shot_difficulty.dart';
 import 'telemetry/shot_telemetry.dart';
 import 'ui/match/live_turn_transition_overlay.dart';
@@ -204,6 +205,9 @@ class BasketballGame extends Forge2DGame {
   StreamSubscription<CloudMatch?>? _liveMatchSubscription;
   String? _currentSubscribedMatchId;
   String? _currentActiveTurnUid;
+
+  /// Frame-pacing monitor that steps visual effects down on struggling phones.
+  final AdaptiveQuality quality = AdaptiveQuality();
 
   /// Difficulty preset for solo play (configurable in the pause menu).
   final ValueNotifier<ShotDifficulty> soloDifficultyNotifier =
@@ -399,6 +403,8 @@ class BasketballGame extends Forge2DGame {
 
   @override
   void update(double dt) {
+    // Raw dt (before any clamping) is the truest signal of thermal/GPU stalls.
+    quality.recordFrame(dt);
     super.update(dt);
 
     final session = matchSessionNotifier.value;
@@ -1362,6 +1368,8 @@ class BasketballGame extends Forge2DGame {
       CourtFloorRenderer.loadFloorImage(),
     ]);
 
+    unawaited(quality.load());
+
     // Bind Lagos Life frame pause and resume events
     VatarBridge.instance.onPause(() {
       if (gameStateNotifier.value == GameModeState.playing) {
@@ -1589,6 +1597,7 @@ class BasketballGame extends Forge2DGame {
     player2MatchScoreNotifier.dispose();
     spectatorStatusNotifier.dispose();
     spectatorGraceSecondsNotifier.dispose();
+    quality.dispose();
     super.onRemove();
   }
 }
