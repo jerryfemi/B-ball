@@ -192,8 +192,36 @@
     For more details:
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
-  <!-- Lagos Life / Vatar Games SDK Bridge -->
-  <script src="https://lagoslife.app/sdk/vatar-games-v1.js"></script>
+  <!--
+    Lagos Life / Vatar Games SDK Bridge (non-blocking).
+
+    The SDK is only needed when DunkVerse runs inside the Lagos Life in-game
+    phone frame (an iframe — see `frame-ancestors` in firebase.json). It is
+    injected asynchronously so a slow or offline lagoslife.app can never hold
+    up Flutter's boot. `window.__vatarSdkReady` resolves to true once
+    `window.Vatar` exists, or false (not framed / load error / 3s timeout);
+    VatarBridge.init() in Dart awaits it before deciding standalone vs embedded.
+    A plain `defer` is not enough: flutter_bootstrap.js is `async` and could
+    run before a deferred script, making Dart miss `window.Vatar`.
+  -->
+  <script>
+    (function () {
+      var isFramed = false;
+      try { isFramed = window.self !== window.top; } catch (e) { isFramed = true; }
+      window.__vatarSdkReady = new Promise(function (resolve) {
+        if (!isFramed) { resolve(false); return; }
+        var settled = false;
+        function done(ok) { if (!settled) { settled = true; resolve(ok); } }
+        var s = document.createElement('script');
+        s.src = 'https://lagoslife.app/sdk/vatar-games-v1.js';
+        s.async = true;
+        s.onload = function () { done(!!window.Vatar); };
+        s.onerror = function () { done(false); };
+        setTimeout(function () { done(!!window.Vatar); }, 3000);
+        document.head.appendChild(s);
+      });
+    })();
+  </script>
   <script src="assets/packages/flutter_soloud/web/init_soloud.js" defer></script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
