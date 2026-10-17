@@ -13,6 +13,8 @@ import '../basketball_game.dart';
 import '../physics/ball_physics_3d.dart';
 import '../physics/perspective_camera.dart';
 import '../physics/launch_solver.dart';
+import '../fx/glow_sprite.dart';
+import '../fx/streak_celebration.dart' show streakTierFor;
 import 'fiery_trail.dart';
 import 'wall_impact_puff.dart';
 
@@ -93,6 +95,29 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     _scaleY = sy;
   }
   static final Paint _fallbackPaint = Paint()..color = const Color(0xFFFF6F00);
+
+  // ── Floor reflection (second shader instance, mirrored below the floor) ──
+  ui.FragmentShader? _reflShader;
+  final Paint _reflPaint = Paint()..colorFilter = _reflTint;
+
+  /// Varnished maple reflects darker and warmer than the ball itself.
+  static const ColorFilter _reflTint = ColorFilter.mode(
+    Color(0xFFD9B48E),
+    BlendMode.modulate,
+  );
+
+  /// Peak reflection opacity (ball resting on the floor) and how fast it
+  /// fades as the ball rises (meters of height for a 1/e falloff).
+  static const double _reflMaxAlpha = 0.30;
+  static const double _reflFalloff = 0.45;
+
+  /// Precomputed white-with-alpha colors: Paint.color's opacity scales the
+  /// shader output, so this sets reflection strength with zero allocations.
+  static final List<Color> _whiteAlpha = List<Color>.generate(
+    256,
+    (i) => Color.fromARGB(i, 255, 255, 255),
+    growable: false,
+  );
 
   /// Precomputed black-with-alpha colors so shadow alpha changes never allocate.
   static final List<Color> _blackAlpha = List<Color>.generate(
@@ -306,6 +331,8 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     fieryTrail.reset();
     _shader?.dispose();
     _shader = null;
+    _reflShader?.dispose();
+    _reflShader = null;
     super.onRemove();
   }
 
@@ -315,6 +342,10 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     _program = _cachedProgram ?? await loadProgram();
     _shader = _program?.fragmentShader();
     if (_shader != null) _shaderPaint.shader = _shader;
+    // Separate instance so the mirrored draw never shares uniforms with the
+    // ball's own draw in the same frame.
+    _reflShader = _program?.fragmentShader();
+    if (_reflShader != null) _reflPaint.shader = _reflShader;
   }
 
   @override
@@ -486,13 +517,88 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     final cam = camera3D;
     final bodyX = body.position.x;
     final bodyY = body.position.y;
+    final quality = game.quality;
+    final bool onFire = isFlightOnFire;
+    final int fireTier = onFire ? streakTierFor(activeStreak).index : 0;
+    // Perspective foreshortening based on exact 3D Z-depth
+    final double scaleFactor = 1.38 * cam.scaleAtDepth(physics.pos.z);
+    final double bottomHeight = physics.pos.y - physics.radius;
 
-    // 1. Continuous Hardwood Floor Drop Shadow
-    // Shadow is calculated at (physics.pos.x, 0.0, physics.pos.z) on the court floor
     final bool onCourtFloor =
         physics.pos.z <= BallPhysics3D.wallZ &&
         physics.pos.x.abs() <= BallPhysics3D.halfWidth;
 
+    // 0a. Fire light on the floor: a burning ball lights the hardwood under
+    //     it (one additive sprite; part of the streak reward, all tiers).
+    if (onFire && onCourtFloor) {
+      final h = bottomHeight.clamp(0.0, 8.0);
+      cam.projectToForge2DFast(physics.pos.x, 0.0, physics.pos.z);
+      final floorX = cam.projX - bodyX;
+      final floorY = cam.projY - bodyY;
+      final vr = radius * cam.scaleAtDepth(physics.pos.z) * 1.38;
+      final flicker = 0.88 + 0.12 * math.sin(physics.timeSinceLaunch * 31.0);
+      final strength = fireTier >= 3 ? 0.62 : 0.5;
+      final w = vr * (5.0 + h * 1.1);
+      GlowSprite.draw(
+        canvas,
+        floorX,
+        floorY,
+        w,
+        w * 0.32, // lies flat on the floor
+        fireTier,
+        strength / (1.0 + h * 0.45) * flicker * effectiveOpacity,
+      );
+    }
+
+    // 0b. Floor reflection: the ball mirrored through the floor plane at
+    //     (x, -y, z), so it lines up at every depth. Faint, warm-tinted,
+    //     smooth (no pebble detail), fading out by ~1.3m of height.
+    final reflShader = _reflShader;
+    if (reflShader != null &&
+        quality.drawFloorReflection &&
+        onCourtFloor &&
+        bottomHeight > -physics.radius * 0.1) {
+      final double reflAlpha =
+          _reflMaxAlpha *
+          math.exp(-bottomHeight.clamp(0.0, 8.0) / _reflFalloff) *
+          effectiveOpacity;
+      if (reflAlpha > 0.02) {
+        _ensureCalibration(canvas, 1.0);
+        // Offset from the ball's own projection, so the reflection stays
+        // locked to the ball even where the body was placed directly.
+        cam.projectToForge2DFast(physics.pos.x, physics.pos.y, physics.pos.z);
+        final selfX = cam.projX;
+        final selfY = cam.projY;
+        cam.projectToForge2DFast(physics.pos.x, -physics.pos.y, physics.pos.z);
+        final mirrorX = bodyX + (cam.projX - selfX);
+        final mirrorY = bodyY + (cam.projY - selfY);
+
+        final fx = game.screenFx;
+        final physicalRadius =
+            radius * _calibMetersToPx * scaleFactor * fx.scale * _cachedDpr;
+        _setBallUniforms(
+          reflShader,
+          worldX: mirrorX,
+          worldY: mirrorY,
+          physicalRadius: physicalRadius,
+          // Mirror of the floor squash: the reflection flattens upward.
+          anchorShift: -physicalRadius * _floorAnchor,
+          fire: onFire,
+          detail: 0.0,
+          scaleY: -_scaleY,
+        );
+        _reflPaint.color =
+            _whiteAlpha[(reflAlpha * 255).round().clamp(0, 255).toInt()];
+        canvas.save();
+        canvas.translate(mirrorX - bodyX, mirrorY - bodyY);
+        canvas.scale(scaleFactor);
+        canvas.drawRect(_shaderRect, _reflPaint);
+        canvas.restore();
+      }
+    }
+
+    // 1. Continuous Hardwood Floor Drop Shadow
+    // Shadow is calculated at (physics.pos.x, 0.0, physics.pos.z) on the court floor
     if (onCourtFloor && shadowImage != null) {
       final heightAboveFloor = (physics.pos.y - physics.radius).clamp(0.0, 8.0);
       final shadowAlpha = ((0.52 / (1.0 + heightAboveFloor * 0.40)) * opacity)
@@ -520,7 +626,6 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
     // Only an actively in-flight ball heading toward the hoop (before floor bounce or netting)
     // evaluates or renders vertical plane shadows (backboard and back wall).
     // Bounced, rolling, or scored balls strictly skip this to eliminate GPU fill-rate waste.
-    final quality = game.quality;
     final bool canCastVerticalShadows =
         quality.drawProximityShadows &&
         isLaunched &&
@@ -621,7 +726,7 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
 
     // Render fiery ribbon and incandescent embers right behind the ball during upward flight
     // The streak plume shows at every GRAPHICS level (quality only thins embers).
-    if (isFlightOnFire) {
+    if (onFire) {
       fieryTrail.render(
         canvas,
         ballBodyPos: Offset(bodyX, bodyY),
@@ -629,71 +734,111 @@ class Basketball extends BodyComponent<BasketballGame> with DragCallbacks {
         streak: activeStreak,
         emberDensity: quality.emberDensity,
       );
-    }
 
-    // 3. Monotonic Perspective Foreshortening based on exact 3D Z-depth
-    final scaleFactor = 1.38 * cam.scaleAtDepth(physics.pos.z);
+      // Fake bloom: soft additive halo so the burning ball reads as a light
+      // source (behind the ball, over the plume). All tiers, like the plume.
+      final glow = radius * scaleFactor * 2.0 * 2.7;
+      final pulse = 0.85 + 0.15 * math.sin(physics.timeSinceLaunch * 24.0);
+      GlowSprite.draw(
+        canvas,
+        0.0,
+        0.0,
+        glow,
+        glow,
+        fireTier,
+        (fireTier >= 3 ? 0.6 : 0.48) * pulse * effectiveOpacity,
+      );
+    }
 
     canvas.save();
     canvas.scale(scaleFactor);
 
     final shader = _shader;
     if (shader != null) {
-      // The shader works in raw screen pixels and ignores canvas transforms,
-      // so the camera shake / zoom punch (ScreenFx) is folded in by hand:
-      //   screen = (base - origin) * fxScale + origin + fxOffset
-      final fx = game.screenFx;
-      final fxScale = fx.scale;
-
-      // Calibrate the world→logical-pixel affine map once per screen size
-      // (removing any ScreenFx transform active at that moment).
-      final calibSize = _calibratedForSize;
-      if (calibSize == null || calibSize != game.size) {
-        final t = canvas.getTransform();
-        final m =
-            math.sqrt(t[0] * t[0] + t[1] * t[1]) / (scaleFactor * fxScale);
-        _calibMetersToPx = m;
-        _calibRootX =
-            (t[12] - fx.offsetX - fx.originX) / fxScale + fx.originX - m * bodyX;
-        _calibRootY =
-            (t[13] - fx.offsetY - fx.originY) / fxScale + fx.originY - m * bodyY;
-        _calibratedForSize = game.size.clone();
-      }
-
-      final dpr = _cachedDpr;
-      final baseX = _calibRootX + _calibMetersToPx * bodyX;
-      final baseY = _calibRootY + _calibMetersToPx * bodyY;
-      final physicalCenterX =
-          ((baseX - fx.originX) * fxScale + fx.originX + fx.offsetX) * dpr;
+      _ensureCalibration(canvas, scaleFactor);
       final physicalRadius =
-          radius * _calibMetersToPx * scaleFactor * fxScale * dpr;
-      // Floor squash keeps the ball's bottom planted on the hardwood.
-      final physicalCenterY =
-          ((baseY - fx.originY) * fxScale + fx.originY + fx.offsetY) * dpr +
-          physicalRadius * _floorAnchor;
-
-      shader.setFloat(0, physicalCenterX);
-      shader.setFloat(1, physicalCenterY);
-      shader.setFloat(2, physicalRadius);
-      shader.setFloat(3, physics.yaw);
-      shader.setFloat(4, physics.pitch);
-      shader.setFloat(5, radius);
-      final double fireUniform = isFlightOnFire
-          ? (activeStreak >= 10 ? 2.0 : 1.0)
-          : 0.0;
-      shader.setFloat(6, fireUniform);
-      // Pebble/bump detail level from AdaptiveQuality (0 = smooth leather).
-      shader.setFloat(7, quality.shaderDetail);
-      // Squash & stretch (x, y) — the shader deforms the sphere itself.
-      shader.setFloat(8, _scaleX);
-      shader.setFloat(9, _scaleY);
-
+          radius * _calibMetersToPx * scaleFactor * game.screenFx.scale *
+          _cachedDpr;
+      _setBallUniforms(
+        shader,
+        worldX: bodyX,
+        worldY: bodyY,
+        physicalRadius: physicalRadius,
+        // Floor squash keeps the ball's bottom planted on the hardwood.
+        anchorShift: physicalRadius * _floorAnchor,
+        fire: onFire,
+        // Pebble/bump detail level from AdaptiveQuality (0 = smooth leather).
+        detail: quality.shaderDetail,
+        scaleY: _scaleY,
+      );
       canvas.drawRect(_shaderRect, _shaderPaint);
     } else {
       canvas.drawCircle(Offset.zero, radius, _fallbackPaint);
     }
 
     canvas.restore();
+  }
+
+  /// Calibrates the world→logical-pixel affine map once per screen size from
+  /// the current canvas transform ([extraScale] = any local scale applied on
+  /// top of the body transform), removing any ScreenFx transform active at
+  /// that moment.
+  void _ensureCalibration(Canvas canvas, double extraScale) {
+    final calibSize = _calibratedForSize;
+    if (calibSize != null && calibSize == game.size) return;
+    final fx = game.screenFx;
+    final fxScale = fx.scale;
+    final bodyX = body.position.x;
+    final bodyY = body.position.y;
+    final t = canvas.getTransform();
+    final m = math.sqrt(t[0] * t[0] + t[1] * t[1]) / (extraScale * fxScale);
+    _calibMetersToPx = m;
+    _calibRootX =
+        (t[12] - fx.offsetX - fx.originX) / fxScale + fx.originX - m * bodyX;
+    _calibRootY =
+        (t[13] - fx.offsetY - fx.originY) / fxScale + fx.originY - m * bodyY;
+    _calibratedForSize = game.size.clone();
+  }
+
+  /// Writes the ball shader uniforms for a draw centered on Forge2D world
+  /// point ([worldX], [worldY]).
+  ///
+  /// The shader works in raw screen pixels and ignores canvas transforms, so
+  /// the camera shake / zoom punch (ScreenFx) is folded in by hand:
+  ///   screen = (base - origin) * fxScale + origin + fxOffset
+  void _setBallUniforms(
+    ui.FragmentShader shader, {
+    required double worldX,
+    required double worldY,
+    required double physicalRadius,
+    required double anchorShift,
+    required bool fire,
+    required double detail,
+    required double scaleY,
+  }) {
+    final fx = game.screenFx;
+    final fxScale = fx.scale;
+    final dpr = _cachedDpr;
+    final baseX = _calibRootX + _calibMetersToPx * worldX;
+    final baseY = _calibRootY + _calibMetersToPx * worldY;
+    shader.setFloat(
+      0,
+      ((baseX - fx.originX) * fxScale + fx.originX + fx.offsetX) * dpr,
+    );
+    shader.setFloat(
+      1,
+      ((baseY - fx.originY) * fxScale + fx.originY + fx.offsetY) * dpr +
+          anchorShift,
+    );
+    shader.setFloat(2, physicalRadius);
+    shader.setFloat(3, physics.yaw);
+    shader.setFloat(4, physics.pitch);
+    shader.setFloat(5, radius);
+    shader.setFloat(6, fire ? (activeStreak >= 10 ? 2.0 : 1.0) : 0.0);
+    shader.setFloat(7, detail);
+    // Squash (x, y) — the shader deforms the sphere; negative y mirrors it.
+    shader.setFloat(8, _scaleX);
+    shader.setFloat(9, scaleY);
   }
 
   @override
