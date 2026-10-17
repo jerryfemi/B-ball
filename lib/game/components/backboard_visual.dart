@@ -1,4 +1,6 @@
 
+import 'dart:ui' as ui;
+
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 
@@ -38,12 +40,16 @@ class BackboardVisual extends PositionComponent {
   void update(double dt) {
     super.update(dt);
 
-    final balls = parent?.children.whereType<Basketball>() ?? [];
     bool ballInNet = false;
     double maxDepth = 0.9;
     double targetWidth = 0.55;
 
-    for (final ball in balls) {
+    // Plain iteration with a type check: no whereType() iterable or `?? []`
+    // list allocated every frame.
+    final children = parent?.children ?? const <Component>[];
+    for (final child in children) {
+      if (child is! Basketball) continue;
+      final ball = child;
       if (ball.passedThroughRim &&
           ball.body.position.y >= 4.9 &&
           ball.body.position.y <= 6.2 &&
@@ -94,19 +100,33 @@ class BackboardVisual extends PositionComponent {
     }
   }
 
-  @override
-  void render(Canvas canvas) {
-    super.render(canvas);
+  /// The backboard, pole and wall shadows never change, so they are recorded
+  /// once into a [ui.Picture] (vector commands, resolution-independent) and
+  /// replayed every frame: zero Paint/Rect/Path allocations in the render loop.
+  ui.Picture? _staticPicture;
 
-    canvas.save();
+  ui.Picture _recordStaticPicture() {
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
     // Shift origin so (0, 0) corresponds to the hoop center
     canvas.translate(size.x / 2, size.y / 2);
-
     _renderWallDropShadow(canvas);
     _renderPole(canvas);
     _renderScoopedBackboard(canvas);
+    return recorder.endRecording();
+  }
 
-    canvas.restore();
+  @override
+  void render(Canvas canvas) {
+    super.render(canvas);
+    canvas.drawPicture(_staticPicture ??= _recordStaticPicture());
+  }
+
+  @override
+  void onRemove() {
+    _staticPicture?.dispose();
+    _staticPicture = null;
+    super.onRemove();
   }
 
   void _renderWallDropShadow(Canvas canvas) {
