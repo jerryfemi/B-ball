@@ -332,9 +332,9 @@ class BasketballGame extends Forge2DGame {
 
     // Regulation GamePigeon scoring rules:
     // Base basket: 2 pts. Swish bonus: +1 pt (3 pts total). Bank shot bonus: +1 pt (3 pts total).
-    // Consecutive streak bonus: +1 additional point for streaks of 3 or more.
+    // Streak bonus: a flat +1 on every make while on a streak of 3 or more.
     final basePoints = isSwish ? 3 : (isBankShot ? 3 : 2);
-    final streakBonus = currentStreak >= 3 ? (currentStreak - 2) : 0;
+    final streakBonus = currentStreak >= 3 ? 1 : 0;
     final points = basePoints + streakBonus;
     score += points;
 
@@ -674,9 +674,8 @@ class BasketballGame extends Forge2DGame {
               .set({
                 'highScore': newBest,
                 'updatedAt': DateTime.now().millisecondsSinceEpoch,
-                'expireAt': Timestamp.fromDate(
-                  DateTime.now().add(const Duration(days: 30)),
-                ),
+                // Profile docs are permanent (friends + high score): clear legacy TTL.
+                'expireAt': FieldValue.delete(),
               }, SetOptions(merge: true));
         }
       } catch (e) {
