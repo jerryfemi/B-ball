@@ -242,12 +242,14 @@ class FieryBallTrail {
     required Offset ballBodyPos,
     required PerspectiveCamera3D camera3D,
     required int streak,
+    bool drawEmbers = true,
   }) {
     if (_nodeCount >= 2) {
       _renderSinglePassRibbon(canvas, ballBodyPos, camera3D, streak);
     }
 
-    if (_activeEmberCount > 0) {
+    // Embers are additive overdraw; AdaptiveQuality drops them first.
+    if (drawEmbers && _activeEmberCount > 0) {
       _renderEmbers(canvas, ballBodyPos, camera3D);
     }
   }
