@@ -46,11 +46,11 @@ class AdaptiveQuality {
   /// Ball contact shadows on the backboard and back wall (extra sprite draws).
   bool get drawProximityShadows => tier == QualityTier.high;
 
-  /// Ember spark particles behind a streaking ball (additive overdraw).
-  bool get drawEmbers => tier == QualityTier.high;
-
-  /// The flame/lightning ribbon itself (the shader's fire aura always stays).
-  bool get drawFlameRibbon => tier != QualityTier.low;
+  /// Share of ember sparks drawn behind a streaking ball. The flame/lightning
+  /// plume itself is NEVER cut by quality — it's the streak reward players
+  /// chase, and one of the cheapest things on screen (only the player's own
+  /// BALL STREAK FX toggle turns it off). Lighter tiers just thin the embers.
+  double get emberDensity => tier == QualityTier.high ? 1.0 : 0.5;
 
   /// Pebble/bump detail in the ball shader, 0..1 (the shader's most expensive
   /// per-pixel work). The shader additionally fades it by on-screen ball size.
