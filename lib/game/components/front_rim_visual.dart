@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 
@@ -43,18 +44,49 @@ class FrontRimVisual extends PositionComponent {
     }
   }
 
+  // ── Dirty-checked picture cache ──
+  // The rim metal never changes and the net only wobbles for a few seconds after a make.
+  // The picture is re-recorded only when the synced net state actually moves,
+  // so at rest the render loop allocates nothing.
+  static const double _netEpsilon = 0.0005;
+  ui.Picture? _picture;
+  double _recordedDepth = double.nan;
+  double _recordedWidth = double.nan;
+  double _recordedSway = double.nan;
+
+  bool get _netMoved =>
+      !((_currentNetDepth - _recordedDepth).abs() <= _netEpsilon &&
+          (_currentBottomWidth - _recordedWidth).abs() <= _netEpsilon &&
+          (_currentSway - _recordedSway).abs() <= _netEpsilon);
+
+  ui.Picture _recordPicture() {
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    // Shift origin so (0, 0) corresponds to the hoop center
+    canvas.translate(size.x / 2, size.y / 2);
+    _renderFrontNet(canvas);
+    _renderFrontRim(canvas);
+    _recordedDepth = _currentNetDepth;
+    _recordedWidth = _currentBottomWidth;
+    _recordedSway = _currentSway;
+    return recorder.endRecording();
+  }
+
   @override
   void render(Canvas canvas) {
     super.render(canvas);
+    if (_picture == null || _netMoved) {
+      _picture?.dispose();
+      _picture = _recordPicture();
+    }
+    canvas.drawPicture(_picture!);
+  }
 
-    canvas.save();
-    // Shift origin so (0, 0) corresponds to the hoop center
-    canvas.translate(size.x / 2, size.y / 2);
-
-    _renderFrontNet(canvas);
-    _renderFrontRim(canvas);
-
-    canvas.restore();
+  @override
+  void onRemove() {
+    _picture?.dispose();
+    _picture = null;
+    super.onRemove();
   }
 
   void _renderFrontRim(Canvas canvas) {
