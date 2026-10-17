@@ -113,7 +113,7 @@ class MatchThreadDialog extends HookConsumerWidget {
             );
         final opponent = match.opponentPlayer(myUid);
         final isMyTurn = match.isMyTurn(myUid);
-        final isCompleted = match.status == MatchStatus.completed;
+        final isCompleted = match.isFinished;
 
         return AppModalSheet(
           heightFactor: 0.85,
@@ -221,17 +221,17 @@ class MatchThreadDialog extends HookConsumerWidget {
                 ),
                 IconButton(
                   icon: Icon(
-                    match.status == MatchStatus.completed
+                    match.isFinished
                         ? Icons.delete_outline_rounded
                         : Icons.logout_rounded,
                     color: const Color(0xFF94A3B8),
                     size: 20,
                   ),
-                  tooltip: match.status == MatchStatus.completed
+                  tooltip: match.isFinished
                       ? 'Remove Match'
                       : 'Leave Match',
                   onPressed: () {
-                    final isDone = match.status == MatchStatus.completed;
+                    final isDone = match.isFinished;
                     showDialog(
                       context: context,
                       builder: (dialogCtx) => AlertDialog(
