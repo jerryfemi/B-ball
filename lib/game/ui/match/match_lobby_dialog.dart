@@ -117,7 +117,11 @@ class MatchLobbyDialog extends HookConsumerWidget {
     // Copy join code helper
     final codeCopied = useState(false);
     Future<void> copyCode() async {
-      await Clipboard.setData(ClipboardData(text: currentMatch.joinCode));
+      try {
+        await Clipboard.setData(ClipboardData(text: currentMatch.joinCode));
+      } catch (_) {
+        return; // Clipboard blocked by the browser; the code stays visible.
+      }
       HapticFeedback.lightImpact();
       codeCopied.value = true;
       Future.delayed(const Duration(seconds: 2), () {
