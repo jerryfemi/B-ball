@@ -11,6 +11,7 @@ class MatchCodeCard extends StatelessWidget {
   final UserProfile? profile;
   final VoidCallback onGenerateCode;
   final VoidCallback onCopyCode;
+  final VoidCallback onShareCode;
 
   const MatchCodeCard({
     super.key,
@@ -20,7 +21,40 @@ class MatchCodeCard extends StatelessWidget {
     required this.profile,
     required this.onGenerateCode,
     required this.onCopyCode,
+    required this.onShareCode,
   });
+
+  Widget _actionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+    bool filled = false,
+  }) {
+    return SizedBox(
+      height: 38.0,
+      child: OutlinedButton.icon(
+        onPressed: onTap,
+        icon: Icon(icon, size: 15),
+        label: Text(
+          label,
+          style: const TextStyle(
+            fontSize: 11.5,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 0.6,
+          ),
+        ),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: filled ? const Color(0xFF0A0E1A) : color,
+          backgroundColor: filled ? color : Colors.transparent,
+          side: BorderSide(color: color, width: 1.2),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10.0),
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -42,51 +76,18 @@ class MatchCodeCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'ROOM CODE READY',
-                  style: TextStyle(
-                    color: Color(0xFF38BDF8),
-                    fontSize: 10.0,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.0,
-                  ),
-                ),
-                InkWell(
-                  onTap: onCopyCode,
-                  borderRadius: BorderRadius.circular(6.0),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        codeCopied
-                            ? Icons.check_circle_rounded
-                            : Icons.copy_rounded,
-                        color: codeCopied
-                            ? const Color(0xFF22C55E)
-                            : const Color(0xFF94A3B8),
-                        size: 14.0,
-                      ),
-                      const SizedBox(width: 4.0),
-                      Text(
-                        codeCopied ? 'COPIED' : 'COPY',
-                        style: TextStyle(
-                          color: codeCopied
-                              ? const Color(0xFF22C55E)
-                              : const Color(0xFF94A3B8),
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+            const Text(
+              'ROOM CODE READY',
+              style: TextStyle(
+                color: Color(0xFF38BDF8),
+                fontSize: 10.0,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1.0,
+              ),
             ),
             const SizedBox(height: 6.0),
-            Text(
+            // Selectable as a last resort: long-press copies on any browser.
+            SelectableText(
               precreatedMatch!.joinCode,
               style: const TextStyle(
                 color: Colors.white,
@@ -96,13 +97,42 @@ class MatchCodeCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 4.0),
-            const Text(
-              'Code copied! Share with your rival before or after shooting.',
-              style: TextStyle(
+            Text(
+              codeCopied
+                  ? 'Code copied! Share it with your rival.'
+                  : 'Send this code to your rival to start the 1v1.',
+              style: const TextStyle(
                 color: Color(0xFF94A3B8),
                 fontSize: 10.5,
                 fontWeight: FontWeight.w500,
               ),
+            ),
+            const SizedBox(height: 10.0),
+            Row(
+              children: [
+                Expanded(
+                  child: _actionButton(
+                    icon: codeCopied
+                        ? Icons.check_circle_rounded
+                        : Icons.copy_rounded,
+                    label: codeCopied ? '✓ CODE COPIED' : 'COPY',
+                    color: codeCopied
+                        ? const Color(0xFF22C55E)
+                        : const Color(0xFF38BDF8),
+                    onTap: onCopyCode,
+                  ),
+                ),
+                const SizedBox(width: 8.0),
+                Expanded(
+                  child: _actionButton(
+                    icon: Icons.ios_share_rounded,
+                    label: 'SHARE',
+                    color: const Color(0xFF38BDF8),
+                    onTap: onShareCode,
+                    filled: true,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -153,7 +183,7 @@ class MatchCodeCard extends StatelessWidget {
                     )
                   : const Icon(Icons.copy_rounded, size: 14),
               label: Text(
-                isGeneratingCode ? 'GENERATING CODE...' : 'GET CODE & INVITE',
+                isGeneratingCode ? 'GENERATING CODE...' : 'GET MATCH CODE',
                 style: const TextStyle(
                   fontSize: 11.0,
                   fontWeight: FontWeight.w900,
