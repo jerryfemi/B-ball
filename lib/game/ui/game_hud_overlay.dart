@@ -199,11 +199,10 @@ class GameHudOverlay extends StatelessWidget {
           ),
         ),
 
-        // 2. Floating Score Toast Spawner (Centered around hoop plane, non-blocking)
-        Positioned(
-          top: MediaQuery.of(context).size.height * 0.28,
-          left: 0,
-          right: 0,
+        // 2. Floating Score Toasts: callouts pop beside the hoop (never over
+        //    the rim); the streak-bonus chip stays under the scoreboard.
+        //    Full-screen so the system can place each part itself.
+        Positioned.fill(
           child: IgnorePointer(
             ignoring: true,
             child: FloatingScoreToastSystem(game: game),
