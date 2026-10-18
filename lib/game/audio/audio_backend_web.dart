@@ -1,6 +1,5 @@
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
-import 'dart:ui_web' as ui_web;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -20,7 +19,6 @@ extension type _AudioContext._(JSObject _) implements JSObject {
   external _BufferSource createBufferSource();
   external _AudioBuffer createBuffer(int channels, int length, num sampleRate);
   external JSPromise<_AudioBuffer> decodeAudioData(JSArrayBuffer data);
-  external _AudioNode createMediaElementSource(_AudioElement element);
 }
 
 extension type _AudioNode._(JSObject _) implements JSObject {
@@ -35,23 +33,15 @@ extension type _GainNode._(JSObject _) implements _AudioNode {
   external _AudioParam get gain;
 }
 
-extension type _AudioBuffer._(JSObject _) implements JSObject {}
+extension type _AudioBuffer._(JSObject _) implements JSObject {
+  external double get duration;
+}
 
 extension type _BufferSource._(JSObject _) implements _AudioNode {
   external set buffer(_AudioBuffer b);
-  external void start([num when]);
-}
-
-extension type _AudioElement._(JSObject _) implements JSObject {
-  external set src(String v);
   external set loop(bool v);
-  external set preload(String v);
-  external bool get paused;
-  external JSPromise<JSAny?> play();
-  external void pause();
-  external void load();
-  external void removeAttribute(String name);
-  external void setAttribute(String name, String value);
+  external void start([num when, num offset]);
+  external void stop();
 }
 
 /// Browser-native audio for the web build.
@@ -59,9 +49,12 @@ extension type _AudioElement._(JSObject _) implements JSObject {
 ///  • Sound effects: decoded once into Web Audio buffers. Each play is a
 ///    one-shot buffer source → gain → speakers, mixed on the browser's audio
 ///    thread: instant, overlapping, unaffected by game-frame hitches.
-///  • Music: one reusable `<audio>` element that streams the track (no big
-///    download or decode up front), routed through a Web Audio gain node so
-///    the volume slider also works on iPhones (iOS ignores element.volume).
+///  • Music: the track (~200 KB) is decoded once by the browser (off the
+///    main thread) into a buffer and looped through a gain node — the same
+///    proven path as the effects, so it plays wherever the effects play, the
+///    volume slider works on iPhones, and it never competes with game frames.
+///    (An `<audio>` element routed into Web Audio was tried first and stayed
+///    silent on some browsers.) Pause remembers the position.
 ///
 /// Hot-path note: [playSfx] makes two tiny native nodes per sound. Web Audio
 /// source nodes are single-use by design and are freed by the browser, not
@@ -71,11 +64,17 @@ class WebAudioBackend implements AudioBackend {
   JSObject? _sfxOut;
   final Map<Sfx, _AudioBuffer> _buffers = {};
 
-  _AudioElement? _musicEl;
   _GainNode? _musicGain;
   String? _musicKey;
+  _AudioBuffer? _musicBuffer;
+  _BufferSource? _musicSource;
+  int _musicGen = 0;
   bool _wantMusicPlaying = false;
   double _musicVolume = 0.4;
+
+  /// Playback position bookkeeping for pause/resume (seconds).
+  double _musicStartedAt = 0.0; // ctx.currentTime when the source started
+  double _musicOffset = 0.0; // position within the track at that moment
 
   @override
   Future<void> init() async {
@@ -91,14 +90,16 @@ class WebAudioBackend implements AudioBackend {
     _sfxOut = ctx.destination;
   }
 
-  /// iPhones: let the game's sound play even when the ring/silent switch is
-  /// on silent (otherwise Safari mutes all Web Audio, which players reported
-  /// as "the music doesn't play"). Safari 16.4+; ignored elsewhere.
+  /// iPhones: 'ambient' = the game's sound MIXES with other apps (players can
+  /// keep their own Spotify/Apple Music playing and still hear the swishes)
+  /// and respects the ring/silent switch, like most mobile games.
+  /// ('playback' would ignore the silent switch but pause the player's own
+  /// music the moment the game made a sound.) Safari 16.4+; ignored elsewhere.
   static void _applyAudioSession() {
     try {
       final navigator = globalContext['navigator'] as JSObject?;
       final session = navigator?['audioSession'] as JSObject?;
-      session?['type'] = 'playback'.toJS;
+      session?['type'] = 'ambient'.toJS;
     } catch (_) {}
   }
 
@@ -145,62 +146,85 @@ class WebAudioBackend implements AudioBackend {
 
   // ── Music ────────────────────────────────────────────────────────────────
 
-  void _ensureMusicElement() {
-    if (_musicEl != null) return;
+  _GainNode? _ensureMusicGain() {
     final ctx = _ctx;
-    final document = globalContext['document'] as JSObject;
-    final el = document.callMethod<_AudioElement>(
-      'createElement'.toJS,
-      'audio'.toJS,
-    );
-    el.loop = true;
-    el.preload = 'auto';
-    // iOS: play inline, never take over the screen.
-    el.setAttribute('playsinline', '');
-    _musicEl = el;
-    if (ctx != null) {
-      try {
-        final gain = ctx.createGain();
-        gain.gain.value = _musicVolume;
-        gain.connect(ctx.destination);
-        ctx.createMediaElementSource(el).connect(gain);
-        _musicGain = gain;
-      } catch (e) {
-        // Fallback: plain element (volume control limited on iOS).
-        debugPrint('[WebAudio] Music routing fallback: $e');
-      }
-    }
+    if (ctx == null) return null;
+    final existing = _musicGain;
+    if (existing != null) return existing;
+    final gain = ctx.createGain();
+    gain.gain.value = _musicVolume;
+    gain.connect(ctx.destination);
+    _musicGain = gain;
+    return gain;
   }
 
   @override
   Future<void> setMusicTrack(String assetKey) async {
-    _ensureMusicElement();
-    final el = _musicEl!;
-    if (_musicKey == assetKey) return;
+    final ctx = _ctx;
+    if (ctx == null || _musicKey == assetKey) return;
     _musicKey = assetKey;
-    el.src = ui_web.assetManager.getAssetUrl(assetKey);
-    if (_wantMusicPlaying) _playElement();
+    final gen = ++_musicGen;
+    _stopMusicSource();
+    _musicBuffer = null;
+    _musicOffset = 0.0;
+    try {
+      final data = await rootBundle.load(assetKey);
+      final bytes = Uint8List.fromList(
+        data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+      );
+      final buffer = await ctx.decodeAudioData(bytes.buffer.toJS).toDart;
+      if (gen != _musicGen) return; // track changed or unloaded meanwhile
+      _musicBuffer = buffer;
+      if (_wantMusicPlaying) _startMusicSource();
+    } catch (e) {
+      debugPrint('[WebAudio] Music load failed for $assetKey: $e');
+    }
+  }
+
+  void _startMusicSource() {
+    final ctx = _ctx;
+    final buffer = _musicBuffer;
+    final gain = _ensureMusicGain();
+    if (ctx == null || buffer == null || gain == null) return;
+    if (_musicSource != null) return; // already playing
+    try {
+      final source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.loop = true;
+      source.connect(gain);
+      final duration = buffer.duration;
+      final offset = duration > 0 ? _musicOffset % duration : 0.0;
+      source.start(0, offset);
+      _musicSource = source;
+      _musicStartedAt = ctx.currentTime;
+      _musicOffset = offset;
+    } catch (e) {
+      debugPrint('[WebAudio] Music start failed: $e');
+    }
+  }
+
+  /// Stops the looping source, remembering where it was for resume.
+  void _stopMusicSource() {
+    final source = _musicSource;
+    if (source == null) return;
+    _musicSource = null;
+    final ctx = _ctx;
+    if (ctx != null) {
+      _musicOffset += ctx.currentTime - _musicStartedAt;
+    }
+    try {
+      source.stop();
+    } catch (_) {}
   }
 
   @override
   void setMusicPlaying(bool playing) {
     _wantMusicPlaying = playing;
-    final el = _musicEl;
-    if (el == null || _musicKey == null) return;
     if (playing) {
-      _playElement();
-    } else if (!el.paused) {
-      el.pause();
+      _startMusicSource();
+    } else {
+      _stopMusicSource();
     }
-  }
-
-  void _playElement() {
-    final el = _musicEl;
-    if (el == null) return;
-    try {
-      // Rejected before the first tap on mobile; unlock() retries.
-      el.play().toDart.catchError((Object _) => null);
-    } catch (_) {}
   }
 
   @override
@@ -214,14 +238,10 @@ class WebAudioBackend implements AudioBackend {
   void unloadMusic() {
     _wantMusicPlaying = false;
     _musicKey = null;
-    final el = _musicEl;
-    if (el == null) return;
-    try {
-      el.pause();
-      // Dropping the source stops any further downloading.
-      el.removeAttribute('src');
-      el.load();
-    } catch (_) {}
+    _musicGen++;
+    _stopMusicSource();
+    _musicBuffer = null; // frees the decoded track
+    _musicOffset = 0.0;
   }
 
   @override
@@ -238,18 +258,15 @@ class WebAudioBackend implements AudioBackend {
       source.connect(ctx.destination);
       source.start();
     } catch (_) {}
-    if (_wantMusicPlaying) _playElement();
+    if (_wantMusicPlaying) _startMusicSource();
   }
 
   @override
   bool get isUnlocked {
     final ctx = _ctx;
-    if (ctx == null || ctx.state != 'running') return false;
-    final el = _musicEl;
-    if (_wantMusicPlaying && el != null && _musicKey != null && el.paused) {
-      return false;
-    }
-    return true;
+    // Music needs no separate unlock: its buffer source plays through the
+    // same (now running) context as the effects.
+    return ctx != null && ctx.state == 'running';
   }
 
   @override
@@ -261,7 +278,6 @@ class WebAudioBackend implements AudioBackend {
     } catch (_) {}
     _ctx = null;
     _sfxOut = null;
-    _musicEl = null;
     _musicGain = null;
   }
 }
