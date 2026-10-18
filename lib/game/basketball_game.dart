@@ -1,4 +1,6 @@
 import 'dart:async';
+// Flame also exports a `Timer` (game-loop timer); this is the wall-clock one.
+import 'dart:async' as async show Timer;
 import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -11,6 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/cloud_match.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_match_service.dart';
+import '../services/update/update_platform.dart';
 import '../services/vatar/vatar_bridge.dart';
 import 'audio/audio_engine.dart';
 import 'components/background.dart';
@@ -195,15 +198,37 @@ class BasketballGame extends Forge2DGame {
         SpectatorConnectionStatus.connected,
       );
   final ValueNotifier<int> spectatorGraceSecondsNotifier = ValueNotifier<int>(
-    15,
+    spectatorZeroClockGraceLimitSeconds.toInt(),
   );
   DateTime? _lastLiveShotReceivedAt;
   double _zeroClockGraceElapsed = 0.0;
   static const double spectatorAimingThresholdSeconds = 6.0;
   static const double spectatorReconnectingThresholdSeconds = 12.0;
-  static const double spectatorZeroClockGraceLimitSeconds = 15.0;
+  /// How long the spectator waits after the clock hits 0:00 for the
+  /// shooter's round to arrive before CLAIM VICTORY is offered. Generous on
+  /// purpose: on 3G, uploading a finished round can take well over 15s, and
+  /// a too-early claim could cost a player a match they were still playing.
+  /// Any sign of life from the shooter (a shot, a score tick) restarts it.
+  /// The Firestore rule independently refuses claims earlier than 50s after
+  /// the turn's server-side end.
+  static const double spectatorZeroClockGraceLimitSeconds = 60.0;
 
-  StreamSubscription<RecordedShot>? _liveShotSubscription;
+  /// A live shot this far behind the synced clock is history (e.g. the turn's
+  /// earlier shots delivered on reconnect): it syncs the clock but isn't
+  /// replayed as a ghost ball.
+  static const double _staleLiveShotSeconds = 2.5;
+
+  /// Connection quality, 0 = unknown (hidden), 1 = poor, 2 = fair, 3 = good.
+  /// Mine is measured from how long my live-shot writes take to be confirmed
+  /// by the server; the opponent's rides along on their live shots.
+  final ValueNotifier<int> myNetLevelNotifier = ValueNotifier<int>(0);
+  final ValueNotifier<int> opponentNetLevelNotifier = ValueNotifier<int>(0);
+  int _pendingLiveWrites = 0;
+  async.Timer? _netStallTimer;
+
+  int? _lastSeenLiveShooterScore;
+
+  StreamSubscription<LiveShotPacket>? _liveShotSubscription;
   StreamSubscription<CloudMatch?>? _liveMatchSubscription;
   String? _currentSubscribedMatchId;
   String? _currentActiveTurnUid;
@@ -326,15 +351,69 @@ class BasketballGame extends Forge2DGame {
           ),
         );
       }
-      unawaited(
+      _trackLiveWrite(
         FirestoreMatchService.instance.broadcastLiveShot(
           matchId: session.cloudMatchId!,
           shot: shot,
           shooterUid: myUid,
           shotIndex: _currentRoundShots.length,
+          round: session.currentRoundNumber,
+          netLevel: myNetLevelNotifier.value,
         ),
       );
     }
+  }
+
+  // ── Network gauge ─────────────────────────────────────────────────────────
+
+  /// Maps a server round-trip time to signal bars.
+  static int _netLevelForLatency(int ms) {
+    if (ms < 400) return 3;
+    if (ms < 1200) return 2;
+    return 1;
+  }
+
+  /// Times a live-shot write: the server's confirmation delay becomes my
+  /// signal bars. If a write is still unconfirmed after 5s (or the device
+  /// is offline) the gauge drops to 1 bar straight away.
+  void _trackLiveWrite(Future<int?> write) {
+    _pendingLiveWrites++;
+    _netStallTimer ??= async.Timer(const Duration(seconds: 5), () {
+      _netStallTimer = null;
+      if (_pendingLiveWrites > 0) myNetLevelNotifier.value = 1;
+    });
+    unawaited(
+      write.then((latencyMs) {
+        _pendingLiveWrites = (_pendingLiveWrites - 1).clamp(0, 1 << 20);
+        if (_pendingLiveWrites == 0) {
+          _netStallTimer?.cancel();
+          _netStallTimer = null;
+        }
+        myNetLevelNotifier.value = latencyMs == null || !isDeviceOnline()
+            ? 1
+            : _netLevelForLatency(latencyMs);
+      }),
+    );
+  }
+
+  /// The shooter is still active: restart the 0:00 grace window, and if the
+  /// CLAIM VICTORY offer was already showing, take it back.
+  void _reviveSpectatorGrace() {
+    _zeroClockGraceElapsed = 0.0;
+    if (spectatorStatusNotifier.value ==
+        SpectatorConnectionStatus.opponentAbandoned) {
+      spectatorStatusNotifier.value = timeRemainingNotifier.value > 0
+          ? SpectatorConnectionStatus.connected
+          : SpectatorConnectionStatus.finalizingTurn;
+    }
+  }
+
+  void _resetNetGauges() {
+    _netStallTimer?.cancel();
+    _netStallTimer = null;
+    _pendingLiveWrites = 0;
+    myNetLevelNotifier.value = 0;
+    opponentNetLevelNotifier.value = 0;
   }
 
   void registerScore({required bool isSwish, required bool isBankShot}) {
@@ -875,6 +954,8 @@ class BasketballGame extends Forge2DGame {
 
   /// Initiates or resumes an online 1v1 match from a synced [CloudMatch].
   void startCloudMatch(CloudMatch match, String myUid) {
+    _resetNetGauges();
+    _lastSeenLiveShooterScore = null;
     final session = MatchSession.fromCloudMatch(match, myUid);
     currentMatchConfig = session.config;
     currentRoundDurationSeconds = match.roundDurationSeconds;
@@ -1013,7 +1094,8 @@ class BasketballGame extends Forge2DGame {
       );
       spectatorStatusNotifier.value = SpectatorConnectionStatus.connected;
       _zeroClockGraceElapsed = 0.0;
-      spectatorGraceSecondsNotifier.value = 15;
+      spectatorGraceSecondsNotifier.value =
+        spectatorZeroClockGraceLimitSeconds.toInt();
       _lastLiveShotReceivedAt = null;
 
       // Trigger interstitial countdown
@@ -1040,6 +1122,11 @@ class BasketballGame extends Forge2DGame {
     if (session.phase == MatchTurnPhase.watchingLiveOpponent &&
         updatedMatch.liveShooterScore != null &&
         updatedMatch.liveShooterUid == session.player2.id) {
+      // A changed live score is a sign of life: restart the 0:00 grace.
+      if (updatedMatch.liveShooterScore != _lastSeenLiveShooterScore) {
+        _lastSeenLiveShooterScore = updatedMatch.liveShooterScore;
+        _reviveSpectatorGrace();
+      }
       // While spectating, activePlayerIndex == 1 so `opponentPlayer` would
       // resolve to *me*; in cloud mode the opponent is always player2.
       final oppBase = session.player2.scoreUpToRound(
@@ -1082,7 +1169,8 @@ class BasketballGame extends Forge2DGame {
     _zeroClockGraceElapsed = 0.0;
     _lastLiveShotReceivedAt = DateTime.now();
     spectatorStatusNotifier.value = SpectatorConnectionStatus.connected;
-    spectatorGraceSecondsNotifier.value = 15;
+    spectatorGraceSecondsNotifier.value =
+        spectatorZeroClockGraceLimitSeconds.toInt();
     timeRemainingNotifier.value = currentRoundDurationSeconds;
 
     player1MatchScoreNotifier.value = session.player1.totalScore;
@@ -1112,17 +1200,21 @@ class BasketballGame extends Forge2DGame {
           .streamLiveShots(
             session.cloudMatchId!,
             shooterUid: session.player2.id,
+            round: session.currentRoundNumber,
           )
           .listen(
-            (shot) {
+            (packet) {
               _lastLiveShotReceivedAt = DateTime.now();
+              if (packet.netLevel > 0) {
+                opponentNetLevelNotifier.value = packet.netLevel;
+              }
               if (timeRemainingNotifier.value > 0 &&
                   spectatorStatusNotifier.value !=
                       SpectatorConnectionStatus.connected) {
                 spectatorStatusNotifier.value =
                     SpectatorConnectionStatus.connected;
               }
-              spawnLiveGhostShot(shot);
+              spawnLiveGhostShot(packet.shot);
             },
             onError: (err) {
               debugPrint('[BasketballGame] Live shot stream error: $err');
@@ -1144,6 +1236,30 @@ class BasketballGame extends Forge2DGame {
       gameStateNotifier.value = GameModeState.playing;
     }
     _lastLiveShotReceivedAt = DateTime.now();
+    // Any sign of life from the shooter restarts the 0:00 grace window and
+    // withdraws a CLAIM VICTORY offer that appeared too early.
+    _reviveSpectatorGrace();
+
+    // Shared clock: every shot carries the shooter's own round time, so the
+    // spectator's clock jumps forward to match it. A slow or stalled network
+    // can no longer leave the spectator's timer 20 seconds behind. (Only ever
+    // forward: the clock never runs backwards on screen.)
+    final shotTime = shot.timestampMs / 1000.0;
+    if (shotTime > _roundElapsedSeconds) {
+      _roundElapsedSeconds = shotTime;
+      final wholeSeconds = shotTime.floor();
+      _secondAccumulator = shotTime - wholeSeconds;
+      final synced = (currentRoundDurationSeconds - wholeSeconds)
+          .clamp(0, currentRoundDurationSeconds)
+          .toInt();
+      if (synced < timeRemainingNotifier.value) {
+        timeRemainingNotifier.value = synced;
+      }
+    } else if (shotTime < _roundElapsedSeconds - _staleLiveShotSeconds) {
+      // An earlier shot of this turn (e.g. delivered on reconnect): it has
+      // already happened, so don't replay it as a ghost ball.
+      return;
+    }
     if (timeRemainingNotifier.value > 0 &&
         spectatorStatusNotifier.value != SpectatorConnectionStatus.connected) {
       spectatorStatusNotifier.value = SpectatorConnectionStatus.connected;
@@ -1165,7 +1281,8 @@ class BasketballGame extends Forge2DGame {
     _liveShotSubscription = null;
     spectatorStatusNotifier.value = SpectatorConnectionStatus.connected;
     _zeroClockGraceElapsed = 0.0;
-    spectatorGraceSecondsNotifier.value = 15;
+    spectatorGraceSecondsNotifier.value =
+        spectatorZeroClockGraceLimitSeconds.toInt();
     _lastLiveShotReceivedAt = null;
 
     // Purge any residual ghost balls from courtside
@@ -1283,6 +1400,7 @@ class BasketballGame extends Forge2DGame {
   }
 
   void exitToSoloMode() {
+    _resetNetGauges();
     _liveShotSubscription?.cancel();
     _liveShotSubscription = null;
     _liveMatchSubscription?.cancel();
@@ -1293,7 +1411,8 @@ class BasketballGame extends Forge2DGame {
 
     spectatorStatusNotifier.value = SpectatorConnectionStatus.connected;
     _zeroClockGraceElapsed = 0.0;
-    spectatorGraceSecondsNotifier.value = 15;
+    spectatorGraceSecondsNotifier.value =
+        spectatorZeroClockGraceLimitSeconds.toInt();
     _lastLiveShotReceivedAt = null;
 
     currentRoundDurationSeconds = roundDurationSeconds;
@@ -1673,6 +1792,9 @@ class BasketballGame extends Forge2DGame {
     spectatorStatusNotifier.dispose();
     spectatorGraceSecondsNotifier.dispose();
     quality.dispose();
+    _netStallTimer?.cancel();
+    myNetLevelNotifier.dispose();
+    opponentNetLevelNotifier.dispose();
     super.onRemove();
   }
 }
