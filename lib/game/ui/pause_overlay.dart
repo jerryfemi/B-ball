@@ -335,68 +335,34 @@ class PauseOverlay extends HookWidget {
                                       height: 1.0,
                                     ),
                                     const SizedBox(height: 8.0),
-                                    // On/off switches: OFF never downloads
+                                    // The speaker button switches each sound
+                                    // off entirely: OFF never downloads
                                     // (music) or decodes (effects) at all.
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: _AudioToggleChip(
-                                            icon: Icons.volume_up_rounded,
-                                            offIcon: Icons.volume_off_rounded,
-                                            label: 'SOUND FX',
-                                            notifier:
-                                                AudioEngine.sfxEnabledNotifier,
-                                            onChanged:
-                                                AudioEngine.setSfxEnabled,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8.0),
-                                        Expanded(
-                                          child: _AudioToggleChip(
-                                            icon: Icons.music_note_rounded,
-                                            offIcon: Icons.music_off_rounded,
-                                            label: 'MUSIC',
-                                            notifier:
-                                                AudioEngine.musicEnabledNotifier,
-                                            onChanged:
-                                                AudioEngine.setMusicEnabled,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 8.0),
-                                    _DisabledWhenOff(
-                                      notifier: AudioEngine.sfxEnabledNotifier,
-                                      child: _VolumeSliderRow(
-                                        icon: Icons.sports_basketball_rounded,
-                                        label: 'SFX',
-                                        notifier: AudioEngine.sfxVolumeNotifier,
-                                        onChanged: (val) =>
-                                            AudioEngine.sfxVolume = val,
-                                      ),
+                                    _VolumeSliderRow(
+                                      label: 'SFX',
+                                      notifier: AudioEngine.sfxVolumeNotifier,
+                                      enabledNotifier:
+                                          AudioEngine.sfxEnabledNotifier,
+                                      onToggle: AudioEngine.setSfxEnabled,
+                                      onChanged: (val) =>
+                                          AudioEngine.sfxVolume = val,
                                     ),
                                     const SizedBox(height: 4.0),
+                                    _VolumeSliderRow(
+                                      label: 'MUSIC',
+                                      notifier: AudioEngine.musicVolumeNotifier,
+                                      enabledNotifier:
+                                          AudioEngine.musicEnabledNotifier,
+                                      onToggle: AudioEngine.setMusicEnabled,
+                                      onChanged: (val) =>
+                                          AudioEngine.musicVolume = val,
+                                    ),
+                                    const SizedBox(height: 6.0),
                                     _DisabledWhenOff(
                                       notifier:
                                           AudioEngine.musicEnabledNotifier,
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          _VolumeSliderRow(
-                                            icon: Icons.music_note_rounded,
-                                            label: 'MUSIC',
-                                            notifier:
-                                                AudioEngine.musicVolumeNotifier,
-                                            onChanged: (val) =>
-                                                AudioEngine.musicVolume = val,
-                                          ),
-                                          const SizedBox(height: 6.0),
-                                          _buildTrackSelector(),
-                                        ],
-                                      ),
+                                      child: _buildTrackSelector(),
                                     ),
-                                    const SizedBox(height: 6.0),
-                                    _buildMuteToggle(),
                                     const Divider(
                                       color: Color(0x2238BDF8),
                                       height: 14.0,
@@ -536,52 +502,6 @@ class PauseOverlay extends HookWidget {
                   ),
                 ),
               ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildMuteToggle() {
-    return ValueListenableBuilder<bool>(
-      valueListenable: AudioEngine.isMutedNotifier,
-      builder: (context, isMuted, _) {
-        return Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: AudioEngine.toggleMute,
-            borderRadius: BorderRadius.circular(10.0),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 8.0,
-                vertical: 4.0,
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    isMuted
-                        ? Icons.volume_off_rounded
-                        : Icons.volume_up_rounded,
-                    size: 14.0,
-                    color: isMuted
-                        ? const Color(0xFFFF6B6B)
-                        : const Color(0xFF38BDF8),
-                  ),
-                  const SizedBox(width: 6.0),
-                  Text(
-                    isMuted ? 'Muted (Tap to Unmute)' : 'Sound On',
-                    style: TextStyle(
-                      color: isMuted
-                          ? const Color(0xFFFF6B6B)
-                          : const Color(0xFF94A3B8),
-                      fontSize: 11.0,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
             ),
           ),
         );
@@ -972,146 +892,126 @@ class PauseOverlay extends HookWidget {
 
 class _VolumeSliderRow extends StatelessWidget {
   const _VolumeSliderRow({
-    required this.icon,
     required this.label,
     required this.notifier,
+    required this.enabledNotifier,
+    required this.onToggle,
     required this.onChanged,
   });
 
-  final IconData icon;
   final String label;
   final ValueNotifier<double> notifier;
+  final ValueNotifier<bool> enabledNotifier;
+  final Future<void> Function(bool enabled) onToggle;
   final ValueChanged<double> onChanged;
 
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<double>(
-      valueListenable: notifier,
-      builder: (context, volume, _) {
-        return Row(
-          children: [
-            Icon(icon, size: 15.0, color: const Color(0xFF38BDF8)),
-            const SizedBox(width: 8.0),
-            SizedBox(
-              width: 50.0,
-              child: Text(
-                label,
-                style: const TextStyle(
-                  color: Color(0xFF94A3B8),
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.8,
-                ),
-              ),
-            ),
-            Expanded(
-              child: SliderTheme(
-                data: SliderTheme.of(context).copyWith(
-                  trackHeight: 3.5,
-                  activeTrackColor: const Color(0xFF38BDF8),
-                  inactiveTrackColor: const Color(0x3338BDF8),
-                  thumbColor: Colors.white,
-                  thumbShape: const RoundSliderThumbShape(
-                    enabledThumbRadius: 6.0,
-                    pressedElevation: 4.0,
-                  ),
-                  overlayColor: const Color(0x3338BDF8),
-                  overlayShape: const RoundSliderOverlayShape(
-                    overlayRadius: 12.0,
-                  ),
-                ),
-                child: Slider(
-                  value: volume.clamp(0.0, 1.0),
-                  min: 0.0,
-                  max: 1.0,
-                  onChanged: onChanged,
-                ),
-              ),
-            ),
-            SizedBox(
-              width: 32.0,
-              child: Text(
-                '${(volume * 100).round()}%',
-                textAlign: TextAlign.right,
-                style: const TextStyle(
-                  color: Color(0xFFE2E8F0),
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-/// SOUND FX / MUSIC on-off pill for the pause menu.
-class _AudioToggleChip extends StatelessWidget {
-  final IconData icon;
-  final IconData offIcon;
-  final String label;
-  final ValueNotifier<bool> notifier;
-  final Future<void> Function(bool enabled) onChanged;
-
-  const _AudioToggleChip({
-    required this.icon,
-    required this.offIcon,
-    required this.label,
-    required this.notifier,
-    required this.onChanged,
-  });
+  static const Color _onColor = Color(0xFF38BDF8);
+  static const Color _offColor = Color(0xFFEF4444);
 
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<bool>(
-      valueListenable: notifier,
+      valueListenable: enabledNotifier,
       builder: (context, isOn, _) {
-        final accent = isOn ? const Color(0xFF00FFCC) : const Color(0xFF64748B);
-        return InkWell(
-          borderRadius: BorderRadius.circular(12.0),
-          onTap: () {
-            HapticFeedback.selectionClick();
-            unawaited(onChanged(!isOn));
-          },
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 8.0),
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: isOn ? 0.12 : 0.06),
-              borderRadius: BorderRadius.circular(12.0),
-              border: Border.all(
-                color: accent.withValues(alpha: isOn ? 0.7 : 0.35),
-                width: 1.0,
-              ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+        return ValueListenableBuilder<double>(
+          valueListenable: notifier,
+          builder: (context, volume, _) {
+            return Row(
               children: [
-                Icon(isOn ? icon : offIcon, size: 15.0, color: accent),
-                const SizedBox(width: 6.0),
-                Flexible(
+                // Speaker button: tap to switch this sound fully on/off.
+                InkResponse(
+                  radius: 18.0,
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    unawaited(onToggle(!isOn));
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    width: 28.0,
+                    height: 28.0,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: (isOn ? _onColor : _offColor).withValues(
+                        alpha: 0.12,
+                      ),
+                      border: Border.all(
+                        color: (isOn ? _onColor : _offColor).withValues(
+                          alpha: 0.55,
+                        ),
+                        width: 1.0,
+                      ),
+                    ),
+                    child: Icon(
+                      isOn ? Icons.volume_up_rounded : Icons.volume_off_rounded,
+                      size: 15.0,
+                      color: isOn ? _onColor : _offColor,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8.0),
+                SizedBox(
+                  width: 46.0,
                   child: Text(
-                    '$label ${isOn ? 'ON' : 'OFF'}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: accent,
+                    label,
+                    style: const TextStyle(
+                      color: Color(0xFF94A3B8),
                       fontSize: 10.5,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.6,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: IgnorePointer(
+                    ignoring: !isOn,
+                    child: AnimatedOpacity(
+                      duration: const Duration(milliseconds: 180),
+                      opacity: isOn ? 1.0 : 0.35,
+                      child: SliderTheme(
+                        data: SliderTheme.of(context).copyWith(
+                          trackHeight: 3.5,
+                          activeTrackColor: _onColor,
+                          inactiveTrackColor: const Color(0x3338BDF8),
+                          thumbColor: Colors.white,
+                          thumbShape: const RoundSliderThumbShape(
+                            enabledThumbRadius: 6.0,
+                            pressedElevation: 4.0,
+                          ),
+                          overlayColor: const Color(0x3338BDF8),
+                          overlayShape: const RoundSliderOverlayShape(
+                            overlayRadius: 12.0,
+                          ),
+                        ),
+                        child: Slider(
+                          value: volume.clamp(0.0, 1.0),
+                          min: 0.0,
+                          max: 1.0,
+                          onChanged: onChanged,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: 32.0,
+                  child: Text(
+                    isOn ? '${(volume * 100).round()}%' : 'OFF',
+                    textAlign: TextAlign.right,
+                    style: TextStyle(
+                      color: isOn ? const Color(0xFFE2E8F0) : _offColor,
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
               ],
-            ),
-          ),
+            );
+          },
         );
       },
     );
   }
 }
-
 /// Dims and locks a settings row while its sound category is switched off.
 class _DisabledWhenOff extends StatelessWidget {
   final ValueNotifier<bool> notifier;
