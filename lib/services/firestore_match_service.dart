@@ -900,20 +900,33 @@ class FirestoreMatchService {
   ///
   /// This micro-packet (~150 bytes) conveys launch coordinates, 3D velocity vectors,
   /// backspin, and make metadata so spectators can simulate the deterministic trajectory locally.
-  Future<void> broadcastLiveShot({
+  ///
+  /// [round] scopes the packet to one turn (each player shoots once per
+  /// round), so spectators never depend on the two phones' clocks agreeing.
+  /// [netLevel] (1–3) is the shooter's current connection quality, shown on
+  /// their avatar to the opponent — it rides along for free (no extra write).
+  ///
+  /// Returns the server round-trip time in milliseconds (the write's
+  /// acknowledgement), or null if the write failed.
+  Future<int?> broadcastLiveShot({
     required String matchId,
     required RecordedShot shot,
     required String shooterUid,
     required int shotIndex,
+    required int round,
+    int netLevel = 0,
   }) async {
     final cleanId = matchId.trim().toUpperCase();
     final docRef = _matchesRef.doc(cleanId).collection('live_shots');
     final shotId = '${shot.timestampMs}_${shooterUid}_$shotIndex';
+    final stopwatch = Stopwatch()..start();
     try {
       await docRef.doc(shotId).set({
         'id': shotId,
         'shooterUid': shooterUid,
         'shotIndex': shotIndex,
+        'round': round,
+        'nq': netLevel,
         'shot': shot.toJson(),
         'timestamp': shot.timestampMs,
         'createdAt': DateTime.now().millisecondsSinceEpoch,
@@ -921,31 +934,35 @@ class FirestoreMatchService {
           DateTime.now().add(const Duration(hours: 24)),
         ),
       });
+      return stopwatch.elapsedMilliseconds;
     } catch (e) {
       debugPrint('[FirestoreMatchService] broadcastLiveShot error: $e');
+      return null;
     }
   }
 
-  /// Streams real-time live shots broadcast by the active shooter.
+  /// Streams the live shots of one turn: [shooterUid]'s shots in [round].
   ///
-  /// Uses Firestore document changes (`DocumentChangeType.added`) filtered by timestamp
-  /// to ensure only newly launched shots are received and spawned as ghost balls.
-  ///
-  /// When [shooterUid] is given, packets from anyone else are ignored, so a
-  /// third party who knows the join code cannot inject ghost balls.
-  Stream<RecordedShot> streamLiveShots(
+  /// Scoping by (shooter, round) instead of by wall-clock time means:
+  ///  • no shot is dropped because the two phones' clocks disagree, or
+  ///    because a slow network delivered it a few seconds late;
+  ///  • a spectator who (re)connects mid-turn also receives the turn's
+  ///    earlier shots (the game uses them to sync its clock, and skips
+  ///    spawning the stale ones).
+  /// Equality-only filters: served by Firestore's automatic indexes.
+  Stream<LiveShotPacket> streamLiveShots(
     String matchId, {
-    int? sinceTimestampMs,
-    String? shooterUid,
+    required String shooterUid,
+    required int round,
   }) {
-    if (matchId.isEmpty) return const Stream.empty();
+    if (matchId.isEmpty || shooterUid.isEmpty) return const Stream.empty();
     final cleanId = matchId.trim().toUpperCase();
-    final start = sinceTimestampMs ?? (DateTime.now().millisecondsSinceEpoch - 1500);
 
     return _matchesRef
         .doc(cleanId)
         .collection('live_shots')
-        .where('createdAt', isGreaterThanOrEqualTo: start)
+        .where('shooterUid', isEqualTo: shooterUid)
+        .where('round', isEqualTo: round)
         .snapshots()
         .expand((snap) => snap.docChanges)
         .where((change) => change.type == DocumentChangeType.added)
@@ -953,23 +970,13 @@ class FirestoreMatchService {
           final data = change.doc.data();
           final shotMap = data?['shot'] as Map<String, dynamic>?;
           if (shotMap == null) return null;
-          if (shooterUid != null &&
-              shooterUid.isNotEmpty &&
-              data?['shooterUid'] != shooterUid) {
-            return null;
-          }
-
-          final createdAt = (data?['createdAt'] as num?)?.toInt() ?? 0;
-          final nowMs = DateTime.now().millisecondsSinceEpoch;
-          // Filter out bursts of stale shots older than 3 seconds (e.g. from background tab resume)
-          if (createdAt > 0 && (nowMs - createdAt > 3000)) {
-            return null;
-          }
-
-          return RecordedShot.fromJson(shotMap);
+          return LiveShotPacket(
+            shot: RecordedShot.fromJson(shotMap),
+            netLevel: (data?['nq'] as num?)?.toInt() ?? 0,
+          );
         })
-        .where((shot) => shot != null)
-        .cast<RecordedShot>()
+        .where((packet) => packet != null)
+        .cast<LiveShotPacket>()
         .handleError((e) {
           debugPrint('[FirestoreMatchService] streamLiveShots error: $e');
         });
@@ -1031,4 +1038,13 @@ class FirestoreMatchService {
       debugPrint('[FirestoreMatchService] updateLiveShooterScore error: $e');
     }
   }
+}
+
+/// One live shot received from the opponent, plus their connection quality
+/// (1 = poor, 2 = fair, 3 = good, 0 = unknown).
+class LiveShotPacket {
+  final RecordedShot shot;
+  final int netLevel;
+
+  const LiveShotPacket({required this.shot, this.netLevel = 0});
 }
