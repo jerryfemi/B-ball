@@ -81,6 +81,15 @@ flutter:
     - assets/audio/
     - assets/avatars/
     - assets/music/short/
+
+  # Shot callout lettering (SWISH! / BANK! / +3). Poppins Bold Italic
+  # (SIL Open Font License), subset to basic Latin: ~9 KB.
+  fonts:
+    - family: PoppinsCallout
+      fonts:
+        - asset: assets/fonts/PoppinsCallout-BoldItalic.ttf
+          weight: 700
+          style: italic
   #   - images/a_dot_ham.jpeg
 
   # An image asset can refer to one or more resolution-specific "variants", see

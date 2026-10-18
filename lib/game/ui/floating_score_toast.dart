@@ -138,28 +138,17 @@ class _FloatingToastWidget extends HookWidget {
       return null;
     }, const []);
 
-    // Palette & Label resolution
-    final Color primaryColor;
-    final Color glowColor;
-    final String label;
-    final IconData icon;
-
-    if (event.isSwish) {
-      primaryColor = const Color(0xFFFBBF24); // Warm radiant gold
-      glowColor = const Color(0x66F59E0B);
-      label = '+${event.points} SWISH!';
-      icon = Icons.auto_awesome_rounded;
-    } else if (event.isBankShot) {
-      primaryColor = const Color(0xFF38BDF8); // Electric cyan
-      glowColor = const Color(0x660EA5E9);
-      label = '+${event.points} BANK!';
-      icon = Icons.crop_square_rounded;
-    } else {
-      primaryColor = const Color(0xFFF8FAFC); // Clean collegiate pearl
-      glowColor = const Color(0x33FFFFFF);
-      label = '+${event.points} PTS';
-      icon = Icons.sports_basketball_rounded;
-    }
+    // Shot-type styling: SWISH and BANK get the big arcade word; a plain
+    // make stays a small, quiet "+2" so the special shots feel special.
+    final String? word = event.isSwish
+        ? 'SWISH!'
+        : (event.isBankShot ? 'BANK!' : null);
+    final Color accent = event.isSwish
+        ? const Color(0xFFFFC31E) // radiant gold
+        : (event.isBankShot
+              ? const Color(0xFFFB923C) // hot orange
+              : const Color(0xFFF8FAFC)); // pearl
+    final points = '+${event.points}';
 
     final hasStreakBonus = event.streak >= 3;
 
@@ -185,7 +174,7 @@ class _FloatingToastWidget extends HookWidget {
       builder: (context, constraints) {
         final w = constraints.maxWidth;
         final h = constraints.maxHeight;
-        const calloutMaxWidth = 150.0;
+        const calloutMaxWidth = 175.0;
         final calloutLeft = (w / 2 + h * 0.10).clamp(
           0.0,
           (w - calloutMaxWidth - 8.0).clamp(0.0, double.infinity),
@@ -194,9 +183,11 @@ class _FloatingToastWidget extends HookWidget {
           children: [
             Positioned(
               left: calloutLeft,
-              top: h * 0.25 - 22.0,
+              top: h * 0.25 - (word != null ? 40.0 : 18.0),
               child: animated(
-                _buildCallout(primaryColor, glowColor, label, icon),
+                word != null
+                    ? _ArcadeCallout(word: word, points: points, accent: accent)
+                    : _ArcadeCallout.small(points: points, accent: accent),
                 scaleFrom: Alignment.centerLeft,
               ),
             ),
@@ -238,73 +229,122 @@ class _FloatingToastWidget extends HookWidget {
       ),
     );
   }
+}
 
-  Widget _buildCallout(
-    Color primaryColor,
-    Color glowColor,
-    String label,
-    IconData icon,
-  ) {
-    return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16.0,
-                  vertical: 7.0,
-                ),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Color(0xFA0F172A),
-                      Color(0xFC1E293B),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(22.0),
-                  border: Border.all(
-                    color: primaryColor,
-                    width: 1.6,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: glowColor.withValues(alpha: 0.40),
-                      blurRadius: 8.0,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      icon,
-                      size: 17.0,
-                      color: primaryColor,
-                    ),
-                    const SizedBox(width: 7.0),
-                    Text(
-                      label,
-                      style: TextStyle(
-                        color: primaryColor,
-                        fontSize: 14.0,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.2,
-                        shadows: const [
-                          Shadow(
-                            color: Color(0xCC000000),
-                            blurRadius: 3.0,
-                            offset: Offset(0, 1),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+/// Arcade "sticker" lettering for shot callouts: Poppins Bold Italic with a
+/// thick dark outline, a 3-layer block extrude (reads as chunky 3D letters),
+/// a soft glow in the shot's color, and a slight energetic tilt.
+///
+/// Built from stacked Text layers in the HUD overlay (never in the game's
+/// render loop); it only exists for ~1s after a make.
+class _ArcadeCallout extends StatelessWidget {
+  final String? word;
+  final String points;
+  final Color accent;
+  final bool _small;
 
-            ],
-          );
+  const _ArcadeCallout({
+    required String this.word,
+    required this.points,
+    required this.accent,
+  }) : _small = false;
+
+  /// Plain make: just a modest outlined "+2", no glow, no extrude.
+  const _ArcadeCallout.small({required this.points, required this.accent})
+    : word = null,
+      _small = true;
+
+  static const String _font = 'PoppinsCallout';
+  static const Color _ink = Color(0xFF140C06);
+
+  static final Paint _outline32 = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 6.0
+    ..strokeJoin = StrokeJoin.round
+    ..color = _ink;
+  static final Paint _outline18 = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 4.5
+    ..strokeJoin = StrokeJoin.round
+    ..color = _ink;
+
+  /// One outlined word: [extrude] stacks offset copies underneath for depth.
+  Widget _outlined(
+    String text, {
+    required double size,
+    required Color fill,
+    required Paint outline,
+    Color? glow,
+    bool extrude = false,
+  }) {
+    final base = TextStyle(
+      fontFamily: _font,
+      fontSize: size,
+      fontWeight: FontWeight.w700,
+      fontStyle: FontStyle.italic,
+      letterSpacing: 0.5,
+      height: 1.0,
+    );
+    final depth = Color.lerp(accent, _ink, 0.62)!;
+    return Stack(
+      children: [
+        // Depth block + glow (drawn as shadows of a dark copy).
+        if (extrude || glow != null)
+          Text(
+            text,
+            style: base.copyWith(
+              color: extrude ? depth : Colors.transparent,
+              shadows: [
+                if (glow != null)
+                  Shadow(color: glow, blurRadius: 18.0),
+                if (extrude) ...[
+                  Shadow(color: depth, offset: const Offset(1.2, 1.6)),
+                  Shadow(color: depth, offset: const Offset(2.4, 3.2)),
+                  Shadow(color: _ink, offset: const Offset(3.4, 4.6)),
+                ],
+              ],
+            ),
+          ),
+        // Thick dark outline.
+        Text(text, style: base.copyWith(foreground: outline)),
+        // Bright face.
+        Text(text, style: base.copyWith(color: fill)),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_small) {
+      return _outlined(
+        points,
+        size: 20.0,
+        fill: accent,
+        outline: _outline18,
+      );
+    }
+    return Transform.rotate(
+      angle: -0.10, // ~6° tilt
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _outlined(
+            word!,
+            size: 32.0,
+            fill: const Color(0xFFFFFAEB),
+            outline: _outline32,
+            glow: accent.withValues(alpha: 0.75),
+            extrude: true,
+          ),
+          const SizedBox(height: 4.0),
+          _outlined(
+            points,
+            size: 18.0,
+            fill: accent,
+            outline: _outline18,
+          ),
+        ],
+      ),
+    );
   }
 }
