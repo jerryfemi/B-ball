@@ -5,6 +5,7 @@ import '../../services/auth_service.dart';
 import '../basketball_game.dart';
 import '../match/match_session.dart';
 import 'scoreboard/hot_streak_pill.dart';
+import 'scoreboard/net_signal_badge.dart';
 import 'scoreboard/round_indicator_badge.dart';
 import 'scoreboard/scoreboard_bay.dart';
 import 'scoreboard/scoreboard_flank_badges.dart';
@@ -160,13 +161,30 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   // Left Flank: Player Avatar + Pause Badge
-                  ScoreboardPlayerAvatar(
-                    key: widget.game.playerAvatarKey,
-                    isActive: p1Active,
-                    label: p1Label,
-                    avatar: p1Avatar,
-                    activeMatchId: matchSession?.cloudMatchId,
-                    onTap: widget.onInboxTapped,
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      ScoreboardPlayerAvatar(
+                        key: widget.game.playerAvatarKey,
+                        isActive: p1Active,
+                        label: p1Label,
+                        avatar: p1Avatar,
+                        activeMatchId: matchSession?.cloudMatchId,
+                        onTap: widget.onInboxTapped,
+                      ),
+                      // My connection gauge (online 1v1 only; hidden until
+                      // measured).
+                      if (matchSession?.cloudMatchId != null)
+                        Positioned(
+                          top: -5.0,
+                          left: -6.0,
+                          child: IgnorePointer(
+                            child: NetSignalBadge(
+                              level: widget.game.myNetLevelNotifier,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                   const SizedBox(width: 6.0),
                   ScoreboardPauseBadge(game: widget.game),
@@ -181,18 +199,34 @@ class _StadiumScoreboardState extends State<StadiumScoreboard>
                     const SizedBox(width: 6.0),
                     const ScoreboardMuteBadge(),
                     const SizedBox(width: 6.0),
-                    ScoreboardOpponentAvatar(
-                      key: widget.game.rightFlankKey,
-                      isActive: p2Active,
-                      label: matchSession.isWaitingForOpponent
-                          ? (matchSession.joinCode != null
-                              ? 'CODE: ${matchSession.joinCode}'
-                              : 'WAITING')
-                          : matchSession.player2.name,
-                      avatar: matchSession.player2.avatar,
-                      isWaiting: matchSession.isWaitingForOpponent,
-                      joinCode: matchSession.joinCode,
-                      activeMatchId: matchSession.cloudMatchId,
+                    Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        ScoreboardOpponentAvatar(
+                          key: widget.game.rightFlankKey,
+                          isActive: p2Active,
+                          label: matchSession.isWaitingForOpponent
+                              ? (matchSession.joinCode != null
+                                  ? 'CODE: ${matchSession.joinCode}'
+                                  : 'WAITING')
+                              : matchSession.player2.name,
+                          avatar: matchSession.player2.avatar,
+                          isWaiting: matchSession.isWaitingForOpponent,
+                          joinCode: matchSession.joinCode,
+                          activeMatchId: matchSession.cloudMatchId,
+                        ),
+                        // Opponent's connection gauge (from their live shots).
+                        if (matchSession.cloudMatchId != null)
+                          Positioned(
+                            top: -5.0,
+                            right: -6.0,
+                            child: IgnorePointer(
+                              child: NetSignalBadge(
+                                level: widget.game.opponentNetLevelNotifier,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ] else ...[
                     ScoreboardHelpBadge(
