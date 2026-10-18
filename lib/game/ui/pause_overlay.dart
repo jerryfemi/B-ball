@@ -335,23 +335,66 @@ class PauseOverlay extends HookWidget {
                                       height: 1.0,
                                     ),
                                     const SizedBox(height: 8.0),
-                                    _VolumeSliderRow(
-                                      icon: Icons.sports_basketball_rounded,
-                                      label: 'SFX',
-                                      notifier: AudioEngine.sfxVolumeNotifier,
-                                      onChanged: (val) =>
-                                          AudioEngine.sfxVolume = val,
+                                    // On/off switches: OFF never downloads
+                                    // (music) or decodes (effects) at all.
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: _AudioToggleChip(
+                                            icon: Icons.volume_up_rounded,
+                                            offIcon: Icons.volume_off_rounded,
+                                            label: 'SOUND FX',
+                                            notifier:
+                                                AudioEngine.sfxEnabledNotifier,
+                                            onChanged:
+                                                AudioEngine.setSfxEnabled,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8.0),
+                                        Expanded(
+                                          child: _AudioToggleChip(
+                                            icon: Icons.music_note_rounded,
+                                            offIcon: Icons.music_off_rounded,
+                                            label: 'MUSIC',
+                                            notifier:
+                                                AudioEngine.musicEnabledNotifier,
+                                            onChanged:
+                                                AudioEngine.setMusicEnabled,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8.0),
+                                    _DisabledWhenOff(
+                                      notifier: AudioEngine.sfxEnabledNotifier,
+                                      child: _VolumeSliderRow(
+                                        icon: Icons.sports_basketball_rounded,
+                                        label: 'SFX',
+                                        notifier: AudioEngine.sfxVolumeNotifier,
+                                        onChanged: (val) =>
+                                            AudioEngine.sfxVolume = val,
+                                      ),
                                     ),
                                     const SizedBox(height: 4.0),
-                                    _VolumeSliderRow(
-                                      icon: Icons.music_note_rounded,
-                                      label: 'MUSIC',
-                                      notifier: AudioEngine.musicVolumeNotifier,
-                                      onChanged: (val) =>
-                                          AudioEngine.musicVolume = val,
+                                    _DisabledWhenOff(
+                                      notifier:
+                                          AudioEngine.musicEnabledNotifier,
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          _VolumeSliderRow(
+                                            icon: Icons.music_note_rounded,
+                                            label: 'MUSIC',
+                                            notifier:
+                                                AudioEngine.musicVolumeNotifier,
+                                            onChanged: (val) =>
+                                                AudioEngine.musicVolume = val,
+                                          ),
+                                          const SizedBox(height: 6.0),
+                                          _buildTrackSelector(),
+                                        ],
+                                      ),
                                     ),
-                                    const SizedBox(height: 6.0),
-                                    _buildTrackSelector(),
                                     const SizedBox(height: 6.0),
                                     _buildMuteToggle(),
                                     const Divider(
@@ -626,24 +669,17 @@ class PauseOverlay extends HookWidget {
     );
   }
 
-  /// GRAPHICS: AUTO / HIGH / LOW. In AUTO the subtitle shows the tier that
-  /// AdaptiveQuality has currently picked for this phone.
+  /// GRAPHICS: HIGH / LOW (default LOW). LOW only switches the ball to smooth
+  /// leather; every other effect is identical on both.
   Widget _buildGraphicsQualityRow() {
     return ValueListenableBuilder<QualityMode>(
       valueListenable: game.quality.modeNotifier,
       builder: (context, mode, _) {
-        return ValueListenableBuilder<QualityTier>(
-          valueListenable: game.quality.tierNotifier,
-          builder: (context, tier, _) {
-            final tierLabel = switch (tier) {
-              QualityTier.high => 'Full effects',
-              QualityTier.medium => 'Balanced',
-              QualityTier.low => 'Battery saver',
-            };
+        return Builder(
+          builder: (context) {
             final subtitle = switch (mode) {
-              QualityMode.auto => 'Auto-adjusts to your phone • $tierLabel',
-              QualityMode.high => 'All effects on (may heat up)',
-              QualityMode.low => 'Fewer effects • smoother on hot phones',
+              QualityMode.high => 'Detailed pebbled ball texture',
+              QualityMode.low => 'Smooth ball • lighter on your phone',
             };
             final accent = mode == QualityMode.low
                 ? const Color(0xFF94A3B8)
@@ -662,11 +698,9 @@ class PauseOverlay extends HookWidget {
                     ),
                   ),
                   child: Icon(
-                    mode == QualityMode.auto
-                        ? Icons.auto_awesome_rounded
-                        : (mode == QualityMode.high
-                              ? Icons.high_quality_rounded
-                              : Icons.battery_saver_rounded),
+                    mode == QualityMode.high
+                        ? Icons.high_quality_rounded
+                        : Icons.battery_saver_rounded,
                     size: 15.0,
                     color: accent,
                   ),
@@ -1009,6 +1043,95 @@ class _VolumeSliderRow extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+/// SOUND FX / MUSIC on-off pill for the pause menu.
+class _AudioToggleChip extends StatelessWidget {
+  final IconData icon;
+  final IconData offIcon;
+  final String label;
+  final ValueNotifier<bool> notifier;
+  final Future<void> Function(bool enabled) onChanged;
+
+  const _AudioToggleChip({
+    required this.icon,
+    required this.offIcon,
+    required this.label,
+    required this.notifier,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: notifier,
+      builder: (context, isOn, _) {
+        final accent = isOn ? const Color(0xFF00FFCC) : const Color(0xFF64748B);
+        return InkWell(
+          borderRadius: BorderRadius.circular(12.0),
+          onTap: () {
+            HapticFeedback.selectionClick();
+            unawaited(onChanged(!isOn));
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 8.0),
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: isOn ? 0.12 : 0.06),
+              borderRadius: BorderRadius.circular(12.0),
+              border: Border.all(
+                color: accent.withValues(alpha: isOn ? 0.7 : 0.35),
+                width: 1.0,
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(isOn ? icon : offIcon, size: 15.0, color: accent),
+                const SizedBox(width: 6.0),
+                Flexible(
+                  child: Text(
+                    '$label ${isOn ? 'ON' : 'OFF'}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: accent,
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.6,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Dims and locks a settings row while its sound category is switched off.
+class _DisabledWhenOff extends StatelessWidget {
+  final ValueNotifier<bool> notifier;
+  final Widget child;
+
+  const _DisabledWhenOff({required this.notifier, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: notifier,
+      builder: (context, isOn, child) => IgnorePointer(
+        ignoring: !isOn,
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 180),
+          opacity: isOn ? 1.0 : 0.35,
+          child: child,
+        ),
+      ),
+      child: child,
     );
   }
 }
