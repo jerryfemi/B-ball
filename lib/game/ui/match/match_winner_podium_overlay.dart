@@ -3,8 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../../models/friend_profile.dart';
+import '../../../models/match_invite.dart';
+import '../../../providers/app_providers.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/firestore_match_service.dart';
 import '../../basketball_game.dart';
@@ -18,7 +21,7 @@ import 'podium/podium_stats_comparison.dart';
 import 'podium/podium_trophy_header.dart';
 
 /// Grand celebration podium overlay shown upon match conclusion.
-class MatchWinnerPodiumOverlay extends HookWidget {
+class MatchWinnerPodiumOverlay extends HookConsumerWidget {
   final BasketballGame game;
   final MatchSession session;
 
@@ -115,8 +118,16 @@ class MatchWinnerPodiumOverlay extends HookWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final rematchError = useState<String?>(null);
+    // A rematch challenge from this opponent while I'm still on the podium.
+    final opponentId = session.player2.id;
+    final rematchInvite = session.isHistoryView || !session.isOnline
+        ? null
+        : (ref.watch(incomingMatchChallengesProvider).value ??
+                  const <MatchInvite>[])
+              .where((i) => i.isPending && i.hostUid == opponentId)
+              .firstOrNull;
     final isRematching = useState(false);
     final winner = session.overallWinner;
     final isTie = session.isTie;
@@ -267,8 +278,19 @@ class MatchWinnerPodiumOverlay extends HookWidget {
                         ),
                       ),
                     ] else if (session.cloudMatchId != null) ...[
+                      // Opponent already sent a rematch: offer it right here
+                      // (one tap joins the waiting room) instead of only as
+                      // a chip behind the podium.
+                      if (rematchInvite != null) ...[
+                        _RematchInviteBanner(
+                          key: ValueKey('rematch-${rematchInvite.matchId}'),
+                          invite: rematchInvite,
+                          game: game,
+                        ),
+                        const SizedBox(height: 8.0),
+                      ]
                       // Primary Action: INSTANT REMATCH (Host-only) or Waiting status (Guest)
-                      if (session.isHost)
+                      else if (session.isHost)
                         InlineFeedbackSwitcher(
                           child: rematchError.value != null
                               ? InlineErrorPanel(
@@ -543,6 +565,162 @@ class MatchWinnerPodiumOverlay extends HookWidget {
           ),
         ),
       ],
+    );
+  }
+}
+/// "BUCKET#4417 wants a rematch" card shown on the podium. JOIN accepts the
+/// challenge and goes straight into the new match; NO THANKS declines it.
+class _RematchInviteBanner extends HookWidget {
+  final MatchInvite invite;
+  final BasketballGame game;
+
+  const _RematchInviteBanner({
+    super.key,
+    required this.invite,
+    required this.game,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isJoining = useState(false);
+    final joinError = useState<String?>(null);
+
+    Future<void> join() async {
+      final profile = AuthService.instance.currentUser;
+      if (isJoining.value || profile == null) return;
+      HapticFeedback.mediumImpact();
+      joinError.value = null;
+      isJoining.value = true;
+      try {
+        final joined = await FirestoreMatchService.instance
+            .acceptMatchChallenge(invite: invite, recipientProfile: profile);
+        game.startCloudMatch(joined, profile.uid);
+      } catch (e) {
+        if (context.mounted) {
+          isJoining.value = false;
+          joinError.value = InlineErrorPanel.friendlyMessage(
+            e,
+            fallback: 'Couldn\'t join the rematch. Check your connection.',
+          );
+        }
+      }
+    }
+
+    Future<void> decline() async {
+      HapticFeedback.lightImpact();
+      final myUid = AuthService.instance.currentUser?.uid;
+      if (myUid == null) return;
+      await FirestoreMatchService.instance.declineMatchChallenge(
+        myUid: myUid,
+        matchId: invite.matchId,
+        hostUid: invite.hostUid,
+      );
+    }
+
+    return InlineFeedbackSwitcher(
+      child: joinError.value != null
+          ? InlineErrorPanel(
+              key: const ValueKey('rematch-join-error'),
+              title: 'COULDN\'T JOIN',
+              message: joinError.value!,
+              onRetry: join,
+              onDismiss: () => joinError.value = null,
+            )
+          : Container(
+              key: const ValueKey('rematch-invite'),
+              padding: const EdgeInsets.all(12.0),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F172A),
+                borderRadius: BorderRadius.circular(16.0),
+                border: Border.all(color: const Color(0xFF00FFCC), width: 1.4),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF00FFCC).withValues(alpha: 0.18),
+                    blurRadius: 14.0,
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      AppAvatar(avatar: invite.hostAvatar, size: 30.0),
+                      const SizedBox(width: 10.0),
+                      Expanded(
+                        child: Text(
+                          '${invite.hostName.toUpperCase()} WANTS A REMATCH!',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13.0,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.6,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10.0),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: isJoining.value ? null : decline,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF94A3B8),
+                            side: const BorderSide(color: Color(0xFF334155)),
+                            padding: const EdgeInsets.symmetric(vertical: 11.0),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12.0),
+                            ),
+                          ),
+                          child: const Text(
+                            'NO THANKS',
+                            style: TextStyle(
+                              fontSize: 12.0,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.6,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8.0),
+                      Expanded(
+                        flex: 2,
+                        child: ElevatedButton(
+                          onPressed: isJoining.value ? null : join,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF00FFCC),
+                            foregroundColor: Colors.black,
+                            padding: const EdgeInsets.symmetric(vertical: 11.0),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12.0),
+                            ),
+                          ),
+                          child: isJoining.value
+                              ? const SizedBox(
+                                  width: 16.0,
+                                  height: 16.0,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.0,
+                                    color: Colors.black,
+                                  ),
+                                )
+                              : const Text(
+                                  'JOIN REMATCH',
+                                  style: TextStyle(
+                                    fontSize: 13.0,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 0.8,
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
     );
   }
 }
