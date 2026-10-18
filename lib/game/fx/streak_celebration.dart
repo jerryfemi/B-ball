@@ -6,7 +6,6 @@ import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 
 import '../basketball_game.dart';
-import '../performance/adaptive_quality.dart';
 import 'glow_sprite.dart';
 
 /// Streak tiers, matching the ball's existing effects:
@@ -28,7 +27,7 @@ StreakTier streakTierFor(int streak) {
 ///
 /// Performance: every particle lives in preallocated typed arrays; colors with
 /// alpha come from precomputed lookup tables; the glow is a cached sprite.
-/// Zero allocations per frame. Spark count follows [AdaptiveQuality].
+/// Zero allocations per frame.
 class StreakCelebration extends PositionComponent
     with HasGameReference<BasketballGame> {
   StreakCelebration({required Vector2 hoopCenter, required this.hoopWidth})
@@ -169,12 +168,8 @@ class StreakCelebration extends PositionComponent
     _startRing(0, tier, tierUp ? 1.35 : 1.0, delay: 0.0);
     if (tierUp) _startRing(1, tier, 1.0, delay: 0.09);
 
-    final quality = game.quality.tier;
-    final baseCount = switch (quality) {
-      QualityTier.high => 22,
-      QualityTier.medium => 12,
-      QualityTier.low => 8, // still a visible burst on hot/older phones
-    };
+    // Same burst on HIGH and LOW (LOW only changes the ball texture).
+    const baseCount = 22;
     final count = tierUp ? (baseCount * 1.6).round() : baseCount;
     _spray(count, tier);
 
