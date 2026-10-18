@@ -222,7 +222,12 @@
       });
     })();
   </script>
-  <script src="assets/packages/flutter_soloud/web/init_soloud.js" defer></script>
+  <!--
+    Audio on web uses the browser's own audio (Web Audio + an <audio> element,
+    see lib/game/audio/audio_backend_web.dart). The SoLoud WASM loader
+    (init_soloud.js) is intentionally NOT included: it downloaded a large WASM
+    module on every visit and mixed audio on the page's main thread.
+  -->
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
