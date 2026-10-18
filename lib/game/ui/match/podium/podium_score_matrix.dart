@@ -38,7 +38,7 @@ class PodiumScoreMatrix extends StatelessWidget {
               Row(
                 children: [
                   Text(
-                    session.player1.name.toUpperCase(),
+                    session.displayNameFor(session.player1).toUpperCase(),
                     style: TextStyle(
                       color: session.player1.accentColor,
                       fontSize: 9.5,
