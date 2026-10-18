@@ -9,7 +9,7 @@ enum Sfx { rim, backboard, swish, bounce, buzzer }
 ///
 /// Two implementations, picked at compile time:
 ///  • Web: the browser's own audio. Sound effects are pre-decoded Web Audio
-///    buffers; music streams through an `<audio>` element. Both are mixed by
+///    buffers; music is a decoded, looping Web Audio buffer. Both are mixed by
 ///    the browser on its dedicated audio thread, so game-frame hitches can't
 ///    make the music skip and audio work can't steal game-frame time.
 ///    (The old SoLoud WASM build mixed on the page's main thread.)
