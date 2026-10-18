@@ -42,6 +42,12 @@ class PlayerMatchState implements PlayerDescriptor {
   final List<int> roundScores;
   final List<RoundTelemetry> roundTelemetries;
 
+  /// Compact per-round stats saved in the cloud match (made/attempted shots,
+  /// swishes, best streak). Full shot telemetry only exists locally for the
+  /// rounds this device recorded, so the opponent's (and any history view's)
+  /// podium stats come from these instead.
+  final List<RoundSummaryStats> roundSummaries;
+
   @override
   String get displayName => name;
 
@@ -52,8 +58,10 @@ class PlayerMatchState implements PlayerDescriptor {
     required this.accentColor,
     List<int>? roundScores,
     List<RoundTelemetry>? roundTelemetries,
+    List<RoundSummaryStats>? roundSummaries,
   }) : roundScores = roundScores ?? [],
-       roundTelemetries = roundTelemetries ?? [];
+       roundTelemetries = roundTelemetries ?? [],
+       roundSummaries = roundSummaries ?? [];
 
   PlayerMatchState copyWith({
     String? id,
@@ -62,6 +70,7 @@ class PlayerMatchState implements PlayerDescriptor {
     Color? accentColor,
     List<int>? roundScores,
     List<RoundTelemetry>? roundTelemetries,
+    List<RoundSummaryStats>? roundSummaries,
   }) {
     return PlayerMatchState(
       id: id ?? this.id,
@@ -70,18 +79,26 @@ class PlayerMatchState implements PlayerDescriptor {
       accentColor: accentColor ?? this.accentColor,
       roundScores: roundScores ?? this.roundScores,
       roundTelemetries: roundTelemetries ?? this.roundTelemetries,
+      roundSummaries: roundSummaries ?? this.roundSummaries,
     );
   }
 
   int get totalScore => roundScores.fold(0, (acc, s) => acc + s);
 
+  /// Prefer the cloud summaries whenever they cover more rounds than the
+  /// locally recorded telemetry (always true for the opponent and for
+  /// matches reopened from history).
+  bool get _useSummaries => roundSummaries.length > roundTelemetries.length;
+
   /// Total successful shots made across all played rounds.
-  int get totalMadeShots =>
-      roundTelemetries.fold(0, (acc, t) => acc + t.madeShots);
+  int get totalMadeShots => _useSummaries
+      ? roundSummaries.fold(0, (acc, s) => acc + s.madeShots)
+      : roundTelemetries.fold(0, (acc, t) => acc + t.madeShots);
 
   /// Total shot attempts taken across all played rounds.
-  int get totalAttemptedShots =>
-      roundTelemetries.fold(0, (acc, t) => acc + t.totalShots);
+  int get totalAttemptedShots => _useSummaries
+      ? roundSummaries.fold(0, (acc, s) => acc + s.totalShots)
+      : roundTelemetries.fold(0, (acc, t) => acc + t.totalShots);
 
   /// Overall match shooting accuracy percentage (0.0 to 100.0).
   double get overallAccuracy => totalAttemptedShots > 0
@@ -89,13 +106,20 @@ class PlayerMatchState implements PlayerDescriptor {
       : 0.0;
 
   /// Total clean swishes scored across all played rounds.
-  int get totalSwishes => roundTelemetries.fold(
-    0,
-    (acc, t) => acc + t.shots.where((s) => s.isSwish).length,
-  );
+  int get totalSwishes => _useSummaries
+      ? roundSummaries.fold(0, (acc, s) => acc + s.swishes)
+      : roundTelemetries.fold(
+          0,
+          (acc, t) => acc + t.shots.where((s) => s.isSwish).length,
+        );
 
   /// Longest consecutive shot streak achieved during any round in the match.
-  int get bestStreakAcrossMatch => roundTelemetries.fold(0, (acc, t) {
+  int get bestStreakAcrossMatch => _useSummaries
+      ? roundSummaries.fold(
+          0,
+          (acc, s) => s.bestStreak > acc ? s.bestStreak : acc,
+        )
+      : roundTelemetries.fold(0, (acc, t) {
     int streak = 0;
     int maxS = 0;
     for (final s in t.shots) {
@@ -138,7 +162,19 @@ class MatchSession {
   final bool isHost;
   PlayerMatchState? forfeitWinner;
 
+  /// True when the podium was reopened from the inbox's COMPLETED history:
+  /// the match is long over, so no rematch/"waiting" actions are offered.
+  bool isHistoryView = false;
+
   bool get isForfeit => forfeitWinner != null;
+
+  /// Online matches always seat this device's player as [player1].
+  bool get isOnline => cloudMatchId != null;
+
+  /// Name to show for [p] on this device: "YOU" for me in online matches,
+  /// otherwise the player's gamer tag.
+  String displayNameFor(PlayerMatchState p) =>
+      (isOnline && identical(p, player1)) ? 'YOU' : p.name;
 
   MatchSession({
     this.mode = MatchGameMode.passAndPlay1v1,
@@ -211,6 +247,7 @@ class MatchSession {
       avatar: myPlayer.avatarEmoji,
       accentColor: const Color(0xFF00FFCC),
       roundScores: [...myPlayer.roundScores],
+      roundSummaries: [...myPlayer.roundSummaries],
     );
 
     final p2State = PlayerMatchState(
@@ -219,6 +256,7 @@ class MatchSession {
       avatar: oppPlayer.avatarEmoji,
       accentColor: const Color(0xFF38BDF8),
       roundScores: [...oppPlayer.roundScores],
+      roundSummaries: [...oppPlayer.roundSummaries],
       roundTelemetries: hasOpponentTelemetry
           ? [cloudMatch.latestTelemetry!]
           : [],
