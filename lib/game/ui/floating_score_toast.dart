@@ -58,12 +58,13 @@ class FloatingScoreToastSystem extends HookWidget {
 
     return IgnorePointer(
       child: Stack(
-        alignment: Alignment.center,
         children: activeToasts.value.map((toast) {
-          return _FloatingToastWidget(
-            key: toast.key,
-            event: toast.event,
-            onComplete: () => removeToast(toast.key),
+          return Positioned.fill(
+            child: _FloatingToastWidget(
+              key: toast.key,
+              event: toast.event,
+              onComplete: () => removeToast(toast.key),
+            ),
           );
         }).toList(),
       ),
@@ -151,7 +152,7 @@ class _FloatingToastWidget extends HookWidget {
     } else if (event.isBankShot) {
       primaryColor = const Color(0xFF38BDF8); // Electric cyan
       glowColor = const Color(0x660EA5E9);
-      label = '+${event.points} BANK SHOT!';
+      label = '+${event.points} BANK!';
       icon = Icons.crop_square_rounded;
     } else {
       primaryColor = const Color(0xFFF8FAFC); // Clean collegiate pearl
@@ -162,13 +163,89 @@ class _FloatingToastWidget extends HookWidget {
 
     final hasStreakBonus = event.streak >= 3;
 
-    return SlideTransition(
-      position: slideAnimation,
-      child: FadeTransition(
-        opacity: fadeAnimation,
-        child: ScaleTransition(
-          scale: scaleAnimation,
-          child: Column(
+    Widget animated(Widget child, {Alignment scaleFrom = Alignment.center}) {
+      return SlideTransition(
+        position: slideAnimation,
+        child: FadeTransition(
+          opacity: fadeAnimation,
+          child: ScaleTransition(
+            scale: scaleAnimation,
+            alignment: scaleFrom,
+            child: child,
+          ),
+        ),
+      );
+    }
+
+    // Layout: the shot callout pops BESIDE the hoop (right of the backboard)
+    // so it never covers the rim; the streak-bonus chip keeps its old spot
+    // centered under the scoreboard. The hoop sits at 25% of the game height
+    // (Forge2D y=5 of 20), centered horizontally.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth;
+        final h = constraints.maxHeight;
+        const calloutMaxWidth = 150.0;
+        final calloutLeft = (w / 2 + h * 0.10).clamp(
+          0.0,
+          (w - calloutMaxWidth - 8.0).clamp(0.0, double.infinity),
+        );
+        return Stack(
+          children: [
+            Positioned(
+              left: calloutLeft,
+              top: h * 0.25 - 22.0,
+              child: animated(
+                _buildCallout(primaryColor, glowColor, label, icon),
+                scaleFrom: Alignment.centerLeft,
+              ),
+            ),
+            if (hasStreakBonus)
+              Positioned(
+                left: 0,
+                right: 0,
+                top: h * 0.28,
+                child: Center(child: animated(_buildStreakChip())),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildStreakChip() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEF4444).withValues(alpha: 0.90),
+        borderRadius: BorderRadius.circular(8.0),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x88EF4444),
+            blurRadius: 8.0,
+            offset: Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Text(
+        '🔥 ${event.streak} STREAK (+1 BONUS)',
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 9.5,
+          fontWeight: FontWeight.w900,
+          letterSpacing: 0.8,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCallout(
+    Color primaryColor,
+    Color glowColor,
+    String label,
+    IconData icon,
+  ) {
+    return Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
@@ -227,40 +304,7 @@ class _FloatingToastWidget extends HookWidget {
                 ),
               ),
 
-              // Consecutive Streak Multiplier Sub-Badge
-              if (hasStreakBonus) ...[
-                const SizedBox(height: 3.0),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8.0,
-                    vertical: 2.0,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEF4444).withValues(alpha: 0.90),
-                    borderRadius: BorderRadius.circular(8.0),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x88EF4444),
-                        blurRadius: 8.0,
-                        offset: Offset(0, 1),
-                      ),
-                    ],
-                  ),
-                  child: Text(
-                    '🔥 ${event.streak} STREAK (+${event.streak - 2} BONUS)',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 9.5,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.8,
-                    ),
-                  ),
-                ),
-              ],
             ],
-          ),
-        ),
-      ),
-    );
+          );
   }
 }
