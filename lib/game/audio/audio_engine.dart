@@ -26,7 +26,7 @@ class MusicTrack {
 ///
 /// Sound output goes through [AudioBackend]:
 ///  • Web: the browser's own audio — sound effects as pre-decoded Web Audio
-///    buffers, music streamed by an `<audio>` element. Both are mixed on the
+///    buffers, music as a decoded looping buffer. Both are mixed on the
 ///    browser's audio thread, so a slow game frame can't make the music skip
 ///    and audio can't make the game stutter. No SoLoud WASM on web.
 ///  • Native builds: SoLoud.
