@@ -424,7 +424,6 @@ class BasketballGame extends Forge2DGame {
   @override
   void update(double dt) {
     // Raw dt (before any clamping) is the truest signal of thermal/GPU stalls.
-    quality.recordFrame(dt);
     screenFx.update(dt);
     hoopFx.update(dt);
     super.update(dt);
@@ -942,11 +941,17 @@ class BasketballGame extends Forge2DGame {
       session.player1.roundScores
         ..clear()
         ..addAll(myCloudPlayer.roundScores);
+      session.player1.roundSummaries
+        ..clear()
+        ..addAll(myCloudPlayer.roundSummaries);
     }
     if (oppCloudPlayer != null) {
       session.player2.roundScores
         ..clear()
         ..addAll(oppCloudPlayer.roundScores);
+      session.player2.roundSummaries
+        ..clear()
+        ..addAll(oppCloudPlayer.roundSummaries);
     }
 
     // Check if match was completed or forfeited
@@ -1418,10 +1423,9 @@ class BasketballGame extends Forge2DGame {
       CourtFloorRenderer.loadFloorImage(),
     ]);
 
-    // Audio must never block the court from appearing: on a slow network the
-    // SoLoud WASM module can take 15s+ (or fail), and awaiting it here used to
-    // abort onLoad and leave players on a blank screen. It finishes in the
-    // background; AudioEngine retries on the player's first tap if needed.
+    // Audio must never block the court from appearing (awaiting it here once
+    // left players on a blank screen when audio was slow to start). It
+    // finishes in the background; AudioEngine retries on the next tap.
     unawaited(AudioEngine.init());
 
     unawaited(quality.load());
