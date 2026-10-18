@@ -126,11 +126,12 @@ class MatchWinnerPodiumOverlay extends HookWidget {
         ? const Color(0xFFF59E0B)
         : (isP1Winner ? const Color(0xFF22C55E) : const Color(0xFF38BDF8));
 
-    final String winnerDeclaration = isTie
+    // Online: I'm always player1, so I see myself as "YOU".
+    final String winnerDeclaration = isTie || winner == null
         ? 'MATCH TIED!'
-        : (winner != null
-              ? '${winner.name.toUpperCase()} WINS!'
-              : 'MATCH TIED!');
+        : (session.isOnline && isP1Winner
+              ? 'YOU WIN!'
+              : '${winner.name.toUpperCase()} WINS!');
 
     final screenHeight = MediaQuery.of(context).size.height;
 
@@ -199,7 +200,7 @@ class MatchWinnerPodiumOverlay extends HookWidget {
                         mainAxisAlignment: MainAxisAlignment.spaceAround,
                         children: [
                           _buildAggregateColumn(
-                            name: session.player1.name,
+                            name: session.displayNameFor(session.player1),
                             avatar: session.player1.avatar,
                             score: session.player1.totalScore,
                             color: session.player1.accentColor,
@@ -235,7 +236,37 @@ class MatchWinnerPodiumOverlay extends HookWidget {
                     const SizedBox(height: 18.0),
 
                     // 5. Action Buttons
-                    if (session.cloudMatchId != null) ...[
+                    if (session.isHistoryView) ...[
+                      // Reopened from COMPLETED history: the match is over,
+                      // so no rematch / "waiting for host" — just close.
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () => _handleCloseOrDismiss(context),
+                          icon: const Icon(Icons.close_rounded, size: 17),
+                          label: const Text(
+                            'CLOSE',
+                            style: TextStyle(
+                              fontSize: 13.0,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            backgroundColor: const Color(0x181E293B),
+                            foregroundColor: const Color(0xFF94A3B8),
+                            side: const BorderSide(
+                              color: Color(0xFF334155),
+                              width: 1.0,
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 12.0),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16.0),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ] else if (session.cloudMatchId != null) ...[
                       // Primary Action: INSTANT REMATCH (Host-only) or Waiting status (Guest)
                       if (session.isHost)
                         InlineFeedbackSwitcher(
