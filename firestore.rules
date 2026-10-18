@@ -187,8 +187,10 @@ service cloud.firestore {
           resource.data.activeTurnPlayerUid in resource.data.playerIds &&
           resource.data.get('liveShooterUid', '') == resource.data.activeTurnPlayerUid &&
           'turnStartedAt' in resource.data &&
+          // 50s past the turn's end: slow (3G) uploads of a finished round
+          // must never be beaten by an early claim.
           request.time > resource.data.turnStartedAt +
-            duration.value(resource.data.roundDurationSeconds + 10, 's') &&
+            duration.value(resource.data.roundDurationSeconds + 50, 's') &&
           changedKeys().hasOnly(['status', 'forfeitedBy', 'winnerUid', 'activeTurnPlayerUid', 'updatedAt', 'expireAt']) &&
           request.resource.data.status == 'forfeited' &&
           request.resource.data.forfeitedBy == resource.data.activeTurnPlayerUid &&
