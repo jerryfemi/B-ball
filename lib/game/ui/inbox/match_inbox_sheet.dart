@@ -105,6 +105,7 @@ class MatchInboxSheet extends HookConsumerWidget {
         final myUid = AuthService.instance.currentUser?.uid ?? '';
         final session = MatchSession.fromCloudMatch(match, myUid);
         session.phase = MatchTurnPhase.matchComplete;
+        session.isHistoryView = true;
         game.matchSessionNotifier.value = session;
         game.gameStateNotifier.value = GameModeState.gameOver;
       },
