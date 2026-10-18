@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../models/cloud_match.dart';
 import '../../../models/friend_profile.dart';
@@ -85,13 +86,21 @@ class MatchSetupDialog extends HookWidget {
           config: config,
           player1Profile: profile,
         );
-        await Clipboard.setData(ClipboardData(text: match.joinCode));
-        HapticFeedback.mediumImpact();
+        // The room exists now: show the code no matter what happens next.
         if (context.mounted) {
           precreatedMatch.value = match;
-          codeCopied.value = true;
+          codeCopied.value = false;
           isGeneratingCode.value = false;
         }
+        HapticFeedback.mediumImpact();
+        // Best-effort auto-copy. Safari only allows clipboard writes during
+        // the tap itself, and creating the room took a network round trip,
+        // so this often fails there. That's fine: the card offers COPY and
+        // SHARE buttons, which run inside a fresh tap.
+        try {
+          await Clipboard.setData(ClipboardData(text: match.joinCode));
+          if (context.mounted) codeCopied.value = true;
+        } catch (_) {}
       } catch (e) {
         if (context.mounted) {
           isGeneratingCode.value = false;
@@ -104,13 +113,36 @@ class MatchSetupDialog extends HookWidget {
     }
 
     Future<void> copyCode() async {
-      if (precreatedMatch.value == null) return;
-      await Clipboard.setData(
-        ClipboardData(text: precreatedMatch.value!.joinCode),
-      );
+      final match = precreatedMatch.value;
+      if (match == null) return;
+      try {
+        await Clipboard.setData(ClipboardData(text: match.joinCode));
+        HapticFeedback.lightImpact();
+        // MatchCodeCard renders its own copied state — no SnackBar needed.
+        codeCopied.value = true;
+      } catch (_) {
+        // Clipboard blocked (rare, inside a tap): the code is selectable and
+        // SHARE still works, so stay quiet rather than show an error.
+      }
+    }
+
+    Future<void> shareCode() async {
+      final match = precreatedMatch.value;
+      if (match == null) return;
       HapticFeedback.lightImpact();
-      // MatchCodeCard renders its own copied state — no SnackBar needed.
-      codeCopied.value = true;
+      final code = match.joinCode;
+      final text =
+          '🏀 Play me 1v1 on DunkVerse! Match code: $code\n'
+          'https://dunkverse.web.app/#/join?code=$code';
+      try {
+        await SharePlus.instance.share(ShareParams(text: text));
+      } catch (_) {
+        // No share sheet on this browser: fall back to copying the message.
+        try {
+          await Clipboard.setData(ClipboardData(text: text));
+          codeCopied.value = true;
+        } catch (_) {}
+      }
     }
 
     void onStartPressed() {
@@ -290,6 +322,7 @@ class MatchSetupDialog extends HookWidget {
                       profile: profile,
                       onGenerateCode: () => generateUpfrontCode(profile),
                       onCopyCode: copyCode,
+                      onShareCode: shareCode,
                     ),
             )
           else
