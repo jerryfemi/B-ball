@@ -11,8 +11,9 @@ import 'components/target_board.dart';
 import 'input/draw_aim_controller.dart';
 import 'physics/arrow_physics.dart';
 import 'physics/sight_solver.dart';
+import 'physics/target_scoring.dart';
 
-/// Flame game instance managing the 3D archery range, camera, physics, and components.
+/// Flame game instance managing the 3D archery range, camera, physics, and round loop.
 ///
 /// Adheres strictly to:
 /// - Zero allocations per frame in [update] and [render].
@@ -34,6 +35,17 @@ class ArcheryGame extends FlameGame {
   late final BowOverlay bowOverlay;
   late final FlyingArrow flyingArrow;
   final List<StuckArrow> stuckArrows = [];
+
+  // --- Round & Match Scoring State ---
+  int currentRoundIndex = 0; // 0 = 20m, 1 = 40m, 2 = 60m
+  int currentArrowIndex = 0; // 0, 1, 2
+  final List<List<ShotScore>> roundScores = [[], [], []];
+  bool isRoundComplete = false;
+  bool isMatchComplete = false;
+
+  // --- Hit Popup Trigger State ---
+  ShotScore? lastShotScore;
+  Offset? lastHitScreenPos;
 
   // --- State & HUD Link ---
   final ValueNotifier<int> hudNotifier = ValueNotifier<int>(0);
@@ -65,6 +77,8 @@ class ArcheryGame extends FlameGame {
     };
 
     controller.onFire = (double draw, double holdSeconds) {
+      if (isRoundComplete || arrowPhysics.inFlight) return;
+
       // Speed calculation with under-draw drop penalty
       final double dRatio = draw >= ArcheryK.fullDrawPlateau
           ? 1.0
@@ -97,6 +111,48 @@ class ArcheryGame extends FlameGame {
   void _calibrateSight() {
     sightPitchOffset = SightSolver.getSightPitchOffset(targetDistance);
   }
+
+  /// Advances to the next distance round (or restarts match if complete).
+  void advanceNextRound() {
+    if (isMatchComplete) {
+      restartMatch();
+      return;
+    }
+
+    currentRoundIndex++;
+    currentArrowIndex = 0;
+    isRoundComplete = false;
+    stuckArrows.clear();
+    setTargetDistance(ArcheryK.roundDistances[currentRoundIndex]);
+  }
+
+  /// Restarts from Round 1 (20m).
+  void restartMatch() {
+    currentRoundIndex = 0;
+    currentArrowIndex = 0;
+    isRoundComplete = false;
+    isMatchComplete = false;
+    roundScores[0].clear();
+    roundScores[1].clear();
+    roundScores[2].clear();
+    lastShotScore = null;
+    lastHitScreenPos = null;
+    stuckArrows.clear();
+    setTargetDistance(ArcheryK.roundDistances[0]);
+  }
+
+  /// Dismisses the active hit popup.
+  void clearLastHitPopup() {
+    lastShotScore = null;
+    lastHitScreenPos = null;
+    _notifyHud();
+  }
+
+  int get totalScore =>
+      roundScores.expand((r) => r).fold(0, (sum, s) => sum + s.points);
+
+  int get totalXCount =>
+      roundScores.expand((r) => r).where((s) => s.isX).length;
 
   /// Changes downrange target distance (20m, 40m, 60m).
   void setTargetDistance(double distance) {
@@ -150,8 +206,35 @@ class ArcheryGame extends FlameGame {
 
     // Detect impact
     if (wasInFlight && !arrowPhysics.inFlight) {
+      // Calculate ring score
+      final ShotScore score = TargetScoring.calculate(
+        localX: arrowPhysics.hitLocalX,
+        localY: arrowPhysics.hitLocalY,
+        hitBoss: arrowPhysics.hitBoss,
+        distance: targetDistance,
+      );
+
+      // Record shot in round score history
+      if (currentRoundIndex < roundScores.length &&
+          roundScores[currentRoundIndex].length < 3) {
+        roundScores[currentRoundIndex].add(score);
+        currentArrowIndex = roundScores[currentRoundIndex].length;
+      }
+
+      // Hit Popup position in screen space
+      if (archeryCamera.project(
+        arrowPhysics.hitPoint.x,
+        arrowPhysics.hitPoint.y,
+        arrowPhysics.hitPoint.z,
+      )) {
+        lastHitScreenPos = Offset(archeryCamera.sx, archeryCamera.sy);
+      } else {
+        lastHitScreenPos = Offset(archeryCamera.screenW * 0.5, archeryCamera.screenH * 0.5);
+      }
+      lastShotScore = score;
+
       if (arrowPhysics.hitBoss) {
-        cameraRig.addShake(5.0); // Impact thunk
+        cameraRig.addShake(score.isX ? 7.0 : 4.5); // Bigger impact thunk for X
         if (stuckArrows.length >= 3) {
           stuckArrows.removeAt(0);
         }
@@ -165,6 +248,14 @@ class ArcheryGame extends FlameGame {
         ));
       } else if (arrowPhysics.hitGround) {
         cameraRig.addShake(1.5);
+      }
+
+      // Check for round completion (3 arrows shot)
+      if (roundScores[currentRoundIndex].length >= 3) {
+        isRoundComplete = true;
+        if (currentRoundIndex >= 2) {
+          isMatchComplete = true;
+        }
       }
     }
 
