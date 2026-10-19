@@ -1,45 +1,66 @@
 import 'dart:math' as math;
 import '../archery_constants.dart';
+import '../physics/arrow_physics.dart';
 import 'archery_camera.dart';
 
-/// Manages camera orientation, spring-damped zoom, sway, and shake.
+/// Shot sequence phases matching GamePigeon archery flow.
+enum ShotPhase {
+  atLine,   // Wide view behind shooting line (Z = -2.0)
+  raising,  // Easing in towards aiming stance (Z: -2.0 -> 1.0)
+  aiming,   // Static aiming viewpoint with crosshair and steady ring
+  chase,    // Dolly chasing closely behind arrow in flight
+  closeup,  // Close-up impact inspection at target (Z = D - 2.2)
+  returning,// Smooth dolly return back to the shooting line
+  setEnd,   // Set completion summary card display
+}
+
+/// State-machine camera rig managing smooth cinematic dollies, chase cam, and shake.
 class CameraRig {
   final ArcheryCamera camera;
 
-  CameraRig({required this.camera});
+  ShotPhase phase = ShotPhase.atLine;
+  double phaseTime = 0.0;
 
-  // --- Aim Angles (radians) ---
-  double targetYaw = 0.0;
-  double targetPitch = 0.0;
-  double currentYaw = 0.0;
-  double currentPitch = 0.0;
-  double _yawVel = 0.0;
-  double _pitchVel = 0.0;
+  // Camera Dolly Positions (meters)
+  double currentEyeX = 0.0;
+  double currentEyeY = ArcheryK.eyeY;
+  double currentEyeZ = ArcheryK.camLineZ;
 
-  // --- FOV & Zoom State ---
-  double currentFov = ArcheryK.idleFovRad;
-  double _fovVel = 0.0;
-  double _targetDistance = ArcheryK.distNear;
+  // Spring velocity for chase camera smoothing (omega = 14)
+  double _chaseVelX = 0.0;
+  double _chaseVelY = 0.0;
+  double _chaseVelZ = 0.0;
 
-  // --- Post-Release Zoom Hold ---
-  double zoomHoldTimer = 0.0;
-
-  // --- External Sway / Offsets (e.g. from fatigue) ---
-  double swayYaw = 0.0;
-  double swayPitch = 0.0;
-
-  // --- Camera Shake ---
+  // Camera Shake
   double _shakeAmp = 0.0;
   double _shakeTimer = 1000.0;
   double shakeOffsetX = 0.0;
   double shakeOffsetY = 0.0;
 
-  /// Sets the active distance of the target downrange in meters.
+  // Crosshair sway offsets (passed into camera rendering)
+  double swayYaw = 0.0;
+  double swayPitch = 0.0;
+
+  // Aim dummy fields for backwards compatibility
+  double currentYaw = 0.0;
+  double currentPitch = 0.0;
+
+  // Target distance
+  double targetDistance = ArcheryK.distanceM;
+
+  // Callbacks for phase transitions
+  void Function()? onCloseupStarted;
+  void Function()? onReturnedToLine;
+  void Function()? onSetEndStarted;
+
+  CameraRig({required this.camera});
+
   void setTargetDistance(double distance) {
-    _targetDistance = distance;
+    targetDistance = distance;
   }
 
-  /// Adds an impulse shake to the camera in pixels.
+  void addAimDelta(double dx, double dy) {}
+
   void addShake(double pixels) {
     if (pixels > _shakeAmp) {
       _shakeAmp = pixels;
@@ -47,77 +68,165 @@ class CameraRig {
     }
   }
 
-  /// Calculates the zoomed FOV required so that the target face
-  /// fills [ArcheryK.faceScreenFraction] of the screen height.
-  double getZoomedFovForDistance(double distance) {
-    final double targetAngularHeight =
-        (2.0 * ArcheryK.faceRadius / ArcheryK.faceScreenFraction) / (2.0 * distance);
-    return 2.0 * math.atan(targetAngularHeight);
+  /// Transition to raising phase upon finger touch down.
+  void startRaising() {
+    if (phase == ShotPhase.atLine || phase == ShotPhase.returning) {
+      phase = ShotPhase.raising;
+      phaseTime = 0.0;
+    }
   }
 
-  /// Adds touch drag delta to the target aim angles.
-  void addAimDelta(double deltaYaw, double deltaPitch) {
-    targetYaw = (targetYaw + deltaYaw).clamp(-ArcheryK.maxYawRad, ArcheryK.maxYawRad);
-    targetPitch = (targetPitch + deltaPitch).clamp(ArcheryK.minPitchRad, ArcheryK.maxPitchRad);
+  /// Cancel aim back to shooting line.
+  void cancelAim() {
+    if (phase == ShotPhase.raising || phase == ShotPhase.aiming) {
+      phase = ShotPhase.returning;
+      phaseTime = 0.0;
+    }
   }
 
-  /// Resets aim to dead-center.
-  void resetAim() {
-    targetYaw = 0.0;
-    targetPitch = 0.0;
-    currentYaw = 0.0;
-    currentPitch = 0.0;
-    _yawVel = 0.0;
-    _pitchVel = 0.0;
-    swayYaw = 0.0;
-    swayPitch = 0.0;
+  /// Triggered when arrow is fired.
+  void fireShot() {
+    phase = ShotPhase.chase;
+    phaseTime = 0.0;
+    _chaseVelX = 0.0;
+    _chaseVelY = 0.0;
+    _chaseVelZ = 0.0;
   }
 
-  /// Updates FOV, spring smoothing, shake, and prepares [camera].
-  void update(double dt, double drawRatio, bool isHolding) {
-    // 1. Calculate Target FOV based on draw progress
-    double desiredFov = ArcheryK.idleFovRad;
+  /// Triggered on arrow impact.
+  void onImpact({bool isLastArrowOfSet = false}) {
+    phase = ShotPhase.closeup;
+    phaseTime = 0.0;
+    onCloseupStarted?.call();
+  }
 
-    if (isHolding) {
-      final double zoomedFov = getZoomedFovForDistance(_targetDistance);
-      // Ease out cubic: 1 - (1 - d)^3
-      final double clampedDraw = drawRatio.clamp(0.0, 1.0);
-      final double inv = 1.0 - clampedDraw;
-      final double ease = 1.0 - (inv * inv * inv);
-      desiredFov = ArcheryK.idleFovRad + (zoomedFov - ArcheryK.idleFovRad) * ease;
-      zoomHoldTimer = 0.15;
-    } else if (zoomHoldTimer > 0.0) {
-      zoomHoldTimer -= dt;
-      final double zoomedFov = getZoomedFovForDistance(_targetDistance);
-      desiredFov = zoomedFov;
+  /// Triggered after closeup concludes.
+  void returnToLine({bool isSetComplete = false}) {
+    if (isSetComplete) {
+      phase = ShotPhase.setEnd;
+      phaseTime = 0.0;
+      onSetEndStarted?.call();
+    } else {
+      phase = ShotPhase.returning;
+      phaseTime = 0.0;
+    }
+  }
+
+  /// Returns 0.0 (bow visible at line) to 1.0 (bow fully slid out of frame).
+  double get bowSlideProgress {
+    switch (phase) {
+      case ShotPhase.atLine:
+        return 0.0;
+      case ShotPhase.raising:
+        final double t = (phaseTime / 0.5).clamp(0.0, 1.0);
+        return _easeInOutCubic(t);
+      case ShotPhase.aiming:
+      case ShotPhase.chase:
+      case ShotPhase.closeup:
+      case ShotPhase.setEnd:
+        return 1.0;
+      case ShotPhase.returning:
+        final double t = (phaseTime / 0.8).clamp(0.0, 1.0);
+        return 1.0 - _easeInOutCubic(t);
+    }
+  }
+
+  void update(double dt, double drawRatio, bool isHolding, {ArrowPhysics3D? arrow}) {
+    phaseTime += dt;
+
+    switch (phase) {
+      case ShotPhase.atLine:
+        currentEyeX = 0.0;
+        currentEyeY = ArcheryK.eyeY;
+        currentEyeZ = ArcheryK.camLineZ;
+        break;
+
+      case ShotPhase.raising:
+        final double t = (phaseTime / 0.6).clamp(0.0, 1.0);
+        final double ease = _easeInOutCubic(t);
+        currentEyeX = 0.0;
+        currentEyeY = ArcheryK.eyeY;
+        currentEyeZ = ArcheryK.camLineZ + (ArcheryK.camAimZ - ArcheryK.camLineZ) * ease;
+        if (t >= 1.0 && isHolding) {
+          phase = ShotPhase.aiming;
+          phaseTime = 0.0;
+        }
+        break;
+
+      case ShotPhase.aiming:
+        currentEyeX = 0.0;
+        currentEyeY = ArcheryK.eyeY;
+        currentEyeZ = ArcheryK.camAimZ;
+        break;
+
+      case ShotPhase.chase:
+        if (arrow != null && arrow.inFlight) {
+          // Chase camera position behind and above arrow
+          final double maxZ = targetDistance - ArcheryK.camCloseupDist;
+          final double desiredZ = (arrow.pos.z - ArcheryK.chaseBehind).clamp(ArcheryK.camAimZ, maxZ);
+          final double desiredX = arrow.pos.x * 0.8;
+          final double desiredY = arrow.pos.y + ArcheryK.chaseAbove;
+
+          // Critically damped spring (omega = 14) for silky-smooth follow
+          const double omega = 14.0;
+          final double ax = omega * omega * (desiredX - currentEyeX) - 2.0 * omega * _chaseVelX;
+          final double ay = omega * omega * (desiredY - currentEyeY) - 2.0 * omega * _chaseVelY;
+          final double az = omega * omega * (desiredZ - currentEyeZ) - 2.0 * omega * _chaseVelZ;
+
+          _chaseVelX += ax * dt;
+          _chaseVelY += ay * dt;
+          _chaseVelZ += az * dt;
+
+          currentEyeX += _chaseVelX * dt;
+          currentEyeY += _chaseVelY * dt;
+          currentEyeZ += _chaseVelZ * dt;
+        }
+        break;
+
+      case ShotPhase.closeup:
+        // Settle at target face closeup (Z = D - 2.2m)
+        final double targetZ = targetDistance - ArcheryK.camCloseupDist;
+        final double t = (phaseTime / 0.35).clamp(0.0, 1.0);
+        final double ease = _easeInOutCubic(t);
+
+        currentEyeX = currentEyeX + (0.0 - currentEyeX) * ease;
+        currentEyeY = currentEyeY + (ArcheryK.targetCenterY - currentEyeY) * ease;
+        currentEyeZ = currentEyeZ + (targetZ - currentEyeZ) * ease;
+
+        if (phaseTime >= 1.4) {
+          returnToLine();
+        }
+        break;
+
+      case ShotPhase.returning:
+        final double t = (phaseTime / 0.8).clamp(0.0, 1.0);
+        final double ease = _easeInOutCubic(t);
+        final double startZ = targetDistance - ArcheryK.camCloseupDist;
+
+        currentEyeX = 0.0;
+        currentEyeY = ArcheryK.targetCenterY + (ArcheryK.eyeY - ArcheryK.targetCenterY) * ease;
+        currentEyeZ = startZ + (ArcheryK.camLineZ - startZ) * ease;
+
+        if (t >= 1.0) {
+          phase = ShotPhase.atLine;
+          phaseTime = 0.0;
+          onReturnedToLine?.call();
+        }
+        break;
+
+      case ShotPhase.setEnd:
+        // Stay locked at closeup view until player dismisses card
+        currentEyeX = 0.0;
+        currentEyeY = ArcheryK.targetCenterY;
+        currentEyeZ = targetDistance - ArcheryK.camCloseupDist;
+        break;
     }
 
-    // 2. Critically Damped Spring for FOV
-    // a = omega² * (target - fov) - 2 * omega * vel
-    final double omega = ArcheryK.fovSpringOmega;
-    final double fovError = desiredFov - currentFov;
-    final double fovAccel = (omega * omega * fovError) - (2.0 * omega * _fovVel);
-    _fovVel += fovAccel * dt;
-    currentFov += _fovVel * dt;
-
-    // 3. Smooth Yaw & Pitch with fast responsive spring (omega = 24)
-    const double aimOmega = 24.0;
-    final double yawError = targetYaw - currentYaw;
-    final double yawAccel = (aimOmega * aimOmega * yawError) - (2.0 * aimOmega * _yawVel);
-    _yawVel += yawAccel * dt;
-    currentYaw += _yawVel * dt;
-
-    final double pitchError = targetPitch - currentPitch;
-    final double pitchAccel = (aimOmega * aimOmega * pitchError) - (2.0 * aimOmega * _pitchVel);
-    _pitchVel += pitchAccel * dt;
-    currentPitch += _pitchVel * dt;
-
-    // 4. Update Shake
+    // Camera Shake
     _shakeTimer += dt;
     if (_shakeTimer < 0.35) {
       final double decay = math.exp(-_shakeTimer * 14.0);
       final double amp = _shakeAmp * decay;
-      // High-frequency deterministic shake oscillation
       shakeOffsetX = amp * math.sin(_shakeTimer * 55.0);
       shakeOffsetY = amp * math.cos(_shakeTimer * 43.0);
     } else {
@@ -126,10 +235,14 @@ class CameraRig {
       _shakeAmp = 0.0;
     }
 
-    // 5. Transfer to Camera fields and prepare projection
-    camera.fovY = currentFov;
-    camera.yaw = currentYaw + swayYaw;
-    camera.pitch = currentPitch + swayPitch;
+    // Apply to camera
+    camera.eyeX = currentEyeX;
+    camera.eyeY = currentEyeY;
+    camera.eyeZ = currentEyeZ;
     camera.prepare();
+  }
+
+  double _easeInOutCubic(double t) {
+    return t < 0.5 ? 4.0 * t * t * t : 1.0 - math.pow(-2.0 * t + 2.0, 3.0) / 2.0;
   }
 }
