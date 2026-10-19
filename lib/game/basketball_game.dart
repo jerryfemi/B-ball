@@ -1673,15 +1673,50 @@ class BasketballGame extends Forge2DGame {
   double _lastSpawnX = 0.0;
   final math.Random _rng = math.Random();
 
+  /// Seven shooting stations across the baseline (Forge2D units: one unit
+  /// is 1/20 of the screen height). Spread across ~60% of a phone's width,
+  /// so the ball genuinely visits the wings and corners.
+  static const List<double> _spawnStations = [
+    -2.4, -1.6, -0.8, 0.0, 0.8, 1.6, 2.4,
+  ];
+
+  /// Small random nudge per spawn so stations don't feel like fixed tracks.
+  static const double _spawnJitter = 0.12;
+
+  /// Keep the ball's edge at least this far (logical px) from the screen's
+  /// left/right edges: thumb room, and clear of edge-swipe/back gestures.
+  static const double _spawnEdgeMarginPx = 60.0;
+
+  /// Visual ready-ball radius in Forge2D units (0.58 radius × 1.38 sprite
+  /// scale at the baseline depth).
+  static const double _readyBallVisualRadius = 0.8;
+
   double _pickNextSpawnX() {
-    // Diverse shooting positions along the bottom baseline (in Forge2D meters)
-    const candidates = [-1.4, -0.7, 0.0, 0.7, 1.4];
-    final options = candidates
-        .where((x) => (x - _lastSpawnX).abs() >= 0.5)
-        .toList();
-    final chosen = options[_rng.nextInt(options.length)];
-    _lastSpawnX = chosen;
-    return chosen;
+    // Widest spawn the current screen allows (narrow phones clamp in).
+    final pxPerUnit = size.y / worldHeightInMeters;
+    final maxX = pxPerUnit > 0
+        ? ((size.x / 2 - _spawnEdgeMarginPx) / pxPerUnit -
+                  _readyBallVisualRadius)
+              .clamp(0.0, _spawnStations.last)
+        : 1.4;
+
+    // Never the same spot twice in a row (stations that clamp onto the
+    // previous spot on a narrow screen count as the same spot).
+    final options = <double>[];
+    for (final station in _spawnStations) {
+      final x = station.clamp(-maxX, maxX).toDouble();
+      if ((x - _lastSpawnX).abs() >= 0.5 && !options.contains(x)) {
+        options.add(x);
+      }
+    }
+    final base = options.isEmpty
+        ? 0.0
+        : options[_rng.nextInt(options.length)];
+    final x = (base + (_rng.nextDouble() * 2 - 1) * _spawnJitter)
+        .clamp(-maxX, maxX)
+        .toDouble();
+    _lastSpawnX = base;
+    return x;
   }
 
   /// Caps active in-world balls to at most [maxAllowed] launched balls (default 2 in-flight/settled + 1 ready = 3 total).
