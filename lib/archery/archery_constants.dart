@@ -1,37 +1,24 @@
 import 'dart:math' as math;
 
-/// Single Source of Truth (SSOT) for all tunable archery parameters.
+/// Single Source of Truth (SSOT) for all tunable archery parameters (Build Plan v2).
 ///
-/// Follows DunkVerse conventions: SI units (meters, seconds, radians).
-/// All values are calibrated for realistic yet snappy arcade feel.
+/// Follows GamePigeon-style archery conventions:
+/// - 50 ft target distance (15.24 m)
+/// - 80 cm World Archery regulation face on square white board
+/// - Dolly-only camera (no rotation) with horizon lens shift
+/// - Thumb-roll crosshair with steady ring, timer arc, and deterministic sway
+/// - Per-arrow 2D wind with wind pill
+/// - Sets of 3 arrows format
 abstract final class ArcheryK {
-  // --- Physics Constants ---
-  /// Standard gravity acceleration in m/s².
-  static const double gravity = 9.81;
+  // --- Distance & World Geometry ---
+  /// Target distance: 50 ft in meters.
+  static const double distanceM = 15.24;
+  static const String distanceLabel = '50ft';
 
-  /// Arrow velocity at 100% full draw (m/s).
-  /// Fast arcade velocity (real compound/recurve bows are ~55–90 m/s).
-  static const double fullDrawSpeed = 62.0;
+  /// Standard round distances (backward compatibility + v2 default 15.24m).
+  static const double distNear = 15.24;
+  static const List<double> roundDistances = [15.24];
 
-  /// Speed ratio at minimal/accidental draw (60% of full draw speed).
-  static const double minDrawSpeedRatio = 0.60;
-
-  /// Draw ratio threshold (95%) that counts as a perfect full draw.
-  static const double fullDrawPlateau = 0.95;
-
-  /// Aerodynamic quadratic drag coefficient (1/m).
-  static const double dragK = 0.0006;
-
-  /// Lateral acceleration per 1 m/s of crosswind (m/s² per m/s).
-  static const double windAccelPerMps = 0.10;
-
-  /// Fixed physics integration timestep (240 Hz = ~4.167 ms).
-  static const double fixedDt = 1.0 / 240.0;
-
-  /// Maximum physics substeps per rendered frame to prevent death spirals.
-  static const int maxSubstepsPerFrame = 8;
-
-  // --- World & Geometry ---
   /// Archer eye position height above ground (m).
   static const double eyeY = 1.60;
 
@@ -47,75 +34,88 @@ abstract final class ArcheryK {
   /// Arrow shaft radius (m) used for the line-cutter scoring rule.
   static const double arrowShaftRadius = 0.0035;
 
-  // --- Target & Boss ---
-  /// World Archery 122 cm target face outer radius (m).
-  static const double faceRadius = 0.61;
+  // --- Target & Board (80 cm face on 1.0m board) ---
+  /// 80 cm World Archery face outer radius (m).
+  static const double faceRadius = 0.40;
 
   /// Width of each concentric ring (10 rings total, m).
-  static const double ringWidth = 0.061;
+  static const double ringWidth = 0.040;
 
   /// Inner X-ring radius (m).
-  static const double xRingRadius = 0.0305;
+  static const double xRingRadius = 0.020;
 
   /// Height of target face center above ground (m).
   static const double targetCenterY = 1.30;
 
-  /// Width of straw/foam boss (m).
-  static const double bossWidth = 1.30;
+  /// White square board dimensions (m).
+  static const double boardWidth = 1.00;
+  static const double boardHeight = 1.00;
+  static const double boardFrame = 0.025; // brown wooden edge
+  static const double legHeight = 0.80;  // board bottom height above ground
 
-  /// Height of straw/foam boss (m).
-  static const double bossHeight = 1.30;
+  // Compatibility aliases
+  static const double bossWidth = boardWidth;
+  static const double bossHeight = boardHeight;
+  static const double bossDepth = 0.15;
+  static const double fullDrawPlateau = 0.90;
+  static const double minDrawSpeedRatio = 0.65;
 
-  /// Thickness of straw/foam boss (m).
-  static const double bossDepth = 0.30;
+  // --- Physics Constants ---
+  static const double gravity = 9.81;
+  static const double fullDrawSpeed = 62.0; // m/s at release (every arrow full speed)
+  static const double dragK = 0.0006;       // quadratic drag coefficient (1/m)
+  static const double fixedDt = 1.0 / 240.0;
+  static const int maxSubstepsPerFrame = 8;
 
-  // --- Standard Round Distances ---
-  static const double distNear = 20.0;
-  static const double distMid = 40.0;
-  static const double distFar = 60.0;
-  static const List<double> roundDistances = [distNear, distMid, distFar];
+  // --- Camera & Dolly Viewpoints ---
+  static const double fovYDeg = 60.0;
+  static const double fovYRad = fovYDeg * math.pi / 180.0;
 
-  // --- Input & Feel Timings ---
-  /// Duration of hold required to reach 100% full draw (seconds).
-  static const double autoDrawSeconds = 0.70;
+  /// Horizon lens shift (fraction of screen height).
+  static const double horizonFrac = 0.52;
 
-  /// Hold duration after which arm fatigue and sway begins (seconds).
-  static const double fatigueStartSeconds = 2.5;
+  /// "At the line" camera position (behind the archer).
+  static const double camLineZ = -2.0;
 
-  /// Hold duration at which fatigue reaches maximum sway intensity (seconds).
-  static const double fatigueFullSeconds = 6.0;
+  /// Aiming camera position (pushed in).
+  static const double camAimZ = 1.0;
 
-  /// Base sway amplitude in radians (approx ±7 cm at 60 m).
-  static const double baseSwayRad = 0.0012;
+  /// Close-up camera distance in front of target.
+  static const double camCloseupDist = 2.2;
 
-  /// Sway multiplier at peak fatigue.
-  static const double fatigueSwayMultiplier = 3.0;
+  /// Chase camera offset behind and above arrow.
+  static const double chaseBehind = 1.2;
+  static const double chaseAbove = 0.15;
 
-  /// Screen pixels of reticle movement per pixel of touch drag.
-  static const double aimSensitivity = 0.55;
+  // --- Aim Controls (Thumb-Roll) ---
+  /// Crosshair pixels per pixel of thumb movement.
+  static const double aimGain = 3.0;
 
-  // --- Aim Angle Clamps ---
-  /// Maximum yaw rotation allowed left/right (±12° in radians).
-  static const double maxYawRad = 12.0 * math.pi / 180.0;
+  /// Exponential smoothing frequency on raw crosshair input.
+  static const double aimSmoothOmega = 18.0;
 
-  /// Minimum pitch rotation allowed (look down -5° in radians).
-  static const double minPitchRad = -5.0 * math.pi / 180.0;
+  /// Steady ring start radius fraction of screen width.
+  static const double ringStartRadiusFrac = 0.30;
 
-  /// Maximum pitch rotation allowed (look up +10° in radians).
-  static const double maxPitchRad = 10.0 * math.pi / 180.0;
+  /// Time in seconds for steady ring to shrink to minimum size.
+  static const double ringSettleSeconds = 1.8;
 
-  // --- Camera & Optics ---
-  /// Default idle vertical Field of View (degrees).
-  static const double idleFovDeg = 42.0;
-  static const double idleFovRad = idleFovDeg * math.pi / 180.0;
+  /// Maximum shot hold duration before auto-firing.
+  static const double shotTimerSeconds = 5.0;
 
-  /// Fraction of screen height that target face occupies at full draw.
-  static const double faceScreenFraction = 0.38;
+  // --- Sway (radians of aim angle) ---
+  static const double swaySettle = 0.0060;
+  static const double swaySettleTau = 0.6;
+  static const double swayBase = 0.0008;
+  static const double swayFatigue = 0.0035;
+  static const double fatigueStart = 3.5;
 
-  /// Critically damped spring angular frequency for FOV zoom.
-  static const double fovSpringOmega = 9.0;
+  // --- Wind (GamePigeon 0.0 - 2.0 format) ---
+  static const double windMaxDisplay = 2.0;
+  static const double windLateralAccelPerUnit = 1.9; // m/s² per 1.0 displayed wind
+  static const double windAlongAccelPerUnit = 0.6;   // m/s² per 1.0 displayed wind
 
-  // --- Aesthetics & Color Palette ---
+  // --- Colors (DunkVerse luxury obsidian) ---
   static const int colorBgDark = 0xFF0A0E1A;
   static const int colorSurfaceCard = 0xFF0F172A;
   static const int colorSurfaceTile = 0xFF1E2638;
