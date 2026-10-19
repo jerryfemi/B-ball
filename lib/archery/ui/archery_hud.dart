@@ -2,13 +2,16 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../archery_constants.dart';
 import '../archery_game.dart';
+import '../physics/target_scoring.dart';
+import 'hit_popup.dart';
+import 'round_summary.dart';
 
 /// Flutter HUD Overlay for the Archery prototype.
 ///
 /// Styled with the DunkVerse "luxury obsidian" design system:
 /// - Dark slate surfaces (#0A0E1A, #0F172A, #1E2638)
 /// - Neon cyan (#00FFCC) and electric sky (#38BDF8) accents
-/// - Responsive draw meter, distance selector, and cancel warning
+/// - Responsive draw meter, round arrow quiver, live score, and summary card
 class ArcheryHud extends StatefulWidget {
   final ArcheryGame game;
 
@@ -54,7 +57,7 @@ class _ArcheryHudState extends State<ArcheryHud> with SingleTickerProviderStateM
 
         return Stack(
           children: [
-            // Top App Bar / Distance Selector
+            // Top App Bar / Scoreboard
             Positioned(
               top: MediaQuery.of(context).padding.top + 12.0,
               left: 16.0,
@@ -81,9 +84,32 @@ class _ArcheryHudState extends State<ArcheryHud> with SingleTickerProviderStateM
             // Dev telemetry badge (top-left below header)
             Positioned(
               left: 16.0,
-              top: MediaQuery.of(context).padding.top + 72.0,
+              top: MediaQuery.of(context).padding.top + 76.0,
               child: _buildDevTelemetry(),
             ),
+
+            // Hit score floating popup at impact point
+            if (widget.game.lastShotScore != null &&
+                widget.game.lastHitScreenPos != null)
+              HitPopupOverlay(
+                key: ValueKey(widget.game.lastShotScore.hashCode),
+                score: widget.game.lastShotScore!,
+                position: widget.game.lastHitScreenPos!,
+                onDismissed: widget.game.clearLastHitPopup,
+              ),
+
+            // End-of-Round or Match Summary Modal
+            if (widget.game.isRoundComplete)
+              RoundSummaryCard(
+                roundIndex: widget.game.currentRoundIndex,
+                distance: widget.game.targetDistance,
+                roundScores:
+                    widget.game.roundScores[widget.game.currentRoundIndex],
+                totalScore: widget.game.totalScore,
+                totalXCount: widget.game.totalXCount,
+                isMatchOver: widget.game.isMatchComplete,
+                onContinue: widget.game.advanceNextRound,
+              ),
           ],
         );
       },
@@ -91,10 +117,14 @@ class _ArcheryHudState extends State<ArcheryHud> with SingleTickerProviderStateM
   }
 
   Widget _buildTopBar(BuildContext context) {
+    final int roundIndex = widget.game.currentRoundIndex;
+    final List<ShotScore> currentRoundScores =
+        widget.game.roundScores[roundIndex];
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
       decoration: BoxDecoration(
-        color: const Color(0xFF0F172A).withValues(alpha: 0.85),
+        color: const Color(0xFF0F172A).withValues(alpha: 0.90),
         borderRadius: BorderRadius.circular(16.0),
         border: Border.all(color: const Color(0xFF1E2638), width: 1.2),
         boxShadow: const [
@@ -108,63 +138,144 @@ class _ArcheryHudState extends State<ArcheryHud> with SingleTickerProviderStateM
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Mode Badge
+          // Round & Distance Badge
           Row(
             children: [
               Container(
-                width: 10.0,
-                height: 10.0,
-                decoration: const BoxDecoration(
-                  color: Color(0xFF00FFCC),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Color(0x8800FFCC),
-                      blurRadius: 6.0,
-                    ),
-                  ],
+                padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 3.0),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E2638),
+                  borderRadius: BorderRadius.circular(6.0),
+                ),
+                child: Text(
+                  'R${roundIndex + 1}',
+                  style: const TextStyle(
+                    color: Color(0xFF38BDF8),
+                    fontSize: 11.0,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
               const SizedBox(width: 8.0),
-              const Text(
-                'ARCHERY PROTOTYPE',
-                style: TextStyle(
+              Text(
+                '${widget.game.targetDistance.toInt()}m',
+                style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 13.0,
+                  fontSize: 14.0,
                   fontWeight: FontWeight.w800,
-                  letterSpacing: 1.2,
+                  letterSpacing: 0.8,
                 ),
               ),
             ],
           ),
 
-          // Distance Selector Chips (20m, 40m, 60m)
+          // 3 Arrow Quiver Status
           Row(
-            children: ArcheryK.roundDistances.map((dist) {
-              final bool isSelected = (widget.game.targetDistance - dist).abs() < 0.5;
-              return Padding(
-                padding: const EdgeInsets.only(left: 6.0),
-                child: InkWell(
-                  onTap: () => widget.game.setTargetDistance(dist),
-                  borderRadius: BorderRadius.circular(8.0),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 5.0),
-                    decoration: BoxDecoration(
-                      color: isSelected ? const Color(0xFF00FFCC) : const Color(0xFF1E2638),
-                      borderRadius: BorderRadius.circular(8.0),
+            children: List.generate(3, (arrowIndex) {
+              if (arrowIndex < currentRoundScores.length) {
+                // Shot taken: shows ring result
+                final ShotScore s = currentRoundScores[arrowIndex];
+                final Color ringColor = Color(s.colorValue);
+                return Container(
+                  width: 24.0,
+                  height: 24.0,
+                  margin: const EdgeInsets.symmetric(horizontal: 3.0),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0A0E1A),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: ringColor, width: 1.5),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    s.displayLabel,
+                    style: TextStyle(
+                      color: ringColor,
+                      fontSize: 11.0,
+                      fontWeight: FontWeight.bold,
                     ),
-                    child: Text(
-                      '${dist.toInt()}m',
-                      style: TextStyle(
-                        color: isSelected ? const Color(0xFF0A0E1A) : const Color(0xFF94A3B8),
-                        fontSize: 12.0,
-                        fontWeight: FontWeight.bold,
+                  ),
+                );
+              } else if (arrowIndex == currentRoundScores.length) {
+                // Active arrow ready to fire (pulsing neon cyan outline)
+                return Container(
+                  width: 24.0,
+                  height: 24.0,
+                  margin: const EdgeInsets.symmetric(horizontal: 3.0),
+                  decoration: BoxDecoration(
+                    color: const Color(0x2200FFCC),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: const Color(0xFF00FFCC), width: 1.8),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x6600FFCC),
+                        blurRadius: 6.0,
                       ),
+                    ],
+                  ),
+                  alignment: Alignment.center,
+                  child: Container(
+                    width: 6.0,
+                    height: 6.0,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF00FFCC),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                );
+              } else {
+                // Future arrow (muted dot)
+                return Container(
+                  width: 24.0,
+                  height: 24.0,
+                  margin: const EdgeInsets.symmetric(horizontal: 3.0),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E2638),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: const Color(0xFF334155), width: 1.0),
+                  ),
+                );
+              }
+            }),
+          ),
+
+          // Running Total Score
+          Row(
+            children: [
+              Text(
+                '${widget.game.totalScore}',
+                style: const TextStyle(
+                  color: Color(0xFF00FFCC),
+                  fontSize: 16.0,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const Text(
+                ' PTS',
+                style: TextStyle(
+                  color: Color(0xFF64748B),
+                  fontSize: 10.0,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              if (widget.game.totalXCount > 0) ...[
+                const SizedBox(width: 8.0),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
+                  decoration: BoxDecoration(
+                    color: const Color(0x33F7D000),
+                    borderRadius: BorderRadius.circular(4.0),
+                  ),
+                  child: Text(
+                    '${widget.game.totalXCount}X',
+                    style: const TextStyle(
+                      color: Color(0xFFF7D000),
+                      fontSize: 11.0,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                 ),
-              );
-            }).toList(),
+              ],
+            ],
           ),
         ],
       ),
@@ -236,6 +347,10 @@ class _ArcheryHudState extends State<ArcheryHud> with SingleTickerProviderStateM
   }
 
   Widget _buildBottomIndicator(bool isHolding, bool isCancelZone, bool isFullDraw) {
+    if (widget.game.isRoundComplete) {
+      return const SizedBox.shrink();
+    }
+
     if (isCancelZone) {
       return Container(
         padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 20.0),
@@ -319,7 +434,7 @@ class _ArcheryHudState extends State<ArcheryHud> with SingleTickerProviderStateM
           ),
           const SizedBox(height: 2.0),
           Text(
-            'FOV: ${fovDeg.toStringAsFixed(1)}° | DIST: ${widget.game.targetDistance.toInt()}m',
+            'FOV: ${fovDeg.toStringAsFixed(1)}° | ARROW: ${widget.game.currentArrowIndex + 1}/3',
             style: const TextStyle(
               color: Color(0xFF94A3B8),
               fontSize: 10.0,
