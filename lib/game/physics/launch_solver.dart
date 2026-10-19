@@ -114,8 +114,11 @@ class LaunchSolver {
     // calculateAimAssist smoothly scales lateral deviation with zero discontinuity.
     final lateralAim = calculateAimAssist(aimRatio, difficulty: difficulty);
 
-    // Add the user's targeted lateral velocity to the baseline center-aimed reference
-    final vx = ref.x + (lateralAim * 3.2);
+    // Add the user's targeted lateral velocity to the baseline center-aimed reference.
+    // ref.x is scaled by powerScaleZ so the ball keeps the same straight line from
+    // its spawn spot to the hoop at any power: a harder flick reaches the rim depth
+    // sooner, so it needs proportionally more lateral speed (and a softer one less).
+    final vx = (ref.x * powerScaleZ) + (lateralAim * 3.2);
 
     return Vector3(vx, vy, vz);
   }
