@@ -1,84 +1,81 @@
 import 'dart:math' as math;
 import '../archery_constants.dart';
 
-/// Zero-allocation 3D pinhole camera with yaw/pitch rotation and FOV zoom.
+/// Zero-rotation, dolly-only pinhole camera with lens shift (Build Plan v2).
 ///
-/// Converts 3D world coordinates (meters) to 2D canvas coordinates (pixels).
-/// Writes results directly to mutable fields [sx], [sy], [depth] to eliminate
-/// heap allocations on every frame.
+/// Features:
+/// - Never turns (yaw = 0, pitch = 0), keeping ground plane and billboards exact.
+/// - Dolly movement only (eyeX, eyeY, eyeZ).
+/// - Lens shift (horizonFrac = 0.52) placing the horizon slightly below center.
+/// - Unprojection from screen pixels to 3D world coordinates on plane Z = D.
+/// - Zero allocations per frame.
 class ArcheryCamera {
-  // --- Camera Position ---
+  // --- Camera Position (Meters) ---
   double eyeX = 0.0;
   double eyeY = ArcheryK.eyeY;
-  double eyeZ = 0.0;
+  double eyeZ = ArcheryK.camLineZ;
 
-  // --- Orientation (radians) ---
-  /// Rotation around world Y axis (positive = look right).
-  double yaw = 0.0;
+  // Fixed vertical FOV (60 degrees)
+  double fovY = ArcheryK.fovYRad;
 
-  /// Rotation around camera X axis (positive = look up).
-  double pitch = 0.0;
-
-  /// Vertical field of view in radians.
-  double fovY = ArcheryK.idleFovRad;
-
-  // --- Viewport Dimensions (pixels) ---
+  // Viewport dimensions
   double screenW = 0.0;
   double screenH = 0.0;
 
-  // --- Cached Trigonometric & Focal Values ---
+  // Cached optical parameters
   double _f = 0.0;
-  double _cy = 1.0;
-  double _sy = 0.0;
-  double _cp = 1.0;
-  double _sp = 0.0;
+  double _cx = 0.0;
+  double _cy = 0.0;
 
-  // --- Output Registers (read immediately after project()) ---
+  // --- Output Registers for project() ---
   double sx = 0.0;
   double sy = 0.0;
   double depth = 0.0;
 
-  /// Call once per frame after [screenW], [screenH], [yaw], [pitch], or [fovY] change.
+  // --- Output Registers for unprojectToPlane() ---
+  double outX = 0.0;
+  double outY = 0.0;
+
+  // Dummy orientation angles for backwards compatibility
+  double yaw = 0.0;
+  double pitch = 0.0;
+
+  /// Precomputes optical centers and focal length.
   void prepare() {
     if (screenH <= 0.0) return;
     _f = (screenH * 0.5) / math.tan(fovY * 0.5);
-    _cy = math.cos(yaw);
-    _sy = math.sin(yaw);
-    _cp = math.cos(pitch);
-    _sp = math.sin(pitch);
+    _cx = screenW * 0.5;
+    _cy = screenH * ArcheryK.horizonFrac; // Lens shift
   }
 
   /// Projects 3D world position ([x], [y], [z]) in meters onto the 2D screen.
-  ///
-  /// Returns `true` if point is in front of the camera near plane (`depth > 0.05m`).
-  /// Results are written to [sx], [sy], and [depth].
   bool project(double x, double y, double z) {
-    // 1. Translate relative to camera eye
-    final double dx = x - eyeX;
-    final double dy = y - eyeY;
     final double dz = z - eyeZ;
+    depth = dz;
+    if (dz <= 0.05) return false;
 
-    // 2. Rotate by -yaw around world Y axis
-    final double x1 = _cy * dx - _sy * dz;
-    final double z1 = _sy * dx + _cy * dz;
-
-    // 3. Rotate by -pitch around camera X axis
-    final double y2 = _cp * dy - _sp * z1;
-    final double z2 = _sp * dy + _cp * z1;
-
-    depth = z2;
-    if (z2 <= 0.05) return false;
-
-    // 4. Perspective projection onto screen plane
-    final double invZ = 1.0 / z2;
-    sx = screenW * 0.5 + _f * (x1 * invZ);
-    sy = screenH * 0.5 - _f * (y2 * invZ);
+    final double inv = 1.0 / dz;
+    sx = _cx + _f * (x - eyeX) * inv;
+    sy = _cy - _f * (y - eyeY) * inv;
     return true;
   }
 
-  /// Calculates the screen pixel radius/length for 1 meter at specified [depth].
+  /// Inverse projection: maps screen pixel point ([screenX], [screenY]) to world
+  /// coordinates on the vertical plane at [planeZ].
+  ///
+  /// Writes results to [outX] and [outY].
+  void unprojectToPlane(double screenX, double screenY, double planeZ) {
+    final double dz = planeZ - eyeZ;
+    outX = eyeX + (screenX - _cx) * dz / _f;
+    outY = eyeY - (screenY - _cy) * dz / _f;
+  }
+
+  /// Scale factor: screen pixels per 1 meter at specified [depth].
   double pxPerMeterAt(double depth) => depth > 0.05 ? _f / depth : 0.0;
 
-  /// Effective focal length in screen pixels.
+  /// Effective focal length in pixels.
   double get focalLengthPx => _f;
+
+  double get opticalCenterX => _cx;
+  double get opticalCenterY => _cy;
 }
