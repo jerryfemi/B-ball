@@ -92,17 +92,7 @@ class VenueTheme {
         castShadow: false,
       ),
 
-      // 2. Hedge row behind target at z ≈ D + 4 (19.2m)
-      BillboardSpec(
-        imageKey: 'hedge',
-        x: 0.0,
-        baseY: 0.0,
-        z: D + 4.2,
-        widthMeters: 36.0,
-        castShadow: false,
-      ),
-
-      // 3. Tree line behind target (z = D + 6 ... D + 16)
+      // 2. Tree line behind target (z = D + 6 ... D + 16)
       BillboardSpec(imageKey: 'tree_1', x: -8.5, baseY: 0.0, z: D + 12.0, widthMeters: 8.5),
       BillboardSpec(imageKey: 'tree_2', x: -4.5, baseY: 0.0, z: D + 8.5, widthMeters: 6.8, flipX: true),
       BillboardSpec(imageKey: 'tree_3', x: -1.8, baseY: 0.0, z: D + 14.0, widthMeters: 7.2),
@@ -110,13 +100,13 @@ class VenueTheme {
       BillboardSpec(imageKey: 'tree_2', x: 5.2, baseY: 0.0, z: D + 9.0, widthMeters: 7.0),
       BillboardSpec(imageKey: 'tree_3', x: 9.0, baseY: 0.0, z: D + 13.0, widthMeters: 7.8),
 
-      // 4. Side trees along the lane (left side: x = -5.5 to -8.5, z = 3 to D + 3)
+      // 3. Side trees along the lane (left side: x = -5.5 to -8.5, z = 3 to D + 3)
       const BillboardSpec(imageKey: 'tree_1', x: -5.8, baseY: 0.0, z: 3.2, widthMeters: 6.2),
       const BillboardSpec(imageKey: 'tree_2', x: -6.5, baseY: 0.0, z: 7.5, widthMeters: 5.8, flipX: true),
       BillboardSpec(imageKey: 'tree_3', x: -6.0, baseY: 0.0, z: 12.0, widthMeters: 6.5),
       BillboardSpec(imageKey: 'tree_1', x: -7.2, baseY: 0.0, z: D + 2.5, widthMeters: 7.0),
 
-      // 5. Side trees along the lane (right side: x = +5.5 to +8.5, z = 4 to D + 3)
+      // 4. Side trees along the lane (right side: x = +5.5 to +8.5, z = 4 to D + 3)
       const BillboardSpec(imageKey: 'tree_3', x: 6.2, baseY: 0.0, z: 4.5, widthMeters: 6.0, flipX: true),
       const BillboardSpec(imageKey: 'tree_1', x: 7.0, baseY: 0.0, z: 9.0, widthMeters: 6.8),
       BillboardSpec(imageKey: 'tree_2', x: 6.2, baseY: 0.0, z: 13.5, widthMeters: 5.6),
@@ -133,7 +123,6 @@ class VenueTheme {
       shadowBlobImage: 'assets/archery/shadow_blob.webp',
       billboardImages: const {
         'hills': 'assets/archery/park/hills.webp',
-        'hedge': 'assets/archery/park/hedge.webp',
         'tree_1': 'assets/archery/park/tree_1.webp',
         'tree_2': 'assets/archery/park/tree_2.webp',
         'tree_3': 'assets/archery/park/tree_3.webp',
