@@ -19,23 +19,25 @@ class TargetBoard {
   double distance;
 
   // --- Cached Paints ---
-  final Paint _bossPaint = Paint()..color = const Color(0xFF261D15);
-  final Paint _bossBorderPaint = Paint()
-    ..color = const Color(0xFF3B2E21)
-    ..strokeWidth = 2.0
-    ..style = PaintingStyle.stroke;
-  final Paint _strawTexturePaint = Paint()
-    ..color = const Color(0xFF1E1711)
+  final Paint _whiteBoardPaint = Paint()..color = const Color(0xFFF8FAFC);
+  final Paint _boardFramePaint = Paint()
+    ..color = const Color(0xFF5C3D22)
+    ..style = PaintingStyle.fill;
+  final Paint _screwPaint = Paint()
+    ..color = const Color(0xFF261D15)
+    ..style = PaintingStyle.fill;
+  final Paint _screwHeadPaint = Paint()
+    ..color = const Color(0xFF785538)
     ..strokeWidth = 1.0
     ..style = PaintingStyle.stroke;
   final Paint _woodLegPaint = Paint()
-    ..color = const Color(0xFF4A3728)
-    ..strokeWidth = 6.0
-    ..strokeCap = StrokeCap.round
+    ..color = const Color(0xFF5C3D22)
+    ..strokeWidth = 8.0
+    ..strokeCap = StrokeCap.square
     ..style = PaintingStyle.stroke;
   final Paint _woodCrossPaint = Paint()
-    ..color = const Color(0xFF38291E)
-    ..strokeWidth = 4.0
+    ..color = const Color(0xFF432C18)
+    ..strokeWidth = 5.0
     ..style = PaintingStyle.stroke;
   final Paint _imagePaint = Paint()..filterQuality = FilterQuality.medium;
 
@@ -82,21 +84,20 @@ class TargetBoard {
   }
 
   void _renderStand(Canvas canvas, double depth) {
-    const double topY = ArcheryK.targetCenterY + 0.35;
-    const double halfW = 0.55;
+    const double legTopY = ArcheryK.targetCenterY - ArcheryK.boardHeight * 0.4;
+    const double halfLegX = ArcheryK.boardWidth * 0.38;
 
-    // Left leg: (halfW, topY, distance) -> (halfW + 0.15, 0.0, distance - 0.25)
-    _draw3DLeg(canvas, -halfW, topY, distance, -halfW - 0.15, 0.0, distance - 0.25);
-    // Right leg:
-    _draw3DLeg(canvas, halfW, topY, distance, halfW + 0.15, 0.0, distance - 0.25);
-    // Rear support strut angled backward:
-    _draw3DLeg(canvas, 0.0, topY - 0.1, distance, 0.0, 0.0, distance + 0.85);
+    // Left and right legs extending down to ground (Y = 0)
+    _draw3DLeg(canvas, -halfLegX, legTopY, distance, -halfLegX - 0.05, 0.0, distance - 0.05);
+    _draw3DLeg(canvas, halfLegX, legTopY, distance, halfLegX + 0.05, 0.0, distance - 0.05);
+    // Rear tripod support strut angled backward
+    _draw3DLeg(canvas, 0.0, ArcheryK.targetCenterY, distance, 0.0, 0.0, distance + 0.70);
 
-    // Horizontal cross brace at Y = 0.5m
-    if (camera.project(-halfW - 0.08, 0.5, distance - 0.12)) {
+    // Cross-brace between front legs at Y = 0.38m
+    if (camera.project(-halfLegX - 0.02, 0.38, distance - 0.03)) {
       final double x1 = camera.sx;
       final double y1 = camera.sy;
-      if (camera.project(halfW + 0.08, 0.5, distance - 0.12)) {
+      if (camera.project(halfLegX + 0.02, 0.38, distance - 0.03)) {
         final double x2 = camera.sx;
         final double y2 = camera.sy;
         canvas.drawLine(Offset(x1, y1), Offset(x2, y2), _woodCrossPaint);
@@ -125,27 +126,50 @@ class TargetBoard {
   }
 
   void _renderBoss(Canvas canvas, double cx, double cy, double pxPerM) {
-    final double halfBossPx = pxPerM * (ArcheryK.bossWidth * 0.5);
+    final double halfW = pxPerM * (ArcheryK.boardWidth * 0.5);
+    final double halfH = pxPerM * (ArcheryK.boardHeight * 0.5);
+    final double framePx = pxPerM * ArcheryK.boardFrame;
 
-    final Rect bossRect = Rect.fromCenter(
+    final Rect outerRect = Rect.fromCenter(
       center: Offset(cx, cy),
-      width: halfBossPx * 2.0,
-      height: halfBossPx * 2.0,
+      width: halfW * 2.0,
+      height: halfH * 2.0,
     );
 
-    // Draw straw boss base
-    canvas.drawRect(bossRect, _bossPaint);
-    canvas.drawRect(bossRect, _bossBorderPaint);
+    // 1. Draw outer brown wooden frame
+    canvas.drawRect(outerRect, _boardFramePaint);
 
-    // Subtle straw fiber lines for depth
-    final double step = (halfBossPx * 0.35).clamp(8.0, 32.0);
-    for (double off = -halfBossPx + step; off < halfBossPx; off += step) {
-      canvas.drawLine(
-        Offset(bossRect.left, cy + off),
-        Offset(bossRect.right, cy + off),
-        _strawTexturePaint,
-      );
-    }
+    // 2. Draw inner square white board
+    final Rect innerRect = Rect.fromLTRB(
+      outerRect.left + framePx,
+      outerRect.top + framePx,
+      outerRect.right - framePx,
+      outerRect.bottom - framePx,
+    );
+    canvas.drawRect(innerRect, _whiteBoardPaint);
+
+    // 3. Draw dark screws in the 4 corners of the wooden frame
+    final double screwInset = framePx * 0.5;
+    final double screwRadius = (framePx * 0.30).clamp(1.5, 6.0);
+
+    final double xLeft = outerRect.left + screwInset;
+    final double xRight = outerRect.right - screwInset;
+    final double yTop = outerRect.top + screwInset;
+    final double yBottom = outerRect.bottom - screwInset;
+
+    _drawScrew(canvas, xLeft, yTop, screwRadius);
+    _drawScrew(canvas, xRight, yTop, screwRadius);
+    _drawScrew(canvas, xLeft, yBottom, screwRadius);
+    _drawScrew(canvas, xRight, yBottom, screwRadius);
+  }
+
+  void _drawScrew(Canvas canvas, double x, double y, double radius) {
+    canvas.drawCircle(Offset(x, y), radius, _screwPaint);
+    canvas.drawLine(
+      Offset(x - radius * 0.6, y),
+      Offset(x + radius * 0.6, y),
+      _screwHeadPaint,
+    );
   }
 
   void _renderTargetFace(Canvas canvas, double cx, double cy, double pxPerM) {
