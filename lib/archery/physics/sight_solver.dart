@@ -53,16 +53,6 @@ class SightSolver {
     return math.atan2(targetX, dz);
   }
 
-  /// Legacy helper for center sight offset.
-  static double getSightPitchOffset(double distance, {double speed = ArcheryK.fullDrawSpeed}) {
-    final double pitch = solvePitch(distance, ArcheryK.targetCenterY, speed: speed);
-    final double camPitchCenter = math.atan2(
-      ArcheryK.targetCenterY - ArcheryK.eyeY,
-      distance,
-    );
-    return pitch - camPitchCenter;
-  }
-
   static double _solveSecant(double distance, double targetY, double speed) {
     final double dz = distance - ArcheryK.launchZ;
     final double dy = targetY - ArcheryK.launchY;
