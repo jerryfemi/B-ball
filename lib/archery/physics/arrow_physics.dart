@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:vector_math/vector_math_64.dart';
 import '../archery_constants.dart';
+import 'wind_model.dart';
 
 /// Full 3D Arrow Physics simulation with 240 Hz fixed-step Euler integration.
 ///
@@ -42,7 +43,8 @@ class ArrowPhysics3D {
   double quiverTime = 0.0;
   double quiverOffset = 0.0; // Tail quiver offset on impact (meters)
 
-  // --- Crosswind Push Function ---
+  // --- Wind Model & Provider ---
+  WindModel? windModel;
   double Function(double t)? windProvider;
 
   /// Resets and launches the arrow with given orientation and speed.
@@ -55,8 +57,10 @@ class ArrowPhysics3D {
     required double launchPitch,
     required double speed,
     required double targetDist,
+    WindModel? windModel,
     double Function(double t)? wind,
   }) {
+    this.windModel = windModel;
     targetDistance = targetDist;
     windProvider = wind;
 
@@ -132,20 +136,23 @@ class ArrowPhysics3D {
     prevPos.setFrom(pos);
     timeSinceRelease += dt;
 
-    // 1. Crosswind lateral velocity
-    final double currentWind = windProvider?.call(timeSinceRelease) ?? 0.0;
+    // 1. Wind lateral and along-track acceleration
+    final double windLateral = windModel != null
+        ? windModel!.getLateralAccel(timeSinceRelease)
+        : (windProvider?.call(timeSinceRelease) ?? 0.0);
+    final double windAlong = windModel?.getAlongTrackAccel(timeSinceRelease) ?? 0.0;
 
     // 2. Relative velocity to air for quadratic drag
-    final double vRelX = vel.x - currentWind;
+    final double vRelX = vel.x;
     final double vRelY = vel.y;
     final double vRelZ = vel.z;
     final double vRel = math.sqrt(vRelX * vRelX + vRelY * vRelY + vRelZ * vRelZ);
 
-    // 3. Acceleration: Gravity + Quadratic Drag + Wind lateral push
+    // 3. Acceleration: Gravity + Quadratic Drag + Wind
     final double dragFactor = ArcheryK.dragK * vRel;
-    final double ax = -dragFactor * vRelX + ArcheryK.windAccelPerMps * currentWind;
+    final double ax = -dragFactor * vRelX + windLateral;
     final double ay = -dragFactor * vRelY - ArcheryK.gravity;
-    final double az = -dragFactor * vRelZ;
+    final double az = -dragFactor * vRelZ + windAlong;
 
     // 4. Semi-implicit Euler integration (Velocity first, then Position)
     vel.x += ax * dt;
