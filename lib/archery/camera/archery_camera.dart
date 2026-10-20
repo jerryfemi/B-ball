@@ -36,10 +36,6 @@ class ArcheryCamera {
   double outX = 0.0;
   double outY = 0.0;
 
-  // Dummy orientation angles for backwards compatibility
-  double yaw = 0.0;
-  double pitch = 0.0;
-
   /// Precomputes optical centers and focal length.
   void prepare() {
     if (screenH <= 0.0) return;
