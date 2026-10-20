@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../archery_constants.dart';
 import '../camera/archery_camera.dart';
 import '../camera/camera_rig.dart';
+import '../physics/sway_model.dart';
 
 /// GamePigeon-style thumb-roll aim controller with steady ring and shot timer arc.
 class DrawAimController {
@@ -15,8 +16,6 @@ class DrawAimController {
   void Function(double crosshairX, double crosshairY)? onFireAt;
   void Function()? onHoldStarted;
   void Function()? onHoldCancelled;
-  void Function()? onFullDraw; // Kept for backwards compatibility
-  void Function(double drawRatio, double holdSeconds)? onFire; // Legacy hook
 
   // Touch Tracking
   int? _activePointerId;
@@ -39,11 +38,8 @@ class DrawAimController {
   double crosshairShownX = 0.0;
   double crosshairShownY = 0.0;
 
-  // Seeded Sway Parameters
-  double _p1 = 0.0;
-  double _p2 = 0.0;
-  double _p3 = 0.0;
-  double _p4 = 0.0;
+  // Seeded Sway Model
+  SwayModel? _swayModel;
 
   // Cached Paints for Crosshair, Steady Ring, and Timer Arc
   final Paint _crosshairOutlinePaint = Paint()
@@ -67,11 +63,7 @@ class DrawAimController {
     ..style = PaintingStyle.stroke;
 
   void initSwaySeed(int seed) {
-    final math.Random rng = math.Random(seed);
-    _p1 = rng.nextDouble() * 2.0 * math.pi;
-    _p2 = rng.nextDouble() * 2.0 * math.pi;
-    _p3 = rng.nextDouble() * 2.0 * math.pi;
-    _p4 = rng.nextDouble() * 2.0 * math.pi;
+    _swayModel = SwayModel(seed: seed);
   }
 
   void onPointerDown(int pointerId, double x, double y) {
@@ -125,9 +117,7 @@ class DrawAimController {
 
     if (cameraRig.phase == ShotPhase.aiming) {
       // Fire shot at current visible crosshair point
-      cameraRig.fireShot();
       onFireAt?.call(crosshairShownX, crosshairShownY);
-      onFire?.call(1.0, holdTime);
     } else {
       // Cancelled before full aim
       cameraRig.cancelAim();
@@ -154,21 +144,10 @@ class DrawAimController {
       crosshairSmoothX += (rawTargetX - crosshairSmoothX) * smoothFactor;
       crosshairSmoothY += (rawTargetY - crosshairSmoothY) * smoothFactor;
 
-      // Deterministic visible sway: Settling -> Steady window -> Fatigue
-      final double t = holdTime;
-      final double smoothStepFatigue = t <= ArcheryK.fatigueStart
-          ? 0.0
-          : ((t - ArcheryK.fatigueStart) / (ArcheryK.shotTimerSeconds - ArcheryK.fatigueStart))
-              .clamp(0.0, 1.0);
-
-      final double amp = ArcheryK.swaySettle * math.exp(-t / ArcheryK.swaySettleTau) +
-          ArcheryK.swayBase +
-          ArcheryK.swayFatigue * smoothStepFatigue;
-
-      final double swayYaw = amp *
-          (math.sin(1.3 * t + _p1) + 0.5 * math.sin(2.9 * t + _p2)) / 1.5;
-      final double swayPitch = amp *
-          (math.sin(1.1 * t + _p3) + 0.5 * math.sin(3.7 * t + _p4)) / 1.5;
+      // Deterministic visible sway via SwayModel
+      _swayModel?.update(holdTime, isHolding);
+      final double swayYaw = _swayModel?.swayYaw ?? 0.0;
+      final double swayPitch = _swayModel?.swayPitch ?? 0.0;
 
       final double f = camera.focalLengthPx;
       crosshairShownX = crosshairSmoothX + swayYaw * f;
@@ -177,9 +156,7 @@ class DrawAimController {
       // Auto-fire when timer reaches 5.0 seconds
       if (holdTime >= ArcheryK.shotTimerSeconds && cameraRig.phase == ShotPhase.aiming) {
         isHolding = false;
-        cameraRig.fireShot();
         onFireAt?.call(crosshairShownX, crosshairShownY);
-        onFire?.call(1.0, holdTime);
       }
     }
   }
