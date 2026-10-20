@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import '../archery_constants.dart';
@@ -118,15 +119,17 @@ class RangeBackground {
     // ==========================================
     if (_skyImage != null) {
       final img = _skyImage!;
-      // Fit to screen width, anchored at horizon line
+      // Fit to cover sky area, anchored at horizon line (§1.1)
       final double imgW = img.width.toDouble();
       final double imgH = img.height.toDouble();
-      final double scale = screenW / imgW;
+      final double scale = math.max(screenW / imgW, (horizonY + 40.0) / (imgH * 0.78));
+      final double drawW = imgW * scale;
       final double drawH = imgH * scale;
+      final double drawX = (screenW - drawW) * 0.5;
       final double drawY = horizonY - drawH * 0.78; // Align mountain base with horizon
 
       final Rect src = Rect.fromLTWH(0, 0, imgW, imgH);
-      final Rect dst = Rect.fromLTWH(0, drawY, screenW, drawH);
+      final Rect dst = Rect.fromLTWH(drawX, drawY, drawW, drawH);
       canvas.drawImageRect(img, src, dst, _skyPaint);
 
       // Fill any top margin if aspect ratio is tall
