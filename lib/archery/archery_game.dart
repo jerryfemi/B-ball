@@ -70,7 +70,7 @@ class ArcheryGame extends FlameGame {
     background = RangeBackground(camera: archeryCamera);
     targetBoard = TargetBoard(camera: archeryCamera, initialDistance: targetDistance);
     windPill = WindPill(camera: archeryCamera, cameraRig: cameraRig);
-    bowOverlay = BowOverlay();
+    bowOverlay = BowOverlay(camera: archeryCamera);
     flyingArrow = FlyingArrow(camera: archeryCamera, physics: arrowPhysics);
 
     _setupCurrentArrow();
@@ -97,6 +97,7 @@ class ArcheryGame extends FlameGame {
     cameraRig.setTargetDistance(targetDistance);
     background.activeDistance = targetDistance;
     await background.load();
+    await bowOverlay.load();
 
     // Connect aim controller firing hook
     controller.onFireAt = (double crossX, double crossY) {
