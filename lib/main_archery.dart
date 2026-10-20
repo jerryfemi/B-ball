@@ -1,6 +1,7 @@
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import 'archery/archery_game.dart';
 import 'archery/ui/archery_hud.dart';
 
@@ -16,7 +17,6 @@ void main() {
   runApp(const ArcheryDevApp());
 }
 
-/// Standalone dev application for the Archery prototype.
 ///
 /// Completely decoupled from Firebase, basketball match models, and main.dart.
 class ArcheryDevApp extends StatelessWidget {
@@ -75,9 +75,7 @@ class _ArcheryGameScreenState extends State<ArcheryGameScreen> {
             );
           },
           onPointerUp: (event) {
-            _game.controller.onPointerUp(
-              event.pointer,
-            );
+            _game.controller.onPointerUp(event.pointer);
           },
           onPointerCancel: (_) {
             _game.controller.onPointerCancel();
