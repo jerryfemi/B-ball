@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 import '../archery_constants.dart';
 import '../camera/archery_camera.dart';
 
-/// 122 cm World Archery regulation target with wooden A-frame stand and straw boss.
+/// 80 cm World Archery regulation target on 1.0m square white board with wooden A-frame stand.
 ///
 /// Performance:
-/// - Target face is procedurally generated and cached as a [ui.Image].
-/// - Only re-rasterized when screen pixel radius changes by > 15% (e.g. during zoom).
+/// - Target face is procedurally rasterized once at 1024x1024 and cached as a [ui.Image].
+/// - Legs and cross-brace scale dynamically with pxPerM for realistic thickness.
 /// - 0 heap allocations per render frame.
 class TargetBoard {
   final ArcheryCamera camera;
@@ -15,7 +15,7 @@ class TargetBoard {
   TargetBoard({required this.camera, double initialDistance = ArcheryK.distanceM})
       : distance = initialDistance;
 
-  /// Current distance from archer in meters (e.g. 20, 40, 60).
+  /// Current distance from archer in meters (e.g. 15.24m / 50ft).
   double distance;
 
   // --- Cached Paints ---
@@ -32,19 +32,16 @@ class TargetBoard {
     ..style = PaintingStyle.stroke;
   final Paint _woodLegPaint = Paint()
     ..color = const Color(0xFF5C3D22)
-    ..strokeWidth = 8.0
     ..strokeCap = StrokeCap.square
     ..style = PaintingStyle.stroke;
   final Paint _woodCrossPaint = Paint()
     ..color = const Color(0xFF432C18)
-    ..strokeWidth = 5.0
     ..style = PaintingStyle.stroke;
   final Paint _imagePaint = Paint()..filterQuality = FilterQuality.medium;
 
   // --- Target Face ui.Image Cache ---
   ui.Image? _cachedFaceImage;
-  double _cachedRadiusPx = 0.0;
-  bool _isRasterizing = false;
+  bool _hasRasterized = false;
 
   void dispose() {
     _cachedFaceImage?.dispose();
@@ -60,13 +57,17 @@ class TargetBoard {
     final double pxPerM = camera.pxPerMeterAt(depth);
     if (pxPerM <= 0.5) return;
 
-    // 2. Render Wooden A-Frame Stand behind the boss
+    // Dynamically scale stand stroke widths with distance (§2 #9)
+    _woodLegPaint.strokeWidth = pxPerM * 0.05;
+    _woodCrossPaint.strokeWidth = pxPerM * 0.035;
+
+    // 2. Render Wooden A-Frame Stand behind the board
     _renderStand(canvas, depth);
 
-    // 3. Render 1.30m x 1.30m Straw Boss
+    // 3. Render 1.0m x 1.0m White Board & Wooden Frame
     _renderBoss(canvas, cx, cy, pxPerM);
 
-    // 4. Render Procedural 122cm Target Face (Cached)
+    // 4. Render 80cm WA Target Face (Cached)
     _renderTargetFace(canvas, cx, cy, pxPerM);
   }
 
@@ -163,12 +164,8 @@ class TargetBoard {
     final double faceRadiusPx = pxPerM * ArcheryK.faceRadius;
     if (faceRadiusPx < 2.0) return;
 
-    // Check if cached image needs re-rasterization (>15% size change)
-    final bool needsRasterize = _cachedFaceImage == null ||
-        (_cachedRadiusPx - faceRadiusPx).abs() / _cachedRadiusPx > 0.15;
-
-    if (needsRasterize && !_isRasterizing) {
-      _rasterizeFace(faceRadiusPx);
+    if (_cachedFaceImage == null && !_hasRasterized) {
+      _rasterizeFace();
     }
 
     if (_cachedFaceImage != null) {
@@ -187,25 +184,17 @@ class TargetBoard {
     }
   }
 
-  /// Procedurally rasterizes the 10 World Archery rings into a crisp [ui.Image].
-  void _rasterizeFace(double radiusPx) {
-    _isRasterizing = true;
-    _cachedRadiusPx = radiusPx;
-
-    // Oversample slightly (clamped between 128 and 1024 px) for razor-sharp rings
-    final int imgSize = (radiusPx * 2.0).clamp(128.0, 1024.0).toInt();
-    final double r = imgSize * 0.5;
+  /// Procedurally rasterizes the 10 World Archery rings once at 1024x1024 (Bug #10 fix).
+  void _rasterizeFace() {
+    _hasRasterized = true;
+    const int imgSize = 1024;
+    const double r = imgSize * 0.5;
 
     final ui.PictureRecorder recorder = ui.PictureRecorder();
-    final Canvas c = Canvas(recorder, Rect.fromLTWH(0, 0, imgSize.toDouble(), imgSize.toDouble()));
-    final Offset center = Offset(r, r);
+    final Canvas c = Canvas(recorder, const Rect.fromLTWH(0, 0, 1024.0, 1024.0));
+    const Offset center = Offset(r, r);
 
     // Ring pair colors from outside to inside (10 rings, 10% radius each)
-    // 1-2: White (#F5F5F0)
-    // 3-4: Black (#1A1A1A)
-    // 5-6: Blue (#2E7DD7)
-    // 7-8: Red (#E0322B)
-    // 9-10: Gold (#F7D000)
     const List<Color> ringColors = [
       Color(0xFFF5F5F0), // Ring 1
       Color(0xFFF5F5F0), // Ring 2
@@ -231,18 +220,17 @@ class TargetBoard {
       c.drawCircle(center, ringRadius, fillPaint);
 
       // Dividing lines
-      // Rings 3 & 4 (black) use white lines; all others use thin dark lines
       final bool isBlackZone = ringIndex == 2 || ringIndex == 3;
       linePaint.color = isBlackZone ? const Color(0x66FFFFFF) : const Color(0x66000000);
       c.drawCircle(center, ringRadius, linePaint);
     }
 
-    // Inner X-ring (radius = 5% of face radius = 0.0305 / 0.61)
+    // Inner X-ring
     final double xRadius = r * (ArcheryK.xRingRadius / ArcheryK.faceRadius);
     linePaint.color = const Color(0x88000000);
     c.drawCircle(center, xRadius, linePaint);
 
-    // Central '+' crosshair (1 cm in real life)
+    // Central '+' crosshair
     final double crossSize = r * (0.01 / ArcheryK.faceRadius);
     c.drawLine(
       Offset(r - crossSize, r),
@@ -257,9 +245,9 @@ class TargetBoard {
 
     final ui.Picture picture = recorder.endRecording();
     picture.toImage(imgSize, imgSize).then((ui.Image img) {
+      picture.dispose();
       _cachedFaceImage?.dispose();
       _cachedFaceImage = img;
-      _isRasterizing = false;
     });
   }
 }
