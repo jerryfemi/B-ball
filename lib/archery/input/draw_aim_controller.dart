@@ -41,29 +41,38 @@ class DrawAimController {
   // Seeded Sway Model
   SwayModel? _swayModel;
 
+  // Unit rect for zero-allocation arc scaling
+  static const Rect _unitRect = Rect.fromLTRB(-1.0, -1.0, 1.0, 1.0);
+
   // Cached Paints for Crosshair, Steady Ring, and Timer Arc
   final Paint _crosshairOutlinePaint = Paint()
     ..color = Colors.white
-    ..strokeWidth = 3.5
     ..strokeCap = StrokeCap.round
     ..style = PaintingStyle.stroke;
   final Paint _crosshairInnerPaint = Paint()
     ..color = const Color(0xFFEF4444)
-    ..strokeWidth = 2.0
     ..strokeCap = StrokeCap.round
     ..style = PaintingStyle.stroke;
   final Paint _steadyRingPaint = Paint()
     ..color = const Color(0xFFEF4444).withValues(alpha: 0.35)
-    ..strokeWidth = 2.0
     ..style = PaintingStyle.stroke;
   final Paint _timerArcPaint = Paint()
     ..color = const Color(0xFFEF4444)
-    ..strokeWidth = 4.0
     ..strokeCap = StrokeCap.round
     ..style = PaintingStyle.stroke;
 
   void initSwaySeed(int seed) {
     _swayModel = SwayModel(seed: seed);
+  }
+
+  /// Target center X on screen in aiming pose (centered).
+  double get aimingTargetCenterX => screenW * 0.5;
+
+  /// Target center Y on screen computed in the aiming pose (Bug #1).
+  double get aimingTargetCenterY {
+    final double depth = ArcheryK.distanceM - ArcheryK.camAimZ;
+    final double focal = camera.baseFocal * cameraRig.aimZoom;
+    return camera.opticalCenterY - focal * (ArcheryK.targetCenterY - ArcheryK.eyeY) / depth;
   }
 
   void onPointerDown(int pointerId, double x, double y) {
@@ -76,9 +85,9 @@ class DrawAimController {
     _anchorX = x;
     _anchorY = y;
 
-    // Center crosshair at target optical center
-    final double centerX = screenW * 0.5;
-    final double centerY = camera.opticalCenterY;
+    // Center crosshair at target center in aiming pose (Bug #1 fix)
+    final double centerX = aimingTargetCenterX;
+    final double centerY = aimingTargetCenterY;
     rawTargetX = centerX;
     rawTargetY = centerY;
     crosshairSmoothX = centerX;
@@ -93,16 +102,22 @@ class DrawAimController {
   void onPointerMove(int pointerId, double x, double y) {
     if (_activePointerId != pointerId || !isHolding) return;
 
+    // Screen-independent aim gain (§1.4): thumb pixels to reach target face edge
+    const double thumbPxToFaceEdge = 22.0; // tune 16-30
+    final double depth = ArcheryK.distanceM - ArcheryK.camAimZ;
+    final double focal = camera.baseFocal * cameraRig.aimZoom;
+    final double faceRadiusPx = (focal / depth) * ArcheryK.faceRadius;
+    final double gain = faceRadiusPx / thumbPxToFaceEdge;
+
     // Anchor-relative thumb-roll movement
-    final double deltaX = (x - _anchorX) * ArcheryK.aimGain;
-    final double deltaY = (y - _anchorY) * ArcheryK.aimGain;
+    final double deltaX = (x - _anchorX) * gain;
+    final double deltaY = (y - _anchorY) * gain;
 
-    final double centerX = screenW * 0.5;
-    final double centerY = camera.opticalCenterY;
+    final double centerX = aimingTargetCenterX;
+    final double centerY = aimingTargetCenterY;
 
-    // Clamp crosshair box to ±1.6 board width around target
-    final double pxPerM = camera.pxPerMeterAt(ArcheryK.distanceM - ArcheryK.camAimZ);
-    final double maxOffset = pxPerM * ArcheryK.boardWidth * 0.8;
+    // Clamp crosshair box to ±1.6 board width around target center
+    final double maxOffset = (focal / depth) * ArcheryK.boardWidth * 0.8;
 
     rawTargetX = (centerX + deltaX).clamp(centerX - maxOffset, centerX + maxOffset);
     rawTargetY = (centerY + deltaY).clamp(centerY - maxOffset, centerY + maxOffset);
@@ -168,38 +183,51 @@ class DrawAimController {
 
     final double cx = crosshairShownX;
     final double cy = crosshairShownY;
+    final double uiScale = camera.uiScale;
 
-    // 1. Steady Ring (shrinks from ringStartRadiusFrac down to ~28px over 1.8s)
-    const double minRadius = 24.0;
+    canvas.save();
+    canvas.translate(cx, cy);
+
+    // 1. Steady Ring (shrinks from ringStartRadiusFrac down to ~24px * uiScale over 1.8s)
+    final double minRadius = 24.0 * uiScale;
     final double maxRadius = screenW * ArcheryK.ringStartRadiusFrac;
     final double settleT = (holdTime / ArcheryK.ringSettleSeconds).clamp(0.0, 1.0);
     final double ease = 1.0 - math.pow(1.0 - settleT, 3.0); // easeOutCubic
     final double ringRadius = maxRadius + (minRadius - maxRadius) * ease;
 
-    canvas.drawCircle(Offset(cx, cy), ringRadius, _steadyRingPaint);
+    _steadyRingPaint.strokeWidth = 2.0 * uiScale;
+    canvas.drawCircle(Offset.zero, ringRadius, _steadyRingPaint);
 
     // 2. Shot Timer Arc (clockwise fill from 12 o'clock outside steady ring)
     final double timerRatio = (holdTime / ArcheryK.shotTimerSeconds).clamp(0.0, 1.0);
     if (timerRatio > 0.0) {
-      final double arcRadius = ringRadius + 4.0;
-      final Rect arcRect = Rect.fromCircle(center: Offset(cx, cy), radius: arcRadius);
+      final double arcRadius = ringRadius + 4.0 * uiScale;
+      canvas.save();
+      canvas.scale(arcRadius);
+      _timerArcPaint.strokeWidth = (4.0 * uiScale) / arcRadius;
       canvas.drawArc(
-        arcRect,
+        _unitRect,
         -math.pi * 0.5, // 12 o'clock
         2.0 * math.pi * timerRatio,
         false,
         _timerArcPaint,
       );
+      canvas.restore();
     }
 
     // 3. Precision Crosshair (4 dashes, white outline + red core, gap in middle)
-    const double innerGap = 6.0;
-    const double dashLen = 10.0;
+    final double innerGap = 6.0 * uiScale;
+    final double dashLen = 10.0 * uiScale;
 
-    _drawCrossDash(canvas, cx - innerGap - dashLen, cy, cx - innerGap, cy);
-    _drawCrossDash(canvas, cx + innerGap, cy, cx + innerGap + dashLen, cy);
-    _drawCrossDash(canvas, cx, cy - innerGap - dashLen, cx, cy - innerGap);
-    _drawCrossDash(canvas, cx, cy + innerGap, cx, cy + innerGap + dashLen);
+    _crosshairOutlinePaint.strokeWidth = 3.5 * uiScale;
+    _crosshairInnerPaint.strokeWidth = 2.0 * uiScale;
+
+    _drawCrossDash(canvas, -innerGap - dashLen, 0.0, -innerGap, 0.0);
+    _drawCrossDash(canvas, innerGap, 0.0, innerGap + dashLen, 0.0);
+    _drawCrossDash(canvas, 0.0, -innerGap - dashLen, 0.0, -innerGap);
+    _drawCrossDash(canvas, 0.0, innerGap, 0.0, innerGap + dashLen);
+
+    canvas.restore();
   }
 
   void _drawCrossDash(Canvas canvas, double x1, double y1, double x2, double y2) {
