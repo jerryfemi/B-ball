@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 import 'archery_constants.dart';
@@ -145,11 +146,7 @@ class ArcheryGame extends FlameGame {
     };
 
     cameraRig.onReturnedToLine = () {
-      if (isSetComplete) {
-        cameraRig.returnToLine(isSetComplete: true);
-      } else {
-        _setupCurrentArrow();
-      }
+      _setupCurrentArrow();
       _notifyHud();
     };
 
@@ -187,9 +184,7 @@ class ArcheryGame extends FlameGame {
     lastHitScreenPos = null;
     setScores.add([]);
 
-    _setupCurrentArrow();
-    cameraRig.phase = ShotPhase.atLine;
-    cameraRig.phaseTime = 0.0;
+    cameraRig.returnToLine();
     _notifyHud();
   }
 
@@ -208,8 +203,7 @@ class ArcheryGame extends FlameGame {
     lastHitScreenPos = null;
 
     _setupCurrentArrow();
-    cameraRig.phase = ShotPhase.atLine;
-    cameraRig.phaseTime = 0.0;
+    cameraRig.reset();
     _notifyHud();
   }
 
@@ -242,6 +236,7 @@ class ArcheryGame extends FlameGame {
 
     archeryCamera.screenW = w;
     archeryCamera.screenH = h;
+    archeryCamera.uiScale = (math.min(w, h) / 400.0).clamp(0.85, 1.6);
     controller.screenW = w;
     controller.screenH = h;
     background.resize(w, h);
