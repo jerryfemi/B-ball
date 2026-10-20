@@ -87,7 +87,6 @@ class ArcheryGame extends FlameGame {
     hitPopup = HitPopupCanvas();
 
     _setupCurrentArrow();
-    events?.windChanged(windModel.display);
   }
 
   int _getArrowSeed(int setIdx, int arrowIdx) {
@@ -112,6 +111,9 @@ class ArcheryGame extends FlameGame {
     background.activeDistance = targetDistance;
     await background.load();
     await bowOverlay.load();
+
+    // Broadcast initial wind outside widget build cycle
+    events?.windChanged(windModel.display);
 
     // Connect aim controller firing hook
     controller.onFireAt = (double crossX, double crossY) {
