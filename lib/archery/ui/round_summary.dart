@@ -1,196 +1,199 @@
 import 'package:flutter/material.dart';
 import '../physics/target_scoring.dart';
 
-/// Modal card displayed at the conclusion of each 3-arrow round.
-class RoundSummaryCard extends StatelessWidget {
-  final int roundIndex; // 0, 1, 2
-  final double distance;
-  final List<ShotScore> roundScores;
-  final int totalScore;
-  final int totalXCount;
+/// Large dark translucent Set End Card displayed over the target (Build Plan v2 §8.4 & §9).
+///
+/// Features:
+/// - Displays "SET n  29 - 25" with avatars.
+/// - Set points won indicators (gold coins under avatars).
+/// - Clean continue / next set action button.
+class SetEndCard extends StatelessWidget {
+  final int setIndex; // 0-indexed
+  final List<ShotScore> userScores;
+  final int userSetPoints;
+  final int opponentSetPoints;
   final bool isMatchOver;
   final VoidCallback onContinue;
 
-  const RoundSummaryCard({
+  const SetEndCard({
     super.key,
-    required this.roundIndex,
-    required this.distance,
-    required this.roundScores,
-    required this.totalScore,
-    required this.totalXCount,
+    required this.setIndex,
+    required this.userScores,
+    required this.userSetPoints,
+    required this.opponentSetPoints,
     required this.isMatchOver,
     required this.onContinue,
   });
 
   @override
   Widget build(BuildContext context) {
-    final int roundSubtotal = roundScores.fold(0, (sum, s) => sum + s.points);
-    final int roundXCount = roundScores.where((s) => s.isX).length;
+    final int userTotal = userScores.fold(0, (sum, s) => sum + s.points);
+    const int opponentTotal = 26; // Benchmark simulated opponent
+
+    final bool userWon = userTotal > opponentTotal;
+    final bool isTie = userTotal == opponentTotal;
 
     return Center(
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 24.0),
         padding: const EdgeInsets.all(24.0),
         decoration: BoxDecoration(
-          color: const Color(0xFF0F172A).withValues(alpha: 0.95),
+          color: const Color(0xFF0F172A).withValues(alpha: 0.94),
           borderRadius: BorderRadius.circular(24.0),
-          border: Border.all(color: const Color(0xFF1E2638), width: 1.5),
+          border: Border.all(color: const Color(0xFF1E283D), width: 1.5),
           boxShadow: const [
             BoxShadow(
               color: Color(0xCC000000),
-              blurRadius: 32.0,
-              offset: Offset(0, 8),
+              blurRadius: 36.0,
+              offset: Offset(0, 10),
             ),
           ],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Header Tag
+            // Top Badge
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
+              padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 4.0),
               decoration: BoxDecoration(
-                color: const Color(0xFF1E2638),
-                borderRadius: BorderRadius.circular(8.0),
+                color: const Color(0xFF1E283D),
+                borderRadius: BorderRadius.circular(20.0),
               ),
               child: Text(
-                isMatchOver ? 'FINAL RESULTS' : 'ROUND ${roundIndex + 1} OF 3',
+                isMatchOver ? 'MATCH FINISHED' : 'SET ${setIndex + 1} COMPLETE',
                 style: const TextStyle(
                   color: Color(0xFF38BDF8),
                   fontSize: 11.0,
-                  fontWeight: FontWeight.bold,
+                  fontWeight: FontWeight.w800,
                   letterSpacing: 1.2,
                 ),
               ),
             ),
-            const SizedBox(height: 12.0),
+            const SizedBox(height: 16.0),
 
-            // Main Title
-            Text(
-              isMatchOver ? 'MATCH COMPLETE' : '${distance.toInt()}m ROUND END',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 22.0,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.8,
-              ),
+            // Avatars & Score Row
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                // User Column
+                Column(
+                  children: [
+                    Container(
+                      width: 52.0,
+                      height: 52.0,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: const Color(0xFF10B981), width: 2.0),
+                      ),
+                      alignment: Alignment.center,
+                      child: const Text(
+                        'YOU',
+                        style: TextStyle(
+                          color: Color(0xFF10B981),
+                          fontSize: 13.0,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6.0),
+                    // Gold Coin Set Points
+                    _buildCoinRow(userSetPoints, const Color(0xFF10B981)),
+                  ],
+                ),
+
+                // Center Score Display
+                Column(
+                  children: [
+                    Text(
+                      '$userTotal - $opponentTotal',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 34.0,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                    const SizedBox(height: 4.0),
+                    Text(
+                      userWon
+                          ? '+1 SET POINT'
+                          : (isTie ? 'TIE (+1 EACH)' : 'OPPONENT SET POINT'),
+                      style: TextStyle(
+                        color: userWon
+                            ? const Color(0xFF10B981)
+                            : (isTie ? const Color(0xFFF59E0B) : const Color(0xFFEF4444)),
+                        fontSize: 11.0,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                  ],
+                ),
+
+                // Opponent Column
+                Column(
+                  children: [
+                    Container(
+                      width: 52.0,
+                      height: 52.0,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: const Color(0xFF8B5CF6), width: 2.0),
+                      ),
+                      alignment: Alignment.center,
+                      child: const Text(
+                        'BOT',
+                        style: TextStyle(
+                          color: Color(0xFF8B5CF6),
+                          fontSize: 13.0,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6.0),
+                    _buildCoinRow(opponentSetPoints, const Color(0xFF8B5CF6)),
+                  ],
+                ),
+              ],
             ),
             const SizedBox(height: 20.0),
 
-            // 3 Arrow Badges for this round
+            // 3 Arrows Breakdown
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(3, (index) {
-                final ShotScore? score =
-                    index < roundScores.length ? roundScores[index] : null;
+              children: List.generate(3, (idx) {
+                final score = idx < userScores.length ? userScores[idx] : null;
                 final String label = score?.displayLabel ?? '-';
                 final Color ringColor = score != null
                     ? Color(score.colorValue)
                     : const Color(0xFF475569);
 
                 return Container(
-                  width: 54.0,
-                  height: 54.0,
-                  margin: const EdgeInsets.symmetric(horizontal: 8.0),
+                  width: 44.0,
+                  height: 44.0,
+                  margin: const EdgeInsets.symmetric(horizontal: 6.0),
                   decoration: BoxDecoration(
                     color: const Color(0xFF0A0E1A),
                     shape: BoxShape.circle,
                     border: Border.all(color: ringColor, width: 2.0),
-                    boxShadow: [
-                      BoxShadow(
-                        color: ringColor.withValues(alpha: 0.3),
-                        blurRadius: 10.0,
-                      ),
-                    ],
                   ),
                   alignment: Alignment.center,
                   child: Text(
                     label,
                     style: TextStyle(
                       color: ringColor,
-                      fontSize: 22.0,
+                      fontSize: 16.0,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
                 );
               }),
             ),
-            const SizedBox(height: 16.0),
-
-            // Round Points Breakdown
-            Text(
-              'Round: $roundSubtotal / 30 pts  •  $roundXCount X',
-              style: const TextStyle(
-                color: Color(0xFF94A3B8),
-                fontSize: 13.0,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 20.0),
-
-            // Total Score Card
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 14.0, horizontal: 20.0),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0A0E1A),
-                borderRadius: BorderRadius.circular(16.0),
-                border: Border.all(color: const Color(0xFF1E2638)),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'TOTAL SCORE',
-                    style: TextStyle(
-                      color: Color(0xFF94A3B8),
-                      fontSize: 12.0,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1.0,
-                    ),
-                  ),
-                  Row(
-                    children: [
-                      Text(
-                        '$totalScore',
-                        style: const TextStyle(
-                          color: Color(0xFF00FFCC),
-                          fontSize: 26.0,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      Text(
-                        ' / ${(roundIndex + 1) * 30}',
-                        style: const TextStyle(
-                          color: Color(0xFF64748B),
-                          fontSize: 14.0,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(width: 12.0),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8.0, vertical: 3.0),
-                        decoration: BoxDecoration(
-                          color: const Color(0x33F7D000),
-                          borderRadius: BorderRadius.circular(6.0),
-                        ),
-                        child: Text(
-                          '$totalXCount X',
-                          style: const TextStyle(
-                            color: Color(0xFFF7D000),
-                            fontSize: 12.0,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
             const SizedBox(height: 24.0),
 
-            // Next / Play Again Button
+            // Action Button
             SizedBox(
               width: double.infinity,
               height: 48.0,
@@ -205,12 +208,10 @@ class RoundSummaryCard extends StatelessWidget {
                   ),
                 ),
                 child: Text(
-                  isMatchOver
-                      ? 'PLAY AGAIN'
-                      : 'ADVANCE TO ROUND ${roundIndex + 2}',
+                  isMatchOver ? 'PLAY AGAIN' : 'NEXT SET',
                   style: const TextStyle(
                     fontSize: 14.0,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w900,
                     letterSpacing: 1.0,
                   ),
                 ),
@@ -219,6 +220,28 @@ class RoundSummaryCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildCoinRow(int count, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(3, (i) {
+        final bool earned = i < count;
+        return Container(
+          width: 10.0,
+          height: 10.0,
+          margin: const EdgeInsets.symmetric(horizontal: 2.0),
+          decoration: BoxDecoration(
+            color: earned ? const Color(0xFFF59E0B) : const Color(0xFF1E283D),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: earned ? const Color(0xFFFBBF24) : const Color(0xFF334155),
+              width: 1.0,
+            ),
+          ),
+        );
+      }),
     );
   }
 }
