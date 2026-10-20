@@ -1,10 +1,10 @@
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../archery_constants.dart';
 import '../camera/archery_camera.dart';
 import '../scene/billboard_renderer.dart';
 import '../scene/venue_theme.dart';
+import '../util/image_loader.dart';
 
 /// Renders the outdoor daytime archery park scene.
 ///
@@ -60,20 +60,14 @@ class RangeBackground {
   Future<void> load() async {
     // 1. Load Sky Image
     try {
-      final ByteData skyData = await rootBundle.load(theme.skyImage);
-      final ui.Codec codec = await ui.instantiateImageCodec(skyData.buffer.asUint8List());
-      final ui.FrameInfo frame = await codec.getNextFrame();
-      _skyImage = frame.image;
+      _skyImage = await loadArcheryImage(theme.skyImage);
     } catch (e) {
       debugPrint('Archery: Failed to load sky image: $e');
     }
 
     // 2. Load Grass Texture for Shader
     try {
-      final ByteData grassData = await rootBundle.load(theme.grassDetailImage);
-      final ui.Codec codec = await ui.instantiateImageCodec(grassData.buffer.asUint8List());
-      final ui.FrameInfo frame = await codec.getNextFrame();
-      _grassTexture = frame.image;
+      _grassTexture = await loadArcheryImage(theme.grassDetailImage);
     } catch (e) {
       debugPrint('Archery: Failed to load grass texture: $e');
     }
