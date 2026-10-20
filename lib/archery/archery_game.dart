@@ -9,6 +9,7 @@ import 'camera/archery_camera.dart';
 import 'camera/camera_rig.dart';
 import 'components/bow_overlay.dart';
 import 'components/flying_arrow.dart';
+import 'components/hit_popup_canvas.dart';
 import 'components/range_background.dart';
 import 'components/stuck_arrow.dart';
 import 'components/target_board.dart';
@@ -18,6 +19,7 @@ import 'physics/arrow_physics.dart';
 import 'physics/sight_solver.dart';
 import 'physics/target_scoring.dart';
 import 'physics/wind_model.dart';
+import 'state/archery_match_notifier.dart';
 
 /// Flame game instance managing the 50 ft GamePigeon-style archery range (Build Plan v2).
 ///
@@ -27,9 +29,12 @@ import 'physics/wind_model.dart';
 /// - Per-arrow deterministic wind and sway.
 /// - Dolly-only camera with 7-phase cinematic shot sequence.
 /// - World-anchored wind pill.
-/// - Fixed HUD notification bug: only notifies on discrete state events.
+/// - Decoupled state architecture emitting to [ArcheryGameEvents].
+/// - Canvas-rendered 3D re-projecting HitPopup (Bug #6).
 /// - Zero allocations per frame in [update] and [render].
 class ArcheryGame extends FlameGame {
+  final ArcheryGameEvents? events;
+
   // --- Core Systems ---
   late final ArcheryCamera archeryCamera;
   late final CameraRig cameraRig;
@@ -38,7 +43,7 @@ class ArcheryGame extends FlameGame {
   // --- Physics & Wind Models ---
   final ArrowPhysics3D arrowPhysics = ArrowPhysics3D();
   late WindModel windModel;
-  final int matchSeed = 101;
+  int matchSeed;
 
   // --- Components ---
   late final RangeBackground background;
@@ -46,6 +51,7 @@ class ArcheryGame extends FlameGame {
   late final WindPill windPill;
   late final BowOverlay bowOverlay;
   late final FlyingArrow flyingArrow;
+  late final HitPopupCanvas hitPopup;
   final List<StuckArrow> stuckArrows = [];
 
   // --- Sets & Match Scoring State ---
@@ -57,7 +63,7 @@ class ArcheryGame extends FlameGame {
   bool isSetComplete = false;
   bool isMatchComplete = false;
 
-  // --- Hit Popup Trigger State ---
+  // --- Hit Popup Trigger State (Legacy fallback) ---
   ShotScore? lastShotScore;
   Offset? lastHitScreenPos;
 
@@ -65,7 +71,8 @@ class ArcheryGame extends FlameGame {
   final ValueNotifier<int> hudNotifier = ValueNotifier<int>(0);
   double targetDistance = ArcheryK.distanceM;
 
-  ArcheryGame() {
+  ArcheryGame({this.events})
+      : matchSeed = math.Random().nextInt(1000000) + 1 {
     archeryCamera = ArcheryCamera();
     cameraRig = CameraRig(camera: archeryCamera);
     controller = DrawAimController(camera: archeryCamera, cameraRig: cameraRig);
@@ -77,8 +84,10 @@ class ArcheryGame extends FlameGame {
     windPill = WindPill(camera: archeryCamera, cameraRig: cameraRig);
     bowOverlay = BowOverlay(camera: archeryCamera);
     flyingArrow = FlyingArrow(camera: archeryCamera, physics: arrowPhysics);
+    hitPopup = HitPopupCanvas();
 
     _setupCurrentArrow();
+    events?.windChanged(windModel.display);
   }
 
   int _getArrowSeed(int setIdx, int arrowIdx) {
@@ -147,12 +156,18 @@ class ArcheryGame extends FlameGame {
     };
 
     // Camera Rig phase transitions
+    cameraRig.onPhaseChanged = (phase) {
+      events?.phaseChanged(phase);
+      _notifyHud();
+    };
+
     cameraRig.onCloseupStarted = () {
       _notifyHud();
     };
 
     cameraRig.onReturnedToLine = () {
       _setupCurrentArrow();
+      events?.windChanged(windModel.display);
       _notifyHud();
     };
 
@@ -189,16 +204,22 @@ class ArcheryGame extends FlameGame {
     currentArrowIndex = 0;
     isSetComplete = false;
     stuckArrows.clear();
+    hitPopup.reset();
     lastShotScore = null;
     lastHitScreenPos = null;
     setScores.add([]);
+
+    _setupCurrentArrow();
+    events?.nextSetStarted(currentSetIndex);
+    events?.windChanged(windModel.display);
 
     cameraRig.returnToLine();
     _notifyHud();
   }
 
-  /// Restarts the match from Set 1.
+  /// Restarts the match from Set 1 with a randomized seed (Bug #12).
   void restartMatch() {
+    matchSeed = math.Random().nextInt(1000000) + 1;
     currentSetIndex = 0;
     currentArrowIndex = 0;
     userSetPoints = 0;
@@ -208,16 +229,21 @@ class ArcheryGame extends FlameGame {
     setScores.clear();
     setScores.add([]);
     stuckArrows.clear();
+    hitPopup.reset();
     lastShotScore = null;
     lastHitScreenPos = null;
 
     _setupCurrentArrow();
+    events?.matchRestarted(matchSeed);
+    events?.windChanged(windModel.display);
+
     cameraRig.reset();
     _notifyHud();
   }
 
   /// Dismisses active hit popup.
   void clearLastHitPopup() {
+    hitPopup.reset();
     lastShotScore = null;
     lastHitScreenPos = null;
     _notifyHud();
@@ -300,7 +326,16 @@ class ArcheryGame extends FlameGame {
         currentArrowIndex = setScores[currentSetIndex].length;
       }
 
-      // Hit Popup screen coordinates
+      // Hit Popup canvas 3D coordinates & event emission (Bug #6)
+      hitPopup.trigger(
+        worldX: arrowPhysics.hitPoint.x,
+        worldY: arrowPhysics.hitPoint.y,
+        worldZ: arrowPhysics.hitPoint.z,
+        score: score,
+      );
+      events?.shotScored(score);
+
+      // Hit Popup screen coordinates for legacy listeners
       if (archeryCamera.project(
         arrowPhysics.hitPoint.x,
         arrowPhysics.hitPoint.y,
@@ -334,6 +369,11 @@ class ArcheryGame extends FlameGame {
       final bool isLastArrow = currentArrowIndex >= 3;
       if (isLastArrow) {
         isSetComplete = true;
+        final int userTotal = setScores[currentSetIndex].fold(
+          0,
+          (sum, s) => sum + s.points,
+        );
+        events?.setCompleted(userTotal: userTotal, opponentTotal: 26);
       }
 
       // Trigger closeup inspection
@@ -346,7 +386,8 @@ class ArcheryGame extends FlameGame {
       arrow.update(clampedDt);
     }
 
-    // NOTE: Intentionally no _notifyHud() here to avoid 60 rebuilds/sec!
+    // 7. Update Canvas Hit Popup
+    hitPopup.update(clampedDt);
   }
 
   @override
@@ -373,7 +414,10 @@ class ArcheryGame extends FlameGame {
     // Layer 5: Foreground Recurve Bow Overlay
     bowOverlay.render(canvas);
 
-    // Layer 6: Crosshair, Steady Ring & Shot Timer Arc
+    // Layer 6: Hit score popup in 3D world space (Bug #6)
+    hitPopup.render(canvas, archeryCamera);
+
+    // Layer 7: Crosshair, Steady Ring & Shot Timer Arc
     controller.render(canvas);
   }
 
