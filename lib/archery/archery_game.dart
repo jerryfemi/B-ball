@@ -9,8 +9,6 @@ import 'components/flying_arrow.dart';
 import 'components/range_background.dart';
 import 'components/stuck_arrow.dart';
 import 'components/target_board.dart';
-import 'components/wind_flag.dart';
-import 'components/wind_particles.dart';
 import 'components/wind_pill.dart';
 import 'input/draw_aim_controller.dart';
 import 'physics/arrow_physics.dart';
@@ -42,8 +40,6 @@ class ArcheryGame extends FlameGame {
   // --- Components ---
   late final RangeBackground background;
   late final TargetBoard targetBoard;
-  late final WindFlag windFlag;
-  late final WindParticles windParticles;
   late final WindPill windPill;
   late final BowOverlay bowOverlay;
   late final FlyingArrow flyingArrow;
@@ -72,8 +68,6 @@ class ArcheryGame extends FlameGame {
     controller = DrawAimController(camera: archeryCamera, cameraRig: cameraRig);
     background = RangeBackground(camera: archeryCamera);
     targetBoard = TargetBoard(camera: archeryCamera, initialDistance: targetDistance);
-    windFlag = WindFlag(camera: archeryCamera);
-    windParticles = WindParticles(camera: archeryCamera);
     windPill = WindPill(camera: archeryCamera, cameraRig: cameraRig);
     bowOverlay = BowOverlay();
     flyingArrow = FlyingArrow(camera: archeryCamera, physics: arrowPhysics);
@@ -92,7 +86,6 @@ class ArcheryGame extends FlameGame {
     final int arrowSeed = _getArrowSeed(currentSetIndex, currentArrowIndex);
     windModel = WindModel.fromSeed(arrowSeed);
     controller.initSwaySeed(arrowSeed);
-    windFlag.reset(targetDistance);
   }
 
   @override
@@ -287,11 +280,7 @@ class ArcheryGame extends FlameGame {
       slide: cameraRig.bowSlideProgress,
     );
 
-    // 4. Update Environmental Visuals
-    windFlag.update(clampedDt, windModel.baseWindMps);
-    windParticles.update(clampedDt, windModel.baseWindMps);
-
-    // 5. Update Arrow Physics
+    // 4. Update Arrow Physics
     final bool wasInFlight = arrowPhysics.inFlight;
     arrowPhysics.update(clampedDt);
 
@@ -369,30 +358,24 @@ class ArcheryGame extends FlameGame {
     // Layer 0: Park Background
     background.render(canvas);
 
-    // Layer 1: Wind Flag beside target
-    windFlag.render(canvas);
-
-    // Layer 2: White Target Board, Wooden Frame & WA Face
+    // Layer 1: White Target Board, Wooden Frame & WA Face
     targetBoard.render(canvas);
 
-    // Layer 3: Stuck Arrows embedded in board
+    // Layer 2: Stuck Arrows embedded in board
     for (final arrow in stuckArrows) {
       arrow.render(canvas, archeryCamera);
     }
 
-    // Layer 4: Flying Arrow + Motion Trail
+    // Layer 3: Flying Arrow + Motion Trail
     flyingArrow.render(canvas);
 
-    // Layer 5: Wind Particles
-    windParticles.render(canvas);
-
-    // Layer 6: World-Anchored Wind Pill
+    // Layer 4: World-Anchored Wind Pill
     windPill.render(canvas, windModel);
 
-    // Layer 7: Foreground Recurve Bow Overlay
+    // Layer 5: Foreground Recurve Bow Overlay
     bowOverlay.render(canvas);
 
-    // Layer 8: Crosshair, Steady Ring & Shot Timer Arc
+    // Layer 6: Crosshair, Steady Ring & Shot Timer Arc
     controller.render(canvas);
   }
 
