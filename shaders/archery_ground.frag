@@ -46,17 +46,17 @@ void main() {
   vec3 col     = mix(uGrassA.rgb, uGrassB.rgb, stripe);
 
   // two-scale detail: fine blades (~0.8 m tile) + broad patches (~9 m tile)
-  float fine     = texture(uGrassTex, fract(vec2(wx, wz) * 1.25)).r;
-  float patch    = texture(uGrassTex, fract(vec2(wx, wz) * 0.11 + 0.37)).r;
-  float fineFade = clamp((pxPerMx - 25.0) / 60.0, 0.0, 1.0); // fade fine blades before aliasing
+  float fine       = texture(uGrassTex, fract(vec2(wx, wz) * 1.25)).r;
+  float patchNoise = texture(uGrassTex, fract(vec2(wx, wz) * 0.11 + 0.37)).r;
+  float fineFade   = clamp((pxPerMx - 25.0) / 60.0, 0.0, 1.0); // fade fine blades before aliasing
   col *= mix(1.0, 0.72 + 0.56 * fine, fineFade * 0.9);
-  col *= 0.86 + 0.28 * patch;
+  col *= 0.86 + 0.28 * patchNoise;
 
   // mowing sheen: blades on light stripes catch more light
   col *= mix(1.0, 1.06, stripe < 0.5 ? 1.0 : 0.0);
 
   // subtle hue drift so the field is not a single uniform flat green
-  col = mix(col, col * vec3(1.10, 1.03, 0.82), patch * 0.35);
+  col = mix(col, col * vec3(1.10, 1.03, 0.82), patchNoise * 0.35);
 
   // lane lines: centre line + two lines converging toward target legs (the "V")
   float onLane = step(0.0, wz) * step(wz, uTargetZ);
