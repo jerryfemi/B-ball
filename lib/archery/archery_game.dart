@@ -127,7 +127,6 @@ class ArcheryGame extends FlameGame {
       flyingArrow.resetTrail();
       cameraRig.fireShot();
       cameraRig.addShake(3.5);
-      bowOverlay.onRelease();
       _notifyHud();
     };
 
@@ -230,11 +229,6 @@ class ArcheryGame extends FlameGame {
   int get currentSetScore =>
       setScores[currentSetIndex].fold(0, (sum, s) => sum + s.points);
 
-  // Backward-compatibility getters for HUD / testing
-  int get currentRoundIndex => currentSetIndex;
-  List<List<ShotScore>> get roundScores => setScores;
-  bool get isRoundComplete => isSetComplete;
-
   void _notifyHud() {
     hudNotifier.value = hudNotifier.value + 1;
   }
@@ -275,8 +269,6 @@ class ArcheryGame extends FlameGame {
     // 3. Update Bow Overlay slide progress
     bowOverlay.update(
       clampedDt,
-      controller.draw,
-      controller.isHolding,
       slide: cameraRig.bowSlideProgress,
     );
 
