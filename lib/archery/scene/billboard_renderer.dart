@@ -1,8 +1,8 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../camera/archery_camera.dart';
+import '../util/image_loader.dart';
 import 'venue_theme.dart';
 
 /// Internal runtime cache for a loaded billboard instance.
@@ -52,10 +52,7 @@ class BillboardRenderer {
     // 1. Load unique billboard images
     for (final entry in theme.billboardImages.entries) {
       try {
-        final ByteData data = await rootBundle.load(entry.value);
-        final ui.Codec codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
-        final ui.FrameInfo frame = await codec.getNextFrame();
-        _loadedImages[entry.key] = frame.image;
+        _loadedImages[entry.key] = await loadArcheryImage(entry.value);
       } catch (e) {
         debugPrint('Failed to load archery billboard image ${entry.value}: $e');
       }
@@ -63,10 +60,7 @@ class BillboardRenderer {
 
     // 2. Load or generate shadow blob
     try {
-      final ByteData data = await rootBundle.load(theme.shadowBlobImage);
-      final ui.Codec codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
-      final ui.FrameInfo frame = await codec.getNextFrame();
-      _shadowBlob = frame.image;
+      _shadowBlob = await loadArcheryImage(theme.shadowBlobImage);
     } catch (_) {
       // Fallback: generate 64x64 soft shadow blob procedurally
       _shadowBlob = _generateFallbackShadowBlob();
