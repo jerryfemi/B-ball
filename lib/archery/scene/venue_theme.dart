@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../archery_constants.dart';
 
 /// Specification for a single billboard object in 3D world space.
@@ -40,10 +41,7 @@ class BillboardSpec {
 }
 
 /// Target style configuration for different venues.
-enum TargetStyle {
-  standardWorldArchery,
-  kyudoDojo,
-}
+enum TargetStyle { standardWorldArchery, kyudoDojo }
 
 /// Complete environment description for an archery venue.
 class VenueTheme {
@@ -78,7 +76,9 @@ class VenueTheme {
   });
 
   /// The standard daytime Park venue matching GamePigeon archery.
-  static VenueTheme createParkTheme({double targetDistance = ArcheryK.distanceM}) {
+  static VenueTheme createParkTheme({
+    double targetDistance = ArcheryK.distanceM,
+  }) {
     final double D = targetDistance;
 
     final billboards = <BillboardSpec>[
@@ -93,24 +93,113 @@ class VenueTheme {
       ),
 
       // 2. Tree line behind target (z = D + 6 ... D + 16)
-      BillboardSpec(imageKey: 'tree_1', x: -8.5, baseY: 0.0, z: D + 12.0, widthMeters: 8.5),
-      BillboardSpec(imageKey: 'tree_2', x: -4.5, baseY: 0.0, z: D + 8.5, widthMeters: 6.8, flipX: true),
-      BillboardSpec(imageKey: 'tree_3', x: -1.8, baseY: 0.0, z: D + 14.0, widthMeters: 7.2),
-      BillboardSpec(imageKey: 'tree_1', x: 2.2, baseY: 0.0, z: D + 15.0, widthMeters: 8.0, flipX: true),
-      BillboardSpec(imageKey: 'tree_2', x: 5.2, baseY: 0.0, z: D + 9.0, widthMeters: 7.0),
-      BillboardSpec(imageKey: 'tree_3', x: 9.0, baseY: 0.0, z: D + 13.0, widthMeters: 7.8),
+      BillboardSpec(
+        imageKey: 'tree_1',
+        x: -8.5,
+        baseY: 0.0,
+        z: D + 12.0,
+        widthMeters: 8.5,
+      ),
+      BillboardSpec(
+        imageKey: 'tree_2',
+        x: -4.5,
+        baseY: 0.0,
+        z: D + 8.5,
+        widthMeters: 6.8,
+        flipX: true,
+      ),
+      BillboardSpec(
+        imageKey: 'tree_3',
+        x: -1.8,
+        baseY: 0.0,
+        z: D + 14.0,
+        widthMeters: 7.2,
+      ),
+      BillboardSpec(
+        imageKey: 'tree_1',
+        x: 2.2,
+        baseY: 0.0,
+        z: D + 15.0,
+        widthMeters: 8.0,
+        flipX: true,
+      ),
+      BillboardSpec(
+        imageKey: 'tree_2',
+        x: 5.2,
+        baseY: 0.0,
+        z: D + 9.0,
+        widthMeters: 7.0,
+      ),
+      BillboardSpec(
+        imageKey: 'tree_3',
+        x: 9.0,
+        baseY: 0.0,
+        z: D + 13.0,
+        widthMeters: 7.8,
+      ),
 
       // 3. Side trees along the lane (left side: x = -5.5 to -8.5, z = 3 to D + 3)
-      const BillboardSpec(imageKey: 'tree_1', x: -5.8, baseY: 0.0, z: 3.2, widthMeters: 6.2),
-      const BillboardSpec(imageKey: 'tree_2', x: -6.5, baseY: 0.0, z: 7.5, widthMeters: 5.8, flipX: true),
-      BillboardSpec(imageKey: 'tree_3', x: -6.0, baseY: 0.0, z: 12.0, widthMeters: 6.5),
-      BillboardSpec(imageKey: 'tree_1', x: -7.2, baseY: 0.0, z: D + 2.5, widthMeters: 7.0),
+      const BillboardSpec(
+        imageKey: 'tree_1',
+        x: -5.8,
+        baseY: 0.0,
+        z: 3.2,
+        widthMeters: 6.2,
+      ),
+      const BillboardSpec(
+        imageKey: 'tree_2',
+        x: -6.5,
+        baseY: 0.0,
+        z: 7.5,
+        widthMeters: 5.8,
+        flipX: true,
+      ),
+      BillboardSpec(
+        imageKey: 'tree_3',
+        x: -6.0,
+        baseY: 0.0,
+        z: 12.0,
+        widthMeters: 6.5,
+      ),
+      BillboardSpec(
+        imageKey: 'tree_1',
+        x: -7.2,
+        baseY: 0.0,
+        z: D + 2.5,
+        widthMeters: 7.0,
+      ),
 
       // 4. Side trees along the lane (right side: x = +5.5 to +8.5, z = 4 to D + 3)
-      const BillboardSpec(imageKey: 'tree_3', x: 6.2, baseY: 0.0, z: 4.5, widthMeters: 6.0, flipX: true),
-      const BillboardSpec(imageKey: 'tree_1', x: 7.0, baseY: 0.0, z: 9.0, widthMeters: 6.8),
-      BillboardSpec(imageKey: 'tree_2', x: 6.2, baseY: 0.0, z: 13.5, widthMeters: 5.6),
-      BillboardSpec(imageKey: 'tree_3', x: 7.5, baseY: 0.0, z: D + 3.0, widthMeters: 6.6, flipX: true),
+      const BillboardSpec(
+        imageKey: 'tree_3',
+        x: 6.2,
+        baseY: 0.0,
+        z: 4.5,
+        widthMeters: 6.0,
+        flipX: true,
+      ),
+      const BillboardSpec(
+        imageKey: 'tree_1',
+        x: 7.0,
+        baseY: 0.0,
+        z: 9.0,
+        widthMeters: 6.8,
+      ),
+      BillboardSpec(
+        imageKey: 'tree_2',
+        x: 6.2,
+        baseY: 0.0,
+        z: 13.5,
+        widthMeters: 5.6,
+      ),
+      BillboardSpec(
+        imageKey: 'tree_3',
+        x: 7.5,
+        baseY: 0.0,
+        z: D + 3.0,
+        widthMeters: 6.6,
+        flipX: true,
+      ),
     ];
 
     // Sort back-to-front by Z descending for proper painter's algorithm rendering
