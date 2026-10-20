@@ -1,285 +1,283 @@
-import 'dart:math' as math;
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../archery_constants.dart';
 import '../camera/archery_camera.dart';
+import '../scene/billboard_renderer.dart';
+import '../scene/venue_theme.dart';
 
-/// Renders the outdoor archery range at night under stadium floodlights.
+/// Renders the outdoor daytime archery park scene.
 ///
-/// Features:
-/// - Parallax sky and dark treeline silhouettes at infinity.
-/// - 3D projected ground lanes and distance marker lines (10m - 70m).
-/// - 3D floodlight towers on either side casting atmospheric glow.
-/// - Strict zero-allocation rendering loop.
+/// Architecture:
+/// - Fixed screen-space sky + mountains at infinity.
+/// - Perspective-correct ground shader with mowed stripes, lane lines & haze (with Canvas fallback).
+/// - BillboardRenderer for trees, hedge, and distant hills with distance haze & tree contact shadows.
+/// - Zero runtime allocation in render loop.
 class RangeBackground {
   final ArcheryCamera camera;
+  late VenueTheme theme;
+  late final BillboardRenderer billboardRenderer;
 
-  RangeBackground({required this.camera});
+  double activeDistance = ArcheryK.distanceM;
 
-  // --- Cached Paints (Zero runtime allocation) ---
-  final Paint _skyPaint = Paint()..isAntiAlias = false;
-  final Paint _treelinePaint = Paint()
-    ..color = const Color(0xFF070B16)
+  // --- Sky ---
+  ui.Image? _skyImage;
+  final Paint _skyPaint = Paint()
+    ..isAntiAlias = false
+    ..filterQuality = FilterQuality.medium;
+
+  // Fallback sky gradient if asset still loading
+  final Paint _fallbackSkyPaint = Paint()..isAntiAlias = false;
+
+  // --- Ground Shader ---
+  ui.FragmentShader? _groundShader;
+  ui.Image? _grassTexture;
+  final Paint _groundShaderPaint = Paint()..isAntiAlias = false;
+
+  // Fallback ground paint
+  final Paint _fallbackGroundPaint = Paint()
+    ..color = const Color(0xFF438A27)
     ..style = PaintingStyle.fill;
-  final Paint _groundPaint = Paint()
-    ..color = const Color(0xFF080E1C)
+  final Paint _fallbackStripePaint = Paint()
+    ..color = const Color(0xFF387A1E)
     ..style = PaintingStyle.fill;
-  final Paint _laneLinePaint = Paint()
-    ..color = const Color(0xFF1E283D)
-    ..strokeWidth = 1.5
-    ..style = PaintingStyle.stroke;
-  final Paint _targetLanePaint = Paint()
-    ..color = const Color(0xFF263554)
+  final Paint _fallbackLinePaint = Paint()
+    ..color = const Color(0xE6F8FAFC)
     ..strokeWidth = 2.0
     ..style = PaintingStyle.stroke;
-  final Paint _markerLinePaint = Paint()
-    ..color = const Color(0xFF334466)
-    ..strokeWidth = 2.0
-    ..style = PaintingStyle.stroke;
-  final Paint _activeDistancePaint = Paint()
-    ..color = const Color(0xFF00FFCC).withValues(alpha: 0.7)
-    ..strokeWidth = 2.5
-    ..style = PaintingStyle.stroke;
-  final Paint _floodlightPolePaint = Paint()
-    ..color = const Color(0xFF131B2A)
-    ..strokeWidth = 3.0
-    ..style = PaintingStyle.stroke;
-  final Paint _floodlightLampPaint = Paint()
-    ..color = const Color(0xFFE2E8F0)
-    ..style = PaintingStyle.fill;
-  final Paint _floodlightGlowPaint = Paint()
-    ..color = const Color(0x3338BDF8)
-    ..style = PaintingStyle.fill;
-  final Paint _boardBgPaint = Paint()
-    ..color = const Color(0xFF0F172A)
-    ..style = PaintingStyle.fill;
-  final Paint _boardBorderPaint = Paint()
-    ..color = const Color(0xFF38BDF8)
-    ..strokeWidth = 1.0
-    ..style = PaintingStyle.stroke;
 
-  // Reusable Path to avoid heap allocations
   final Path _reusablePath = Path();
 
-  // Cached TextPainter for distance signs
-  final TextPainter _textPainter = TextPainter(
-    textDirection: TextDirection.ltr,
-    textAlign: TextAlign.center,
-  );
-
-  // Reusable rects
-  Rect _cachedSkyRect = Rect.zero;
   double _lastW = 0.0;
   double _lastH = 0.0;
 
-  // Active highlighted target distance
-  double activeDistance = ArcheryK.distNear;
+  RangeBackground({required this.camera}) {
+    theme = VenueTheme.createParkTheme(targetDistance: activeDistance);
+    billboardRenderer = BillboardRenderer(camera: camera, theme: theme);
+  }
+
+  /// Asynchronously loads sky, shader, textures, and billboard sprites.
+  Future<void> load() async {
+    // 1. Load Sky Image
+    try {
+      final ByteData skyData = await rootBundle.load(theme.skyImage);
+      final ui.Codec codec = await ui.instantiateImageCodec(skyData.buffer.asUint8List());
+      final ui.FrameInfo frame = await codec.getNextFrame();
+      _skyImage = frame.image;
+    } catch (e) {
+      debugPrint('Archery: Failed to load sky image: $e');
+    }
+
+    // 2. Load Grass Texture for Shader
+    try {
+      final ByteData grassData = await rootBundle.load(theme.grassDetailImage);
+      final ui.Codec codec = await ui.instantiateImageCodec(grassData.buffer.asUint8List());
+      final ui.FrameInfo frame = await codec.getNextFrame();
+      _grassTexture = frame.image;
+    } catch (e) {
+      debugPrint('Archery: Failed to load grass texture: $e');
+    }
+
+    // 3. Load Ground FragmentProgram
+    try {
+      final program = await ui.FragmentProgram.fromAsset('shaders/archery_ground.frag');
+      _groundShader = program.fragmentShader();
+      if (_grassTexture != null) {
+        _groundShader!.setImageSampler(0, _grassTexture!);
+      }
+      _groundShaderPaint.shader = _groundShader;
+    } catch (e) {
+      debugPrint('Archery: Note - Ground shader unavailable, using Canvas fallback: $e');
+    }
+
+    // 4. Load Billboard Renderer
+    await billboardRenderer.load();
+  }
 
   void resize(double width, double height) {
     if (width == _lastW && height == _lastH) return;
     _lastW = width;
     _lastH = height;
-    _cachedSkyRect = Rect.fromLTWH(0, 0, width, height);
 
-    _skyPaint.shader = const LinearGradient(
+    final double horizonY = height * ArcheryK.horizonFrac;
+    _fallbackSkyPaint.shader = const LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
       colors: [
-        Color(0xFF04060C),
-        Color(0xFF070B16),
-        Color(0xFF0D1424),
+        Color(0xFF6BA4E8),
+        Color(0xFF90C2F2),
+        Color(0xFFE2EBF5),
       ],
-      stops: [0.0, 0.5, 1.0],
-    ).createShader(_cachedSkyRect);
+      stops: [0.0, 0.6, 1.0],
+    ).createShader(Rect.fromLTWH(0, 0, width, horizonY + 2.0));
   }
 
   void render(Canvas canvas) {
     if (_lastW <= 0.0 || _lastH <= 0.0) return;
 
-    // 1. Sky Gradient (Background)
-    canvas.drawRect(_cachedSkyRect, _skyPaint);
+    final double screenW = camera.screenW;
+    final double screenH = camera.screenH;
+    final double horizonY = screenH * ArcheryK.horizonFrac;
 
-    // 2. Projected Horizon Line (where ground meets sky at Z -> infinity)
-    // Looking forward at eye height eyeY = 1.6m, horizon is at sy where pitch tilts
-    // In camera coordinates: dy = -eyeY, dz = inf -> sy = screenH/2 + f * tan(pitch)
-    final double horizonY = _lastH * 0.5 + camera.focalLengthPx * math.tan(camera.pitch);
+    // ==========================================
+    // 1. SKY + MOUNTAINS AT INFINITY
+    // ==========================================
+    if (_skyImage != null) {
+      final img = _skyImage!;
+      // Fit to screen width, anchored at horizon line
+      final double imgW = img.width.toDouble();
+      final double imgH = img.height.toDouble();
+      final double scale = screenW / imgW;
+      final double drawH = imgH * scale;
+      final double drawY = horizonY - drawH * 0.78; // Align mountain base with horizon
 
-    // 3. Far Treeline / Stadium Silhouette (Parallax at infinity)
-    _renderParallaxSilhouette(canvas, horizonY);
+      final Rect src = Rect.fromLTWH(0, 0, imgW, imgH);
+      final Rect dst = Rect.fromLTWH(0, drawY, screenW, drawH);
+      canvas.drawImageRect(img, src, dst, _skyPaint);
 
-    // 4. Ground Turf
-    if (horizonY < _lastH) {
-      canvas.drawRect(
-        Rect.fromLTRB(0, horizonY.clamp(0.0, _lastH), _lastW, _lastH),
-        _groundPaint,
-      );
+      // Fill any top margin if aspect ratio is tall
+      if (drawY > 0) {
+        canvas.drawRect(Rect.fromLTWH(0, 0, screenW, drawY + 1.0), _fallbackSkyPaint);
+      }
+    } else {
+      canvas.drawRect(Rect.fromLTWH(0, 0, screenW, horizonY + 1.0), _fallbackSkyPaint);
     }
 
-    // 5. 3D Projected Ground Lanes
-    _renderGroundLanes(canvas);
+    // ==========================================
+    // 2. GROUND (SHADER OR CANVAS FALLBACK)
+    // ==========================================
+    final Rect groundRect = Rect.fromLTWH(0, horizonY, screenW, screenH - horizonY);
 
-    // 6. 3D Distance Lines and Marker Boards (10m - 70m)
-    _renderDistanceMarkers(canvas);
+    if (_groundShader != null && _grassTexture != null) {
+      final shader = _groundShader!;
+      // Uniforms per shaders/archery_ground.frag:
+      // vec2 uSize
+      shader.setFloat(0, screenW);
+      shader.setFloat(1, screenH);
+      // float uHorizonY
+      shader.setFloat(2, horizonY);
+      // float uFocal
+      shader.setFloat(3, camera.focal);
+      // float uEyeX, uEyeY, uEyeZ
+      shader.setFloat(4, camera.eyeX);
+      shader.setFloat(5, camera.eyeY);
+      shader.setFloat(6, camera.eyeZ);
+      // float uStripeLen
+      shader.setFloat(7, theme.stripeLen);
+      // vec4 uGrassA
+      shader.setFloat(8, theme.grassA.r);
+      shader.setFloat(9, theme.grassA.g);
+      shader.setFloat(10, theme.grassA.b);
+      shader.setFloat(11, 1.0);
+      // vec4 uGrassB
+      shader.setFloat(12, theme.grassB.r);
+      shader.setFloat(13, theme.grassB.g);
+      shader.setFloat(14, theme.grassB.b);
+      shader.setFloat(15, 1.0);
+      // vec4 uHaze
+      shader.setFloat(16, theme.haze.r);
+      shader.setFloat(17, theme.haze.g);
+      shader.setFloat(18, theme.haze.b);
+      shader.setFloat(19, 1.0);
+      // float uHazeDist, uTargetZ
+      shader.setFloat(20, theme.hazeDist);
+      shader.setFloat(21, activeDistance);
 
-    // 7. 3D Stadium Floodlight Posts
-    _renderFloodlights(canvas);
-  }
-
-  void _renderParallaxSilhouette(Canvas canvas, double horizonY) {
-    // Parallax horizontal offset based on yaw
-    final double yawOffset = camera.focalLengthPx * math.tan(camera.yaw);
-    final double baseY = horizonY;
-
-    _reusablePath.reset();
-    _reusablePath.moveTo(0, _lastH);
-    _reusablePath.lineTo(0, baseY);
-
-    // Draw stylized stadium and pine silhouettes across width
-    const double step = 28.0;
-    final int count = (_lastW / step).ceil() + 4;
-    final double startX = -((yawOffset * 0.4) % step) - step;
-
-    for (int i = 0; i <= count; i++) {
-      final double px = startX + i * step;
-      // Deterministic jagged horizon profile
-      final double h = 18.0 + 14.0 * math.sin(i * 1.7) + 8.0 * math.cos(i * 3.1);
-      _reusablePath.lineTo(px, baseY - h);
+      canvas.drawRect(groundRect, _groundShaderPaint);
+    } else {
+      _renderFallbackGround(canvas, screenW, screenH, horizonY);
     }
 
-    _reusablePath.lineTo(_lastW, baseY);
-    _reusablePath.lineTo(_lastW, _lastH);
-    _reusablePath.close();
+    // ==========================================
+    // 3. TREE CONTACT SHADOWS
+    // ==========================================
+    billboardRenderer.renderShadows(canvas);
 
-    canvas.drawPath(_reusablePath, _treelinePaint);
+    // ==========================================
+    // 4. BILLBOARDS (HILLS, HEDGE, TREES)
+    // ==========================================
+    billboardRenderer.renderBillboards(canvas);
   }
 
-  void _renderGroundLanes(Canvas canvas) {
-    // Left & right lane boundary lines in 3D: X = ±1.25m, ±3.5m running from Z = 1 to 75m
-    const double zNear = 1.0;
-    const double zFar = 75.0;
+  void _renderFallbackGround(Canvas canvas, double screenW, double screenH, double horizonY) {
+    // Solid base grass
+    canvas.drawRect(Rect.fromLTWH(0, horizonY, screenW, screenH - horizonY), _fallbackGroundPaint);
 
-    _draw3DLine(canvas, -1.25, 0.0, zNear, -1.25, 0.0, zFar, _targetLanePaint);
-    _draw3DLine(canvas, 1.25, 0.0, zNear, 1.25, 0.0, zFar, _targetLanePaint);
-    _draw3DLine(canvas, -3.5, 0.0, zNear, -3.5, 0.0, zFar, _laneLinePaint);
-    _draw3DLine(canvas, 3.5, 0.0, zNear, 3.5, 0.0, zFar, _laneLinePaint);
+    // Perspective lawn stripes
+    final double focal = camera.focal;
+    final double eyeY = camera.eyeY;
+    final double eyeZ = camera.eyeZ;
 
-    // Center dotted guide line
-    for (double z = 2.0; z < 70.0; z += 3.0) {
-      _draw3DLine(canvas, 0.0, 0.0, z, 0.0, 0.0, z + 1.2, _laneLinePaint);
+    for (double z = 0.0; z < 50.0; z += theme.stripeLen * 2.0) {
+      final double z0 = z;
+      final double z1 = z + theme.stripeLen;
+      final double dz0 = z0 - eyeZ;
+      final double dz1 = z1 - eyeZ;
+      if (dz1 <= 0.2) continue;
+
+      final double sy0 = dz0 > 0.1 ? (horizonY + focal * eyeY / dz0) : screenH;
+      final double sy1 = horizonY + focal * eyeY / dz1;
+
+      final double topY = sy1.clamp(horizonY, screenH);
+      final double botY = sy0.clamp(horizonY, screenH);
+      if (botY > topY) {
+        canvas.drawRect(Rect.fromLTWH(0, topY, screenW, botY - topY), _fallbackStripePaint);
+      }
     }
-  }
 
-  void _renderDistanceMarkers(Canvas canvas) {
-    // Distance markers from 10m to 70m
-    const List<double> distances = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0];
+    // Lane lines: V-shape converging to target
+    if (camera.project(-0.55, 0.0, activeDistance) && camera.project(0.55, 0.0, activeDistance)) {
+      // Re-project left at target
+      camera.project(-0.55, 0.0, activeDistance);
+      final double targetLX = camera.sx;
+      final double targetLY = camera.sy;
 
-    for (final double dist in distances) {
-      final bool isActive = (dist - activeDistance).abs() < 0.5;
-      final Paint linePaint = isActive ? _activeDistancePaint : _markerLinePaint;
+      camera.project(0.55, 0.0, activeDistance);
+      final double targetRX = camera.sx;
 
-      // Cross line on ground from X = -2.5 to +2.5
-      _draw3DLine(canvas, -2.5, 0.0, dist, 2.5, 0.0, dist, linePaint);
+      // Project at shooting line z = 0
+      camera.project(-3.2, 0.0, 0.0);
+      final double lineLX = camera.sx;
+      final double lineLY = camera.sy;
 
-      // Distance sign board at right side (X = 2.8, Y = 0.25, Z = dist)
-      _renderDistanceBoard(canvas, 2.9, 0.35, dist, '${dist.toInt()}m', isActive);
-      _renderDistanceBoard(canvas, -2.9, 0.35, dist, '${dist.toInt()}m', isActive);
+      camera.project(3.2, 0.0, 0.0);
+      final double lineRX = camera.sx;
+
+      _reusablePath.reset();
+      _reusablePath.moveTo(lineLX, lineLY);
+      _reusablePath.lineTo(targetLX, targetLY);
+      canvas.drawPath(_reusablePath, _fallbackLinePaint);
+
+      _reusablePath.reset();
+      _reusablePath.moveTo(lineRX, lineLY);
+      _reusablePath.lineTo(targetRX, targetLY);
+      canvas.drawPath(_reusablePath, _fallbackLinePaint);
+
+      // Center line
+      camera.project(0.0, 0.0, 0.0);
+      final double centerLineX = camera.sx;
+      final double centerLineY = camera.sy;
+      camera.project(0.0, 0.0, activeDistance);
+      final double centerTargetX = camera.sx;
+      final double centerTargetY = camera.sy;
+
+      _reusablePath.reset();
+      _reusablePath.moveTo(centerLineX, centerLineY);
+      _reusablePath.lineTo(centerTargetX, centerTargetY);
+      canvas.drawPath(_reusablePath, _fallbackLinePaint);
     }
-  }
 
-  void _renderDistanceBoard(
-    Canvas canvas,
-    double x,
-    double y,
-    double z,
-    String text,
-    bool isActive,
-  ) {
-    if (!camera.project(x, y, z)) return;
-    final double cx = camera.sx;
-    final double cy = camera.sy;
-    final double pxPerM = camera.pxPerMeterAt(camera.depth);
-
-    final double boardW = pxPerM * 0.50; // 50 cm width
-    final double boardH = pxPerM * 0.26; // 26 cm height
-    if (boardW < 4.0) return; // Too far to draw
-
-    final Rect boardRect = Rect.fromCenter(
-      center: Offset(cx, cy),
-      width: boardW,
-      height: boardH,
-    );
-
-    // Board background & border
-    canvas.drawRect(boardRect, _boardBgPaint);
-    _boardBorderPaint.color = isActive ? const Color(0xFF00FFCC) : const Color(0xFF38BDF8);
-    canvas.drawRect(boardRect, _boardBorderPaint);
-
-    // Text rendering if large enough
-    if (boardW >= 18.0) {
-      _textPainter.text = TextSpan(
-        text: text,
-        style: TextStyle(
-          color: isActive ? const Color(0xFF00FFCC) : const Color(0xFFE2E8F0),
-          fontSize: (boardH * 0.65).clamp(8.0, 20.0),
-          fontWeight: FontWeight.bold,
-          letterSpacing: 0.5,
-        ),
-      );
-      _textPainter.layout();
-      _textPainter.paint(
-        canvas,
-        Offset(cx - _textPainter.width * 0.5, cy - _textPainter.height * 0.5),
-      );
-    }
-  }
-
-  void _renderFloodlights(Canvas canvas) {
-    // Floodlight poles along sides: X = ±6.0m, Z = 15, 35, 55m, Height = 5.5m
-    const List<double> poleDistances = [15.0, 35.0, 55.0];
-
-    for (final double z in poleDistances) {
-      _renderFloodlightTower(canvas, -6.0, z);
-      _renderFloodlightTower(canvas, 6.0, z);
-    }
-  }
-
-  void _renderFloodlightTower(Canvas canvas, double x, double z) {
-    const double poleHeight = 5.5;
-
-    // Draw pole from base (y=0) to top (y=5.5)
-    _draw3DLine(canvas, x, 0.0, z, x, poleHeight, z, _floodlightPolePaint);
-
-    // Project lamp head at top
-    if (camera.project(x, poleHeight, z)) {
-      final double lx = camera.sx;
-      final double ly = camera.sy;
-      final double pxPerM = camera.pxPerMeterAt(camera.depth);
-      final double lampRadius = (pxPerM * 0.35).clamp(2.0, 24.0);
-
-      // Glow halo
-      canvas.drawCircle(Offset(lx, ly), lampRadius * 2.2, _floodlightGlowPaint);
-      // Crisp light head
-      canvas.drawCircle(Offset(lx, ly), lampRadius * 0.8, _floodlightLampPaint);
-    }
-  }
-
-  void _draw3DLine(
-    Canvas canvas,
-    double x1,
-    double y1,
-    double z1,
-    double x2,
-    double y2,
-    double z2,
-    Paint paint,
-  ) {
-    if (!camera.project(x1, y1, z1)) return;
-    final double sx1 = camera.sx;
-    final double sy1 = camera.sy;
-
-    if (!camera.project(x2, y2, z2)) return;
-    final double sx2 = camera.sx;
-    final double sy2 = camera.sy;
-
-    canvas.drawLine(Offset(sx1, sy1), Offset(sx2, sy2), paint);
+    // Atmospheric haze gradient over ground near horizon
+    final Paint hazeGrad = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          Color(0x8CBFD7E6),
+          Color(0x00BFD7E6),
+        ],
+        stops: [0.0, 1.0],
+      ).createShader(Rect.fromLTWH(0, horizonY, screenW, 80.0));
+    canvas.drawRect(Rect.fromLTWH(0, horizonY, screenW, 80.0), hazeGrad);
   }
 }
