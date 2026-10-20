@@ -102,6 +102,7 @@ class ArcheryGame extends FlameGame {
     ArcheryAudio.init();
     cameraRig.setTargetDistance(targetDistance);
     background.activeDistance = targetDistance;
+    await background.load();
 
     // Connect aim controller firing hook
     controller.onFireAt = (double crossX, double crossY) {
@@ -396,5 +397,5 @@ class ArcheryGame extends FlameGame {
   }
 
   @override
-  Color backgroundColor() => const Color(0xFF060913);
+  Color backgroundColor() => const Color(0xFF6BA4E8);
 }
