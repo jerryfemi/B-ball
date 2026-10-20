@@ -12,7 +12,7 @@ import '../camera/archery_camera.dart';
 class TargetBoard {
   final ArcheryCamera camera;
 
-  TargetBoard({required this.camera, double initialDistance = ArcheryK.distNear})
+  TargetBoard({required this.camera, double initialDistance = ArcheryK.distanceM})
       : distance = initialDistance;
 
   /// Current distance from archer in meters (e.g. 20, 40, 60).
@@ -45,19 +45,6 @@ class TargetBoard {
   ui.Image? _cachedFaceImage;
   double _cachedRadiusPx = 0.0;
   bool _isRasterizing = false;
-
-  void updateDistance(double newDistance) {
-    if (distance != newDistance) {
-      distance = newDistance;
-      _invalidateCache();
-    }
-  }
-
-  void _invalidateCache() {
-    _cachedFaceImage?.dispose();
-    _cachedFaceImage = null;
-    _cachedRadiusPx = 0.0;
-  }
 
   void dispose() {
     _cachedFaceImage?.dispose();
