@@ -1,114 +1,78 @@
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import '../archery_constants.dart';
 import '../archery_game.dart';
+import '../camera/camera_rig.dart';
 import '../physics/target_scoring.dart';
 import 'hit_popup.dart';
 import 'round_summary.dart';
 
-/// Flutter HUD Overlay for the Archery prototype.
+/// Flutter HUD Overlay for the GamePigeon-style Archery prototype (Build Plan v2).
 ///
-/// Styled with the DunkVerse "luxury obsidian" design system:
-/// - Dark slate surfaces (#0A0E1A, #0F172A, #1E2638)
-/// - Neon cyan (#00FFCC) and electric sky (#38BDF8) accents
-/// - Responsive draw meter, round arrow quiver, live score, and summary card
-class ArcheryHud extends StatefulWidget {
+/// Features:
+/// - Top score bar with avatars, set points, count-up scores, and quiver dots.
+/// - Automatically fades out during raising, aiming, and chase phases.
+/// - Automatically fades in during atLine, closeup, and returning phases.
+/// - Hit score popup at target impact point (#F59E0B with dark outline).
+/// - Set End Card modal over the target.
+/// - Only rebuilds on real game state changes (no 60 fps notify bug).
+class ArcheryHud extends StatelessWidget {
   final ArcheryGame game;
 
   const ArcheryHud({super.key, required this.game});
 
   @override
-  State<ArcheryHud> createState() => _ArcheryHudState();
-}
-
-class _ArcheryHudState extends State<ArcheryHud> with SingleTickerProviderStateMixin {
-  late final AnimationController _flashController;
-  bool _lastFullDraw = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _flashController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 350),
-    );
-  }
-
-  @override
-  void dispose() {
-    _flashController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: Listenable.merge([widget.game.hudNotifier, _flashController]),
-      builder: (context, child) {
-        final double draw = widget.game.controller.draw;
-        final bool isHolding = widget.game.controller.isHolding;
-        final bool isCancelZone = widget.game.controller.isCancelZone;
-        final bool isFullDraw = draw >= ArcheryK.fullDrawPlateau;
+    return ValueListenableBuilder<int>(
+      valueListenable: game.hudNotifier,
+      builder: (context, _, child) {
+        final ShotPhase phase = game.cameraRig.phase;
 
-        if (isFullDraw && !_lastFullDraw) {
-          _flashController.forward(from: 0.0);
-        }
-        _lastFullDraw = isFullDraw;
+        // Hide score bar during raising, aiming, and chase
+        final bool showScoreBar = phase == ShotPhase.atLine ||
+            phase == ShotPhase.closeup ||
+            phase == ShotPhase.returning ||
+            phase == ShotPhase.setEnd;
 
         return Stack(
           children: [
             // Top App Bar / Scoreboard
             Positioned(
-              top: MediaQuery.of(context).padding.top + 12.0,
+              top: MediaQuery.of(context).padding.top + 10.0,
               left: 16.0,
               right: 16.0,
-              child: _buildTopBar(context),
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 250),
+                opacity: showScoreBar ? 1.0 : 0.0,
+                child: _buildTopScoreBar(context),
+              ),
             ),
 
-            // Right-side Vertical Draw Meter (appears when holding)
-            Positioned(
-              right: 20.0,
-              top: MediaQuery.of(context).size.height * 0.32,
-              bottom: MediaQuery.of(context).size.height * 0.32,
-              child: _buildDrawMeter(draw, isHolding, isFullDraw),
-            ),
-
-            // Bottom Guide or Cancel Zone Alert
-            Positioned(
-              bottom: 24.0,
-              left: 20.0,
-              right: 20.0,
-              child: _buildBottomIndicator(isHolding, isCancelZone, isFullDraw),
-            ),
-
-            // Dev telemetry badge (top-left below header)
-            Positioned(
-              left: 16.0,
-              top: MediaQuery.of(context).padding.top + 76.0,
-              child: _buildDevTelemetry(),
-            ),
-
-            // Hit score floating popup at impact point
-            if (widget.game.lastShotScore != null &&
-                widget.game.lastHitScreenPos != null)
-              HitPopupOverlay(
-                key: ValueKey(widget.game.lastShotScore.hashCode),
-                score: widget.game.lastShotScore!,
-                position: widget.game.lastHitScreenPos!,
-                onDismissed: widget.game.clearLastHitPopup,
+            // Bottom Guide at Shooting Line
+            if (phase == ShotPhase.atLine)
+              Positioned(
+                bottom: 24.0,
+                left: 20.0,
+                right: 20.0,
+                child: _buildBottomGuide(),
               ),
 
-            // End-of-Round or Match Summary Modal
-            if (widget.game.isRoundComplete)
-              RoundSummaryCard(
-                roundIndex: widget.game.currentRoundIndex,
-                distance: widget.game.targetDistance,
-                roundScores:
-                    widget.game.roundScores[widget.game.currentRoundIndex],
-                totalScore: widget.game.totalScore,
-                totalXCount: widget.game.totalXCount,
-                isMatchOver: widget.game.isMatchComplete,
-                onContinue: widget.game.advanceNextRound,
+            // Hit score floating popup at impact point
+            if (game.lastShotScore != null && game.lastHitScreenPos != null)
+              HitPopupOverlay(
+                key: ValueKey(game.lastShotScore.hashCode),
+                score: game.lastShotScore!,
+                position: game.lastHitScreenPos!,
+                onDismissed: game.clearLastHitPopup,
+              ),
+
+            // Set End Summary Modal Card
+            if (phase == ShotPhase.setEnd || (game.isSetComplete && phase == ShotPhase.closeup && game.cameraRig.phaseTime > 1.0))
+              SetEndCard(
+                setIndex: game.currentSetIndex,
+                userScores: game.setScores[game.currentSetIndex],
+                userSetPoints: game.userSetPoints,
+                opponentSetPoints: game.opponentSetPoints,
+                isMatchOver: game.isMatchComplete,
+                onContinue: game.advanceNextSet,
               ),
           ],
         );
@@ -116,17 +80,18 @@ class _ArcheryHudState extends State<ArcheryHud> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildTopBar(BuildContext context) {
-    final int roundIndex = widget.game.currentRoundIndex;
-    final List<ShotScore> currentRoundScores =
-        widget.game.roundScores[roundIndex];
+  Widget _buildTopScoreBar(BuildContext context) {
+    final int setIdx = game.currentSetIndex;
+    final List<ShotScore> currentScores =
+        setIdx < game.setScores.length ? game.setScores[setIdx] : [];
+    final int currentScore = game.currentSetScore;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+      padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 8.0),
       decoration: BoxDecoration(
-        color: const Color(0xFF0F172A).withValues(alpha: 0.90),
-        borderRadius: BorderRadius.circular(16.0),
-        border: Border.all(color: const Color(0xFF1E2638), width: 1.2),
+        color: const Color(0xFF0F172A).withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(18.0),
+        border: Border.all(color: const Color(0xFF1E283D), width: 1.2),
         boxShadow: const [
           BoxShadow(
             color: Color(0x66000000),
@@ -138,79 +103,97 @@ class _ArcheryHudState extends State<ArcheryHud> with SingleTickerProviderStateM
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Round & Distance Badge
+          // Left: User Avatar & Set Points Won
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 3.0),
+                width: 38.0,
+                height: 38.0,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1E2638),
-                  borderRadius: BorderRadius.circular(6.0),
+                  color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: const Color(0xFF10B981), width: 1.8),
                 ),
-                child: Text(
-                  'R${roundIndex + 1}',
-                  style: const TextStyle(
-                    color: Color(0xFF38BDF8),
-                    fontSize: 11.0,
-                    fontWeight: FontWeight.bold,
+                alignment: Alignment.center,
+                child: const Text(
+                  'YOU',
+                  style: TextStyle(
+                    color: Color(0xFF10B981),
+                    fontSize: 10.0,
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
               ),
-              const SizedBox(width: 8.0),
+              const SizedBox(width: 6.0),
+              _buildCoinIndicators(game.userSetPoints),
+            ],
+          ),
+
+          // Center: Set Label & Count-Up Score
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
               Text(
-                '${widget.game.targetDistance.toInt()}m',
+                'SET ${setIdx + 1} • 50ft',
                 style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14.0,
+                  color: Color(0xFF38BDF8),
+                  fontSize: 11.0,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 0.8,
                 ),
               ),
+              const SizedBox(height: 2.0),
+              TweenAnimationBuilder<double>(
+                tween: Tween<double>(begin: 0.0, end: currentScore.toDouble()),
+                duration: const Duration(milliseconds: 400),
+                builder: (context, value, child) {
+                  return Text(
+                    '${value.toInt()}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 22.0,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  );
+                },
+              ),
             ],
           ),
 
-          // 3 Arrow Quiver Status
+          // 3 Arrows Quiver Bubbles
           Row(
-            children: List.generate(3, (arrowIndex) {
-              if (arrowIndex < currentRoundScores.length) {
-                // Shot taken: shows ring result
-                final ShotScore s = currentRoundScores[arrowIndex];
+            children: List.generate(3, (i) {
+              if (i < currentScores.length) {
+                final ShotScore s = currentScores[i];
                 final Color ringColor = Color(s.colorValue);
                 return Container(
-                  width: 24.0,
-                  height: 24.0,
-                  margin: const EdgeInsets.symmetric(horizontal: 3.0),
+                  width: 22.0,
+                  height: 22.0,
+                  margin: const EdgeInsets.symmetric(horizontal: 2.5),
                   decoration: BoxDecoration(
                     color: const Color(0xFF0A0E1A),
                     shape: BoxShape.circle,
-                    border: Border.all(color: ringColor, width: 1.5),
+                    border: Border.all(color: ringColor, width: 1.6),
                   ),
                   alignment: Alignment.center,
                   child: Text(
                     s.displayLabel,
                     style: TextStyle(
                       color: ringColor,
-                      fontSize: 11.0,
+                      fontSize: 10.0,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                 );
-              } else if (arrowIndex == currentRoundScores.length) {
-                // Active arrow ready to fire (pulsing neon cyan outline)
+              } else if (i == currentScores.length) {
                 return Container(
-                  width: 24.0,
-                  height: 24.0,
-                  margin: const EdgeInsets.symmetric(horizontal: 3.0),
+                  width: 22.0,
+                  height: 22.0,
+                  margin: const EdgeInsets.symmetric(horizontal: 2.5),
                   decoration: BoxDecoration(
                     color: const Color(0x2200FFCC),
                     shape: BoxShape.circle,
                     border: Border.all(color: const Color(0xFF00FFCC), width: 1.8),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x6600FFCC),
-                        blurRadius: 6.0,
-                      ),
-                    ],
                   ),
                   alignment: Alignment.center,
                   child: Container(
@@ -223,13 +206,12 @@ class _ArcheryHudState extends State<ArcheryHud> with SingleTickerProviderStateM
                   ),
                 );
               } else {
-                // Future arrow (muted dot)
                 return Container(
-                  width: 24.0,
-                  height: 24.0,
-                  margin: const EdgeInsets.symmetric(horizontal: 3.0),
+                  width: 22.0,
+                  height: 22.0,
+                  margin: const EdgeInsets.symmetric(horizontal: 2.5),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1E2638),
+                    color: const Color(0xFF1E283D),
                     shape: BoxShape.circle,
                     border: Border.all(color: const Color(0xFF334155), width: 1.0),
                   ),
@@ -238,43 +220,29 @@ class _ArcheryHudState extends State<ArcheryHud> with SingleTickerProviderStateM
             }),
           ),
 
-          // Running Total Score
+          // Right: Opponent / Bot Avatar & Set Points Won
           Row(
             children: [
-              Text(
-                '${widget.game.totalScore}',
-                style: const TextStyle(
-                  color: Color(0xFF00FFCC),
-                  fontSize: 16.0,
-                  fontWeight: FontWeight.w900,
+              _buildCoinIndicators(game.opponentSetPoints),
+              const SizedBox(width: 6.0),
+              Container(
+                width: 38.0,
+                height: 38.0,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: const Color(0xFF8B5CF6), width: 1.8),
                 ),
-              ),
-              const Text(
-                ' PTS',
-                style: TextStyle(
-                  color: Color(0xFF64748B),
-                  fontSize: 10.0,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              if (widget.game.totalXCount > 0) ...[
-                const SizedBox(width: 8.0),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
-                  decoration: BoxDecoration(
-                    color: const Color(0x33F7D000),
-                    borderRadius: BorderRadius.circular(4.0),
-                  ),
-                  child: Text(
-                    '${widget.game.totalXCount}X',
-                    style: const TextStyle(
-                      color: Color(0xFFF7D000),
-                      fontSize: 11.0,
-                      fontWeight: FontWeight.bold,
-                    ),
+                alignment: Alignment.center,
+                child: const Text(
+                  'BOT',
+                  style: TextStyle(
+                    color: Color(0xFF8B5CF6),
+                    fontSize: 10.0,
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
-              ],
+              ),
             ],
           ),
         ],
@@ -282,107 +250,29 @@ class _ArcheryHudState extends State<ArcheryHud> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildDrawMeter(double draw, bool isHolding, bool isFullDraw) {
-    final double opacity = isHolding ? 1.0 : (draw > 0.05 ? draw : 0.0);
-    if (opacity <= 0.0) return const SizedBox.shrink();
-
-    final Color barColor = isFullDraw ? const Color(0xFF00FFCC) : const Color(0xFF38BDF8);
-
-    return Opacity(
-      opacity: opacity,
-      child: Container(
-        width: 32.0,
-        padding: const EdgeInsets.symmetric(vertical: 8.0),
-        decoration: BoxDecoration(
-          color: const Color(0xFF0F172A).withValues(alpha: 0.8),
-          borderRadius: BorderRadius.circular(16.0),
-          border: Border.all(
-            color: isFullDraw ? const Color(0xFF00FFCC) : const Color(0xFF1E2638),
-            width: isFullDraw ? 1.8 : 1.0,
+  Widget _buildCoinIndicators(int count) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(3, (i) {
+        final bool earned = i < count;
+        return Container(
+          width: 8.0,
+          height: 8.0,
+          margin: const EdgeInsets.symmetric(horizontal: 1.5),
+          decoration: BoxDecoration(
+            color: earned ? const Color(0xFFF59E0B) : const Color(0xFF1E283D),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: earned ? const Color(0xFFFBBF24) : const Color(0xFF334155),
+              width: 0.8,
+            ),
           ),
-          boxShadow: isFullDraw
-              ? const [
-                  BoxShadow(
-                    color: Color(0x6600FFCC),
-                    blurRadius: 12.0,
-                    spreadRadius: 1.0,
-                  )
-                ]
-              : null,
-        ),
-        child: Column(
-          children: [
-            Text(
-              '${(draw * 100).toInt()}%',
-              style: TextStyle(
-                color: isFullDraw ? const Color(0xFF00FFCC) : Colors.white,
-                fontSize: 9.0,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 6.0),
-            Expanded(
-              child: RotatedBox(
-                quarterTurns: 3,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(4.0),
-                  child: LinearProgressIndicator(
-                    value: draw.clamp(0.0, 1.0),
-                    backgroundColor: const Color(0xFF1E2638),
-                    valueColor: AlwaysStoppedAnimation<Color>(barColor),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 6.0),
-            Icon(
-              Icons.bolt_rounded,
-              size: 14.0,
-              color: isFullDraw ? const Color(0xFF00FFCC) : const Color(0xFF94A3B8),
-            ),
-          ],
-        ),
-      ),
+        );
+      }),
     );
   }
 
-  Widget _buildBottomIndicator(bool isHolding, bool isCancelZone, bool isFullDraw) {
-    if (widget.game.isRoundComplete) {
-      return const SizedBox.shrink();
-    }
-
-    if (isCancelZone) {
-      return Container(
-        padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 20.0),
-        decoration: BoxDecoration(
-          color: const Color(0xFFEF4444).withValues(alpha: 0.9),
-          borderRadius: BorderRadius.circular(12.0),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x88EF4444),
-              blurRadius: 16.0,
-            ),
-          ],
-        ),
-        child: const Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.cancel_rounded, color: Colors.white, size: 18.0),
-            SizedBox(width: 8.0),
-            Text(
-              'RELEASE TO CANCEL SHOT',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 13.0,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1.0,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
+  Widget _buildBottomGuide() {
     return Center(
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
@@ -391,57 +281,15 @@ class _ArcheryHudState extends State<ArcheryHud> with SingleTickerProviderStateM
           borderRadius: BorderRadius.circular(20.0),
           border: Border.all(color: const Color(0xFF1E2638), width: 1.0),
         ),
-        child: Text(
-          isHolding
-              ? (isFullDraw ? 'READY • RELEASE TO FIRE' : 'DRAWING...')
-              : 'HOLD ANYWHERE TO DRAW & AIM',
+        child: const Text(
+          'HOLD ANYWHERE TO AIM',
           style: TextStyle(
-            color: isFullDraw
-                ? const Color(0xFF00FFCC)
-                : (isHolding ? const Color(0xFF38BDF8) : const Color(0xFF94A3B8)),
+            color: Color(0xFF94A3B8),
             fontSize: 12.0,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.8,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.0,
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildDevTelemetry() {
-    final camera = widget.game.archeryCamera;
-    final double yawDeg = camera.yaw * 180.0 / math.pi;
-    final double pitchDeg = camera.pitch * 180.0 / math.pi;
-    final double fovDeg = camera.fovY * 180.0 / math.pi;
-
-    return Container(
-      padding: const EdgeInsets.all(8.0),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0F172A).withValues(alpha: 0.75),
-        borderRadius: BorderRadius.circular(8.0),
-        border: Border.all(color: const Color(0xFF1E2638), width: 1.0),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'YAW: ${yawDeg.toStringAsFixed(1)}° | PITCH: ${pitchDeg.toStringAsFixed(1)}°',
-            style: const TextStyle(
-              color: Color(0xFF38BDF8),
-              fontSize: 10.0,
-              fontFamily: 'monospace',
-            ),
-          ),
-          const SizedBox(height: 2.0),
-          Text(
-            'FOV: ${fovDeg.toStringAsFixed(1)}° | ARROW: ${widget.game.currentArrowIndex + 1}/3',
-            style: const TextStyle(
-              color: Color(0xFF94A3B8),
-              fontSize: 10.0,
-              fontFamily: 'monospace',
-            ),
-          ),
-        ],
       ),
     );
   }
