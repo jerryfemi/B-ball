@@ -62,9 +62,7 @@ class BowOverlay {
     screenH = height;
   }
 
-  void onRelease() {}
-
-  void update(double dt, double currentDraw, bool holding, {double slide = 0.0}) {
+  void update(double dt, {double slide = 0.0}) {
     slideProgress = slide;
   }
 
