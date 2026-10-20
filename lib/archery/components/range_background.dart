@@ -39,15 +39,6 @@ class RangeBackground {
   final Paint _fallbackGroundPaint = Paint()
     ..color = const Color(0xFF438A27)
     ..style = PaintingStyle.fill;
-  final Paint _fallbackStripePaint = Paint()
-    ..color = const Color(0xFF387A1E)
-    ..style = PaintingStyle.fill;
-  final Paint _fallbackLinePaint = Paint()
-    ..color = const Color(0xE6F8FAFC)
-    ..strokeWidth = 2.0
-    ..style = PaintingStyle.stroke;
-
-  final Path _reusablePath = Path();
 
   double _lastW = 0.0;
   double _lastH = 0.0;
@@ -197,84 +188,6 @@ class RangeBackground {
   }
 
   void _renderFallbackGround(Canvas canvas, double screenW, double screenH, double horizonY) {
-    // Solid base grass
     canvas.drawRect(Rect.fromLTWH(0, horizonY, screenW, screenH - horizonY), _fallbackGroundPaint);
-
-    // Perspective lawn stripes
-    final double focal = camera.focal;
-    final double eyeY = camera.eyeY;
-    final double eyeZ = camera.eyeZ;
-
-    for (double z = 0.0; z < 50.0; z += theme.stripeLen * 2.0) {
-      final double z0 = z;
-      final double z1 = z + theme.stripeLen;
-      final double dz0 = z0 - eyeZ;
-      final double dz1 = z1 - eyeZ;
-      if (dz1 <= 0.2) continue;
-
-      final double sy0 = dz0 > 0.1 ? (horizonY + focal * eyeY / dz0) : screenH;
-      final double sy1 = horizonY + focal * eyeY / dz1;
-
-      final double topY = sy1.clamp(horizonY, screenH);
-      final double botY = sy0.clamp(horizonY, screenH);
-      if (botY > topY) {
-        canvas.drawRect(Rect.fromLTWH(0, topY, screenW, botY - topY), _fallbackStripePaint);
-      }
-    }
-
-    // Lane lines: V-shape converging to target
-    if (camera.project(-0.55, 0.0, activeDistance) && camera.project(0.55, 0.0, activeDistance)) {
-      // Re-project left at target
-      camera.project(-0.55, 0.0, activeDistance);
-      final double targetLX = camera.sx;
-      final double targetLY = camera.sy;
-
-      camera.project(0.55, 0.0, activeDistance);
-      final double targetRX = camera.sx;
-
-      // Project at shooting line z = 0
-      camera.project(-3.2, 0.0, 0.0);
-      final double lineLX = camera.sx;
-      final double lineLY = camera.sy;
-
-      camera.project(3.2, 0.0, 0.0);
-      final double lineRX = camera.sx;
-
-      _reusablePath.reset();
-      _reusablePath.moveTo(lineLX, lineLY);
-      _reusablePath.lineTo(targetLX, targetLY);
-      canvas.drawPath(_reusablePath, _fallbackLinePaint);
-
-      _reusablePath.reset();
-      _reusablePath.moveTo(lineRX, lineLY);
-      _reusablePath.lineTo(targetRX, targetLY);
-      canvas.drawPath(_reusablePath, _fallbackLinePaint);
-
-      // Center line
-      camera.project(0.0, 0.0, 0.0);
-      final double centerLineX = camera.sx;
-      final double centerLineY = camera.sy;
-      camera.project(0.0, 0.0, activeDistance);
-      final double centerTargetX = camera.sx;
-      final double centerTargetY = camera.sy;
-
-      _reusablePath.reset();
-      _reusablePath.moveTo(centerLineX, centerLineY);
-      _reusablePath.lineTo(centerTargetX, centerTargetY);
-      canvas.drawPath(_reusablePath, _fallbackLinePaint);
-    }
-
-    // Atmospheric haze gradient over ground near horizon
-    final Paint hazeGrad = Paint()
-      ..shader = const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          Color(0x8CBFD7E6),
-          Color(0x00BFD7E6),
-        ],
-        stops: [0.0, 1.0],
-      ).createShader(Rect.fromLTWH(0, horizonY, screenW, 80.0));
-    canvas.drawRect(Rect.fromLTWH(0, horizonY, screenW, 80.0), hazeGrad);
   }
 }
