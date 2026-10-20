@@ -6,12 +6,12 @@ import 'archery_camera.dart';
 /// Shot sequence phases matching GamePigeon archery flow.
 enum ShotPhase {
   atLine,   // Wide view behind shooting line (Z = -2.0)
-  raising,  // Easing in towards aiming stance (Z: -2.0 -> 1.0)
+  raising,  // Easing in towards aiming stance (Z: -2.0 -> 1.0, zoom: 1.0 -> aimZoom)
   aiming,   // Static aiming viewpoint with crosshair and steady ring
   chase,    // Dolly chasing closely behind arrow in flight
   closeup,  // Close-up impact inspection at target (Z = D - 2.2)
   returning,// Smooth dolly return back to the shooting line
-  setEnd,   // Set completion summary card display
+  setEnd,   // Set completion summary card display (locked at closeup)
 }
 
 /// State-machine camera rig managing smooth cinematic dollies, chase cam, and shake.
@@ -26,6 +26,13 @@ class CameraRig {
   double currentEyeY = ArcheryK.eyeY;
   double currentEyeZ = ArcheryK.camLineZ;
 
+  // Starting pose for current phase interpolation (from -> to lerp)
+  double _fromX = 0.0;
+  double _fromY = ArcheryK.eyeY;
+  double _fromZ = ArcheryK.camLineZ;
+  double _fromZoom = 1.0;
+  double _fromBowSlide = 0.0;
+
   // Spring velocity for chase camera smoothing (omega = 14)
   double _chaseVelX = 0.0;
   double _chaseVelY = 0.0;
@@ -37,21 +44,17 @@ class CameraRig {
   double shakeOffsetX = 0.0;
   double shakeOffsetY = 0.0;
 
-  // Crosshair sway offsets (passed into camera rendering)
-  double swayYaw = 0.0;
-  double swayPitch = 0.0;
-
-  // Aim dummy fields for backwards compatibility
-  double currentYaw = 0.0;
-  double currentPitch = 0.0;
-
   // Target distance
   double targetDistance = ArcheryK.distanceM;
+
+  // Track if current closeup is for the final arrow of the set
+  bool _isLastArrowOfSet = false;
 
   // Callbacks for phase transitions
   void Function()? onCloseupStarted;
   void Function()? onReturnedToLine;
   void Function()? onSetEndStarted;
+  void Function(ShotPhase phase)? onPhaseChanged;
 
   CameraRig({required this.camera});
 
@@ -66,26 +69,45 @@ class CameraRig {
     }
   }
 
+  /// Target-size-preserving aiming zoom based on screen dimensions and distance.
+  double get aimZoom {
+    if (camera.screenW <= 0.0 || camera.screenH <= 0.0 || camera.baseFocal <= 0.0) return 1.0;
+    final double depth = targetDistance - ArcheryK.camAimZ;
+    final double minSide = math.min(camera.screenW, camera.screenH);
+    final double calculated = (ArcheryK.aimFaceFrac * minSide * depth) /
+        (2.0 * ArcheryK.faceRadius * camera.baseFocal);
+    return calculated.clamp(1.0, 5.0);
+  }
+
+  /// Internal state transition recorder storing starting coordinates for deterministic easing.
+  void _enter(ShotPhase p) {
+    phase = p;
+    phaseTime = 0.0;
+    _fromX = currentEyeX;
+    _fromY = currentEyeY;
+    _fromZ = currentEyeZ;
+    _fromZoom = camera.zoom;
+    _fromBowSlide = bowSlideProgress;
+    onPhaseChanged?.call(p);
+  }
+
   /// Transition to raising phase upon finger touch down.
   void startRaising() {
     if (phase == ShotPhase.atLine || phase == ShotPhase.returning) {
-      phase = ShotPhase.raising;
-      phaseTime = 0.0;
+      _enter(ShotPhase.raising);
     }
   }
 
-  /// Cancel aim back to shooting line.
+  /// Cancel aim smoothly back to shooting line from current camera pose.
   void cancelAim() {
     if (phase == ShotPhase.raising || phase == ShotPhase.aiming) {
-      phase = ShotPhase.returning;
-      phaseTime = 0.0;
+      _enter(ShotPhase.returning);
     }
   }
 
   /// Triggered when arrow is fired.
   void fireShot() {
-    phase = ShotPhase.chase;
-    phaseTime = 0.0;
+    _enter(ShotPhase.chase);
     _chaseVelX = 0.0;
     _chaseVelY = 0.0;
     _chaseVelZ = 0.0;
@@ -93,21 +115,31 @@ class CameraRig {
 
   /// Triggered on arrow impact.
   void onImpact({bool isLastArrowOfSet = false}) {
-    phase = ShotPhase.closeup;
-    phaseTime = 0.0;
+    _isLastArrowOfSet = isLastArrowOfSet;
+    _enter(ShotPhase.closeup);
     onCloseupStarted?.call();
   }
 
-  /// Triggered after closeup concludes.
+  /// Smoothly dollies back to the shooting line from the current viewpoint.
   void returnToLine({bool isSetComplete = false}) {
     if (isSetComplete) {
-      phase = ShotPhase.setEnd;
-      phaseTime = 0.0;
+      _enter(ShotPhase.setEnd);
       onSetEndStarted?.call();
     } else {
-      phase = ShotPhase.returning;
-      phaseTime = 0.0;
+      _enter(ShotPhase.returning);
     }
+  }
+
+  /// Hard reset to line pose (e.g. on match restart).
+  void reset() {
+    _enter(ShotPhase.atLine);
+    currentEyeX = 0.0;
+    currentEyeY = ArcheryK.eyeY;
+    currentEyeZ = ArcheryK.camLineZ;
+    camera.zoom = 1.0;
+    _shakeAmp = 0.0;
+    shakeOffsetX = 0.0;
+    shakeOffsetY = 0.0;
   }
 
   /// Returns 0.0 (bow visible at line) to 1.0 (bow fully slid out of frame).
@@ -117,7 +149,7 @@ class CameraRig {
         return 0.0;
       case ShotPhase.raising:
         final double t = (phaseTime / 0.5).clamp(0.0, 1.0);
-        return _easeInOutCubic(t);
+        return _lerp(_fromBowSlide, 1.0, _easeInOutCubic(t));
       case ShotPhase.aiming:
       case ShotPhase.chase:
       case ShotPhase.closeup:
@@ -125,7 +157,7 @@ class CameraRig {
         return 1.0;
       case ShotPhase.returning:
         final double t = (phaseTime / 0.8).clamp(0.0, 1.0);
-        return 1.0 - _easeInOutCubic(t);
+        return _lerp(_fromBowSlide, 0.0, _easeInOutCubic(t));
     }
   }
 
@@ -137,17 +169,18 @@ class CameraRig {
         currentEyeX = 0.0;
         currentEyeY = ArcheryK.eyeY;
         currentEyeZ = ArcheryK.camLineZ;
+        camera.zoom = 1.0;
         break;
 
       case ShotPhase.raising:
         final double t = (phaseTime / 0.6).clamp(0.0, 1.0);
         final double ease = _easeInOutCubic(t);
-        currentEyeX = 0.0;
-        currentEyeY = ArcheryK.eyeY;
-        currentEyeZ = ArcheryK.camLineZ + (ArcheryK.camAimZ - ArcheryK.camLineZ) * ease;
+        currentEyeX = _lerp(_fromX, 0.0, ease);
+        currentEyeY = _lerp(_fromY, ArcheryK.eyeY, ease);
+        currentEyeZ = _lerp(_fromZ, ArcheryK.camAimZ, ease);
+        camera.zoom = _lerp(_fromZoom, aimZoom, ease);
         if (t >= 1.0 && isHolding) {
-          phase = ShotPhase.aiming;
-          phaseTime = 0.0;
+          _enter(ShotPhase.aiming);
         }
         break;
 
@@ -155,17 +188,24 @@ class CameraRig {
         currentEyeX = 0.0;
         currentEyeY = ArcheryK.eyeY;
         currentEyeZ = ArcheryK.camAimZ;
+        camera.zoom = aimZoom;
         break;
 
       case ShotPhase.chase:
+        // Ease zoom back to 1.0 during first 0.25s of flight
+        if (phaseTime < 0.25) {
+          final double t = (phaseTime / 0.25).clamp(0.0, 1.0);
+          camera.zoom = _lerp(_fromZoom, 1.0, _easeInOutCubic(t));
+        } else {
+          camera.zoom = 1.0;
+        }
+
         if (arrow != null && arrow.inFlight) {
-          // Chase camera position behind and above arrow
           final double maxZ = targetDistance - ArcheryK.camCloseupDist;
           final double desiredZ = (arrow.pos.z - ArcheryK.chaseBehind).clamp(ArcheryK.camAimZ, maxZ);
           final double desiredX = arrow.pos.x * 0.8;
           final double desiredY = arrow.pos.y + ArcheryK.chaseAbove;
 
-          // Critically damped spring (omega = 14) for silky-smooth follow
           const double omega = 14.0;
           final double ax = omega * omega * (desiredX - currentEyeX) - 2.0 * omega * _chaseVelX;
           final double ay = omega * omega * (desiredY - currentEyeY) - 2.0 * omega * _chaseVelY;
@@ -182,41 +222,45 @@ class CameraRig {
         break;
 
       case ShotPhase.closeup:
-        // Settle at target face closeup (Z = D - 2.2m)
         final double targetZ = targetDistance - ArcheryK.camCloseupDist;
         final double t = (phaseTime / 0.35).clamp(0.0, 1.0);
         final double ease = _easeInOutCubic(t);
 
-        currentEyeX = currentEyeX + (0.0 - currentEyeX) * ease;
-        currentEyeY = currentEyeY + (ArcheryK.targetCenterY - currentEyeY) * ease;
-        currentEyeZ = currentEyeZ + (targetZ - currentEyeZ) * ease;
+        currentEyeX = _lerp(_fromX, 0.0, ease);
+        currentEyeY = _lerp(_fromY, ArcheryK.targetCenterY, ease);
+        currentEyeZ = _lerp(_fromZ, targetZ, ease);
+        camera.zoom = _lerp(_fromZoom, 1.0, ease);
 
         if (phaseTime >= 1.4) {
-          returnToLine();
+          if (_isLastArrowOfSet) {
+            _enter(ShotPhase.setEnd);
+            onSetEndStarted?.call();
+          } else {
+            _enter(ShotPhase.returning);
+          }
         }
         break;
 
       case ShotPhase.returning:
         final double t = (phaseTime / 0.8).clamp(0.0, 1.0);
         final double ease = _easeInOutCubic(t);
-        final double startZ = targetDistance - ArcheryK.camCloseupDist;
 
-        currentEyeX = 0.0;
-        currentEyeY = ArcheryK.targetCenterY + (ArcheryK.eyeY - ArcheryK.targetCenterY) * ease;
-        currentEyeZ = startZ + (ArcheryK.camLineZ - startZ) * ease;
+        currentEyeX = _lerp(_fromX, 0.0, ease);
+        currentEyeY = _lerp(_fromY, ArcheryK.eyeY, ease);
+        currentEyeZ = _lerp(_fromZ, ArcheryK.camLineZ, ease);
+        camera.zoom = _lerp(_fromZoom, 1.0, ease);
 
         if (t >= 1.0) {
-          phase = ShotPhase.atLine;
-          phaseTime = 0.0;
+          _enter(ShotPhase.atLine);
           onReturnedToLine?.call();
         }
         break;
 
       case ShotPhase.setEnd:
-        // Stay locked at closeup view until player dismisses card
         currentEyeX = 0.0;
         currentEyeY = ArcheryK.targetCenterY;
         currentEyeZ = targetDistance - ArcheryK.camCloseupDist;
+        camera.zoom = 1.0;
         break;
     }
 
@@ -239,6 +283,8 @@ class CameraRig {
     camera.eyeZ = currentEyeZ;
     camera.prepare();
   }
+
+  static double _lerp(double a, double b, double t) => a + (b - a) * t;
 
   double _easeInOutCubic(double t) {
     return t < 0.5 ? 4.0 * t * t * t : 1.0 - math.pow(-2.0 * t + 2.0, 3.0) / 2.0;
