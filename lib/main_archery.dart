@@ -62,22 +62,21 @@ class _ArcheryGameScreenState extends State<ArcheryGameScreen> {
           behavior: HitTestBehavior.opaque,
           onPointerDown: (event) {
             _game.controller.onPointerDown(
+              event.pointer,
               event.localPosition.dx,
               event.localPosition.dy,
             );
           },
           onPointerMove: (event) {
             _game.controller.onPointerMove(
+              event.pointer,
               event.localPosition.dx,
               event.localPosition.dy,
-              event.delta.dx,
-              event.delta.dy,
             );
           },
           onPointerUp: (event) {
             _game.controller.onPointerUp(
-              event.localPosition.dx,
-              event.localPosition.dy,
+              event.pointer,
             );
           },
           onPointerCancel: (_) {
