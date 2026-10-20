@@ -1,6 +1,8 @@
 import 'dart:math' as math;
+
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
+
 import 'archery_constants.dart';
 import 'audio/archery_audio.dart';
 import 'camera/archery_camera.dart';
@@ -68,7 +70,10 @@ class ArcheryGame extends FlameGame {
     cameraRig = CameraRig(camera: archeryCamera);
     controller = DrawAimController(camera: archeryCamera, cameraRig: cameraRig);
     background = RangeBackground(camera: archeryCamera);
-    targetBoard = TargetBoard(camera: archeryCamera, initialDistance: targetDistance);
+    targetBoard = TargetBoard(
+      camera: archeryCamera,
+      initialDistance: targetDistance,
+    );
     windPill = WindPill(camera: archeryCamera, cameraRig: cameraRig);
     bowOverlay = BowOverlay(camera: archeryCamera);
     flyingArrow = FlyingArrow(camera: archeryCamera, physics: arrowPhysics);
@@ -159,7 +164,10 @@ class ArcheryGame extends FlameGame {
   /// Advances to next set, clearing stuck arrows and generating new wind.
   void advanceNextSet() {
     // Award set point to winner of completed set
-    final int currentSetTotal = setScores[currentSetIndex].fold(0, (sum, s) => sum + s.points);
+    final int currentSetTotal = setScores[currentSetIndex].fold(
+      0,
+      (sum, s) => sum + s.points,
+    );
     const int simulatedOpponentTotal = 26; // Simulated benchmark opponent
 
     if (currentSetTotal > simulatedOpponentTotal) {
@@ -218,8 +226,7 @@ class ArcheryGame extends FlameGame {
   int get totalScore =>
       setScores.expand((r) => r).fold(0, (sum, s) => sum + s.points);
 
-  int get totalXCount =>
-      setScores.expand((r) => r).where((s) => s.isX).length;
+  int get totalXCount => setScores.expand((r) => r).where((s) => s.isX).length;
 
   int get currentSetScore =>
       setScores[currentSetIndex].fold(0, (sum, s) => sum + s.points);
@@ -263,10 +270,7 @@ class ArcheryGame extends FlameGame {
     );
 
     // 3. Update Bow Overlay slide progress
-    bowOverlay.update(
-      clampedDt,
-      slide: cameraRig.bowSlideProgress,
-    );
+    bowOverlay.update(clampedDt, slide: cameraRig.bowSlideProgress);
 
     // 4. Update Arrow Physics
     final bool wasInFlight = arrowPhysics.inFlight;
@@ -290,7 +294,8 @@ class ArcheryGame extends FlameGame {
       );
 
       // Record shot
-      if (currentSetIndex < setScores.length && setScores[currentSetIndex].length < 3) {
+      if (currentSetIndex < setScores.length &&
+          setScores[currentSetIndex].length < 3) {
         setScores[currentSetIndex].add(score);
         currentArrowIndex = setScores[currentSetIndex].length;
       }
@@ -303,20 +308,25 @@ class ArcheryGame extends FlameGame {
       )) {
         lastHitScreenPos = Offset(archeryCamera.sx, archeryCamera.sy);
       } else {
-        lastHitScreenPos = Offset(archeryCamera.screenW * 0.5, archeryCamera.screenH * 0.5);
+        lastHitScreenPos = Offset(
+          archeryCamera.screenW * 0.5,
+          archeryCamera.screenH * 0.5,
+        );
       }
       lastShotScore = score;
 
       if (arrowPhysics.hitBoss) {
         cameraRig.addShake(score.isX ? 7.0 : 4.5);
-        stuckArrows.add(StuckArrow(
-          hitLocalX: arrowPhysics.hitLocalX,
-          hitLocalY: arrowPhysics.hitLocalY,
-          hitZ: arrowPhysics.targetDistance,
-          pitch: arrowPhysics.pitch,
-          yaw: arrowPhysics.yaw,
-          penetrationDepth: arrowPhysics.penetrationDepth,
-        ));
+        stuckArrows.add(
+          StuckArrow(
+            hitLocalX: arrowPhysics.hitLocalX,
+            hitLocalY: arrowPhysics.hitLocalY,
+            hitZ: arrowPhysics.targetDistance,
+            pitch: arrowPhysics.pitch,
+            yaw: arrowPhysics.yaw,
+            penetrationDepth: arrowPhysics.penetrationDepth,
+          ),
+        );
       } else if (arrowPhysics.hitGround) {
         cameraRig.addShake(1.5);
       }
