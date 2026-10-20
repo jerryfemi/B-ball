@@ -31,31 +31,49 @@ void main() {
     return; 
   }
 
-  float dist   = uEyeY * uFocal / dy;                 // distance ahead (m)
-  float wx     = uEyeX + (p.x - uSize.x * 0.5) * dist / uFocal;
-  float wz     = uEyeZ + dist;
-  float pxPerM = uFocal / dist;
+  float dist    = uEyeY * uFocal / dy;                 // distance ahead (m)
+  float wx      = uEyeX + (p.x - uSize.x * 0.5) * dist / uFocal;
+  float wz      = uEyeZ + dist;
 
-  // mowed stripes (bands across the lane)
-  float stripe = mod(floor(wz / uStripeLen), 2.0);
-  vec3 col = mix(uGrassA.rgb, uGrassB.rgb, stripe);
+  float pxPerMx = uFocal / dist;                       // px per metre across the lane
+  float pxPerMz = uFocal * uEyeY / (dist * dist);      // px per metre ALONG the lane (foreshortened)
 
-  // grass detail, faded with distance to avoid shimmer (no mipmaps)
-  vec3 tex = texture(uGrassTex, fract(vec2(wx, wz) * 0.35)).rgb;
-  float detail = exp(-dist / 18.0);
-  col *= mix(1.0, 0.7 + 0.6 * tex.g, detail);
+  // mowed stripes with anti-aliased edges (eliminates edge shimmer)
+  float s      = wz / uStripeLen;
+  float band   = mod(floor(s), 2.0);
+  float dEdge  = min(fract(s), 1.0 - fract(s)) * uStripeLen * pxPerMz;
+  float stripe = mix(0.5, band, clamp(dEdge, 0.0, 1.0));
+  vec3 col     = mix(uGrassA.rgb, uGrassB.rgb, stripe);
 
-  // lane lines: centre line + two lines converging toward the target legs (the "V")
+  // two-scale detail: fine blades (~0.8 m tile) + broad patches (~9 m tile)
+  float fine     = texture(uGrassTex, fract(vec2(wx, wz) * 1.25)).r;
+  float patch    = texture(uGrassTex, fract(vec2(wx, wz) * 0.11 + 0.37)).r;
+  float fineFade = clamp((pxPerMx - 25.0) / 60.0, 0.0, 1.0); // fade fine blades before aliasing
+  col *= mix(1.0, 0.72 + 0.56 * fine, fineFade * 0.9);
+  col *= 0.86 + 0.28 * patch;
+
+  // mowing sheen: blades on light stripes catch more light
+  col *= mix(1.0, 1.06, stripe < 0.5 ? 1.0 : 0.0);
+
+  // subtle hue drift so the field is not a single uniform flat green
+  col = mix(col, col * vec3(1.10, 1.03, 0.82), patch * 0.35);
+
+  // lane lines: centre line + two lines converging toward target legs (the "V")
   float onLane = step(0.0, wz) * step(wz, uTargetZ);
-  float t = clamp(wz / uTargetZ, 0.0, 1.0);
-  float sideX = mix(3.2, 0.55, t);                     // from wide at the line to the legs
-  float lines = max(lineMask(wx, 0.025, pxPerM),
-                max(lineMask(wx - sideX, 0.04, pxPerM),
-                    lineMask(wx + sideX, 0.04, pxPerM))) * onLane;
-                    
-  // shooting line across the lane at z = 0
-  lines = max(lines, lineMask(wz, 0.05, pxPerM) * step(abs(wx), 6.0));
+  float t      = clamp(wz / uTargetZ, 0.0, 1.0);
+  float sideX  = mix(3.2, 0.55, t);                    // from wide at the line to the legs
+  float lines  = max(lineMask(wx, 0.025, pxPerMx),
+                 max(lineMask(wx - sideX, 0.04, pxPerMx),
+                     lineMask(wx + sideX, 0.04, pxPerMx))) * onLane;
+                     
+  // shooting line across the lane at z = 0 (using pxPerMz for horizontal line AA)
+  lines = max(lines, (1.0 - clamp(abs(wz) * pxPerMz - 0.05 * pxPerMz + 0.5, 0.0, 1.0)) * step(abs(wx), 6.0));
   col = mix(col, vec3(0.97), lines * 0.92);
+
+  // soft contact darkening under the target stand (grounds the target board)
+  float targetDistM = length(vec2(wx, wz - uTargetZ));
+  float contactDark = smoothstep(0.7, 0.2, targetDistM);
+  col *= mix(1.0, 0.80, contactDark);
 
   // atmospheric haze
   float haze = 1.0 - exp(-dist / uHazeDist);
