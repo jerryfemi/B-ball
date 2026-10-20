@@ -34,10 +34,12 @@ class SetEndCard extends StatelessWidget {
     final bool isTie = userTotal == opponentTotal;
 
     return Center(
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 24.0),
-        padding: const EdgeInsets.all(24.0),
-        decoration: BoxDecoration(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420.0),
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 12.0),
+          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 22.0),
+          decoration: BoxDecoration(
           color: const Color(0xFF0F172A).withValues(alpha: 0.94),
           borderRadius: BorderRadius.circular(24.0),
           border: Border.all(color: const Color(0xFF1E283D), width: 1.5),
@@ -220,8 +222,9 @@ class SetEndCard extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildCoinRow(int count, Color color) {
     return Row(
