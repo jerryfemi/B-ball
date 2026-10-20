@@ -15,14 +15,16 @@ class ArcheryCamera {
   double eyeY = ArcheryK.eyeY;
   double eyeZ = ArcheryK.camLineZ;
 
-  // Fixed vertical FOV (60 degrees)
-  double fovY = ArcheryK.fovYRad;
-
   // Viewport dimensions
   double screenW = 0.0;
   double screenH = 0.0;
 
+  // Zoom & UI scale
+  double zoom = 1.0;
+  double uiScale = 1.0;
+
   // Cached optical parameters
+  double _baseF = 0.0;
   double _f = 0.0;
   double _cx = 0.0;
   double _cy = 0.0;
@@ -36,10 +38,13 @@ class ArcheryCamera {
   double outX = 0.0;
   double outY = 0.0;
 
-  /// Precomputes optical centers and focal length.
+  /// Precomputes optical centers and focal length using contain-FOV rule.
   void prepare() {
-    if (screenH <= 0.0) return;
-    _f = (screenH * 0.5) / math.tan(fovY * 0.5);
+    if (screenW <= 0.0 || screenH <= 0.0) return;
+    final double fV = (screenH * 0.5) / math.tan(ArcheryK.fovYRad * 0.5);
+    final double fH = (screenW * 0.5) / math.tan(ArcheryK.minFovXRad * 0.5);
+    _baseF = math.min(fV, fH);
+    _f = _baseF * zoom;
     _cx = screenW * 0.5;
     _cy = screenH * ArcheryK.horizonFrac; // Lens shift
   }
@@ -72,6 +77,7 @@ class ArcheryCamera {
   /// Effective focal length in pixels.
   double get focalLengthPx => _f;
   double get focal => _f;
+  double get baseFocal => _baseF;
 
   double get opticalCenterX => _cx;
   double get opticalCenterY => _cy;
