@@ -1,470 +1,439 @@
-# Archery Prototype — Build Plan & Guidelines
+# Archery Prototype — Build Plan v2 (GamePigeon-style)
 
-> For: the AI assistant (or developer) building the archery prototype inside the DunkVerse codebase.
-> Goal: a **local-only, playable archery prototype** that *feels* great. No Firebase, no deploys, no changes to basketball.
-> Integration (routing, matches, inbox) comes later, after review.
-
----
-
-## 0. Ground rules (read first)
-
-1. **Same repo, isolated folder.** All new code lives in `lib/archery/`. All new assets live in `assets/archery/`.
-2. **Do not edit anything under `lib/game/`** (the basketball game), `lib/main.dart`, Firebase config, `web/index.html`, or `firebase.json`. Importing shared helpers from `lib/game/` (read-only use) is fine — e.g. `fx/game_feel.dart`, `fx/glow_sprite.dart`, `ui/common/app_colors.dart`.
-   - If you believe a shared file *must* change (e.g. the audio backend), stop and write the proposed change in a note instead of making it.
-3. **Separate dev entry point.** Create `lib/main_archery.dart` and run with:
-   ```
-   flutter run -d chrome -t lib/main_archery.dart
-   ```
-   The real app (`lib/main.dart`) must build and behave exactly as before.
-4. **No Firebase calls, no network.** Pure local game.
-5. **Performance rules (same as DunkVerse):**
-   - Zero allocations in `update()` / `render()`: no `Paint()`, `Rect.fromCenter()`, `Offset(...)` chains, `List`s, `.map()`, `.where()`, closures created per frame. Cache everything on the component or as `static final`.
-   - Use `package:vector_math/vector_math_64.dart` for physics; Forge2D is **not needed** for archery (do not add a Forge2D world).
-   - Fixed-timestep physics, clamped frame `dt`.
-   - Read device pixel ratio once and cache it.
-6. **Determinism.** Physics output must depend only on the inputs (aim, draw, wind seed, time since release). No `DateTime.now()`, no `Random()` without a seed, no frame `dt` inside the physics math. This is required for multiplayer replays later.
-7. **Style:** match the DunkVerse "luxury obsidian" palette for all HUD/UI (`#0A0E1A`, `#0F172A`, `#1E2638`, accents `#38BDF8`, `#00FFCC`, `#F59E0B`, `#EF4444`; text white / `#94A3B8`). No default SnackBars.
+> For: the AI assistant building the archery prototype inside the DunkVerse repo.
+> **v2 replaces v1.** Milestones 1–3 of v1 are done. After studying a screen recording of GamePigeon Archery, the **camera, aiming controls, shot sequence and scene** change. The physics core stays.
+> Still local-only: no Firebase, no deploys, no changes to basketball.
 
 ---
 
-## 1. Folder structure
+## 0. Ground rules (unchanged from v1)
 
-```
-lib/
-  main_archery.dart                 # dev-only entry: runApp(ArcheryDevApp())
-  archery/
-    archery_game.dart               # FlameGame: owns world, camera, round state
-    archery_constants.dart          # every tunable number in ONE place
-    physics/
-      arrow_physics.dart            # ArrowPhysics3D: fixed-step integration + hit detection
-      sight_solver.dart             # computes the "sight mark" (drop compensation) per distance
-      wind_model.dart               # seeded wind + gusts
-      sway_model.dart               # seeded aim sway / fatigue
-      target_scoring.dart           # hit point -> ring score
-    camera/
-      archery_camera.dart           # yaw/pitch/FOV pinhole camera, zero-alloc projection
-      camera_rig.dart               # spring-smoothed FOV zoom, shot cam, shake
-    input/
-      draw_aim_controller.dart      # hold-to-draw, drag-to-aim, release-to-fire
-    components/
-      range_background.dart         # sky, treeline, ground lanes (parallax)
-      target_board.dart             # stand + straw boss + procedural face
-      flying_arrow.dart             # arrow in flight (sprite between projected tip & nock)
-      stuck_arrow.dart              # arrow embedded in target, quiver animation
-      bow_overlay.dart              # foreground bow + string + hands
-      wind_flag.dart                # small verlet cloth flag on the target pole
-      wind_particles.dart           # drifting dust/leaves showing wind (SoA arrays)
-      arrow_trail.dart              # faint streak from a ring buffer
-    ui/
-      archery_hud.dart              # score, arrows left, round, wind readout, draw meter
-      hit_popup.dart                # "10", "X", "9" popup at hit point
-      round_summary.dart            # end-of-round card
-    telemetry/
-      arrow_shot.dart               # compact record of one shot (for later replays)
-assets/
-  archery/
-    images/ ...
-    audio/ ...
-test/
-  archery/
-    arrow_physics_test.dart
-    sight_solver_test.dart
-    scoring_test.dart
-```
-
-Register `assets/archery/images/` and `assets/archery/audio/` in `pubspec.yaml` (adding asset folders is the only allowed `pubspec.yaml` change).
+1. All code in `lib/archery/`, all assets in `assets/archery/`, dev entry `lib/main_archery.dart`:
+   `flutter run -d chrome -t lib/main_archery.dart`
+2. **Do not edit** `lib/game/**` (basketball), `lib/main.dart`, Firebase files, `web/index.html`, `firebase.json`. Read-only imports of shared helpers are fine.
+3. No Firebase, no network.
+4. **Zero allocations** in `update()`/`render()`: no `Paint()`, `Rect`, `Offset`, `List`, `.map/.where` or closures per frame. Allocating on one-off *events* (an impact, a round end) is fine.
+5. **Deterministic physics:** results depend only on inputs + seeds. No `DateTime.now()`, no unseeded `Random()`, no frame `dt` inside physics maths.
+6. HUD colours: DunkVerse obsidian palette (already in `ArcheryK`).
 
 ---
 
-## 2. World units & coordinate system
+## 1. What changes from v1 (migration table)
 
-Same convention as DunkVerse so later code sharing is easy:
+| Area | v1 (built) | v2 (GamePigeon) | Action |
+|---|---|---|---|
+| `physics/arrow_physics.dart` | fixed-step flight, plane-crossing hit | same | **Keep** |
+| `physics/target_scoring.dart` | ring scoring, line-cutter | same, new face size | **Keep**, update constants |
+| `physics/sight_solver.dart` | pitch offset for centre | also needs a pitch for any aim height | **Extend** (§5) |
+| `physics/wind_model.dart` | one crosswind per round, m/s | **new wind every arrow**, 2D direction, GamePigeon-style number | **Rewrite** (§6) |
+| `physics/sway_model.dart` | moves the camera, fatigue after 2.5 s | moves the **crosshair**: settles, steady window, then fatigue | **Rewrite** (§4.3) |
+| `camera/archery_camera.dart` | yaw/pitch/FOV pinhole | **no rotation**. Camera only **slides along Z** (dolly). Add lens shift `cy`. | **Simplify** (§3.1) |
+| `camera/camera_rig.dart` | spring zoom on draw, drag rotates camera | **shot-sequence state machine** (line → raise → aim → chase → close-up → return) | **Rewrite** (§3.2) |
+| `input/draw_aim_controller.dart` | hold-to-draw, drag rotates view | **touch-and-hold, thumb-roll moves crosshair**, steady ring, timer arc, release fires | **Rewrite** (§4) |
+| Draw power / under-draw drop | release early = slow arrow | **removed.** Every arrow flies at full speed. Skill = steadiness + wind reading. | **Remove** |
+| `components/range_background.dart` | night range, floodlights, drawn shapes | **daytime park** made of billboard images + **ground shader** + haze | **Replace** (§7) |
+| `components/bow_overlay.dart` | first-person drawn bow | bow sits on the right edge at the line, **slides out** when aiming | **Rework** (§8.1) |
+| Format | 3 rounds × 3 arrows at 20/40/60 m | **sets of 3 arrows at 50 ft (15.24 m)**, set points | **Change** (§9) |
+| Slow-mo shot cam (great shots only) | — | **chase cam on every arrow, normal speed**, always ends on a close-up | **Replace** |
+| Wind flag, particles, floodlights | planned | **not used** | **Drop** |
 
-- Units: **meters, seconds**.
-- `X` = right, `Y` = up (ground at `Y = 0`), `Z` = downrange (away from the archer).
-- Archer eye: `eye = (0, 1.60, 0)`.
-- Arrow nock/launch point (anchor under the chin, slightly forward): `launch = (0, 1.52, 0.35)`.
-  The arrow starts **below the eye**, so the sight solver (section 5) must account for that offset. This is realistic and makes it look right.
-- Target face centre: `(0, 1.30, D)` where `D` is the round distance.
-- Target face: **122 cm World Archery face**, 10 rings, ring width `0.061 m`, outer radius `0.61 m`, X ring radius `0.0305 m`.
-- Boss (straw block behind the face): `1.30 m × 1.30 m`, `0.30 m` deep. Hitting boss outside the face = 0 points but the arrow still sticks.
-
-Suggested round distances: **20 m, 40 m, 60 m** (3 rounds × 3 arrows = max 90 points).
+### 1.1 Bug to fix now
+`ArcheryGame.update()` calls `_notifyHud()` **every frame**, which rebuilds the Flutter HUD 60 times a second. Only notify on real state changes (shot fired, impact, score change, phase change, wind change). The crosshair and rings are drawn on the Flame canvas, not in the Flutter HUD, so they don't need notifications.
 
 ---
 
-## 3. `archery_constants.dart` — starting values (tune by feel)
+## 2. World & constants (update `ArcheryK`)
+
+Units: meters, seconds. `X` right, `Y` up (ground `Y = 0`), `Z` downrange. The shooting line is `Z = 0`.
 
 ```dart
-class ArcheryK {
-  // Physics
-  static const double gravity = 9.81;          // real gravity — arrows are fast enough
-  static const double fullDrawSpeed = 62.0;    // m/s at full draw (arcade-fast, real bows ~55-90)
-  static const double minDrawSpeedRatio = 0.60;// speed at 0% draw = 60% of full
-  static const double fullDrawPlateau = 0.95;  // draw >= 0.95 counts as a perfect full draw
-  static const double dragK = 0.0006;          // quadratic drag coefficient (1/m)
-  static const double windAccelPerMps = 0.10;  // lateral accel (m/s²) per 1 m/s of wind
-  static const double fixedDt = 1.0 / 240.0;   // arrows are fast: 240 Hz step
-  static const int maxSubstepsPerFrame = 8;
+// Distance: GamePigeon uses 50 ft
+static const double distanceM = 15.24;          // 50 ft
+static const String distanceLabel = '50ft';
 
-  // Target
-  static const double faceRadius = 0.61;
-  static const double ringWidth = 0.061;
-  static const double xRingRadius = 0.0305;
-  static const double targetCenterY = 1.30;
+// Target (smaller face suits 50 ft; 80 cm WA face)
+static const double faceRadius   = 0.40;
+static const double ringWidth    = 0.040;
+static const double xRingRadius  = 0.020;
+static const double targetCenterY = 1.30;
+static const double boardWidth   = 1.00;   // white square board
+static const double boardHeight  = 1.00;
+static const double boardFrame   = 0.025;  // brown wooden edge
+static const double legHeight    = 0.80;   // board bottom height above ground
 
-  // Input / feel
-  static const double autoDrawSeconds = 0.70;  // hold time to reach full draw
-  static const double fatigueStartSeconds = 2.5;
-  static const double fatigueFullSeconds = 6.0;
-  static const double baseSwayRad = 0.0012;    // ≈ ±7 cm at 60 m
-  static const double fatigueSwayMultiplier = 3.0;
-  static const double aimSensitivity = 0.55;   // screen-px of reticle motion per px of drag
+// Physics: keep v1 values (gravity, fullDrawSpeed 62, dragK, fixedDt 1/240)
 
-  // Camera
-  static const double idleFovDeg = 42.0;
-  static const double faceScreenFraction = 0.38; // target face fills 38% of screen height at full draw
-  static const double fovSpringOmega = 9.0;      // critically damped spring speed
+// Camera
+static const double fovYDeg        = 60.0;   // wide portrait view, like GamePigeon
+static const double horizonFrac    = 0.52;   // lens shift: horizon sits at 52% of screen height
+static const double camLineZ       = -2.0;   // "at the line" view (behind the shooter)
+static const double camAimZ        = 1.0;    // aiming view (pushed in)
+static const double camCloseupDist = 2.2;    // close-up: camera this far in front of the target
+static const double chaseBehind    = 1.2;    // chase cam distance behind the arrow
+static const double chaseAbove     = 0.15;
+
+// Aim
+static const double aimGain        = 3.0;    // crosshair px per px of thumb movement (tune 2.5–5)
+static const double aimSmoothOmega = 18.0;   // low-pass on crosshair (removes touch jitter)
+static const double ringStartRadiusFrac = 0.30; // steady ring starts at 30% of screen width
+static const double ringSettleSeconds   = 1.8;  // ring shrinks to minimum over this time
+static const double shotTimerSeconds    = 5.0;  // arc fills over this; full = auto-fire
+
+// Sway (radians of aim angle)
+static const double swaySettle   = 0.0060;  // big wobble right after touch
+static const double swaySettleTau = 0.6;    // decays with this time constant
+static const double swayBase     = 0.0008;  // small wobble during the steady window
+static const double swayFatigue  = 0.0035;  // grows near the end of the timer
+static const double fatigueStart = 3.5;     // seconds into the hold
+
+// Wind (GamePigeon-style number 0.0 – 2.0)
+static const double windMaxDisplay = 2.0;
+static const double windLateralAccelPerUnit = 1.9;  // m/s² per 1.0 of displayed wind (crosswind)
+static const double windAlongAccelPerUnit   = 0.6;  // m/s² per 1.0 (tail/head wind)
+```
+
+**Wind calibration:** flight time at 50 ft is about 0.25 s. A pure crosswind of `1.0` gives drift ≈ ½·1.9·0.25² ≈ **6 cm ≈ 1.5 rings**, and `2.0` gives about 3 rings. That matches how much GamePigeon players aim off. Tune `windLateralAccelPerUnit` until it feels right.
+
+---
+
+## 3. Camera
+
+### 3.1 `ArcheryCamera`: no rotation, dolly only, lens shift
+
+The camera **never turns**. It always looks straight down `+Z` and only moves its position (`eyeX`, `eyeY`, `eyeZ`). This keeps billboards perfectly correct (§7) and makes the ground shader maths exact.
+
+```dart
+void prepare() {
+  _f  = (screenH * 0.5) / tan(fovY * 0.5);
+  _cx = screenW * 0.5;
+  _cy = screenH * ArcheryK.horizonFrac;   // lens shift instead of pitch
+}
+bool project(double x, double y, double z) {
+  final dz = z - eyeZ;
+  depth = dz;
+  if (dz <= 0.05) return false;
+  final inv = 1.0 / dz;
+  sx = _cx + _f * (x - eyeX) * inv;
+  sy = _cy - _f * (y - eyeY) * inv;
+  return true;
+}
+// Inverse: screen point -> point on the plane z = planeZ (for aiming)
+void unprojectToPlane(double sx, double sy, double planeZ) {
+  final dz = planeZ - eyeZ;
+  outX = eyeX + (sx - _cx) * dz / _f;
+  outY = eyeY - (sy - _cy) * dz / _f;
 }
 ```
+Remove `yaw`, `pitch` and the trig. `fovY` stays fixed (60°). Optionally narrow it by 2–4° in the close-up for a gentle zoom feel.
 
-**Why these wind numbers:** with constant lateral acceleration `a = 0.10 × W`, drift ≈ `½·a·t²`.
-For `W = 5 m/s` (≈ 11 mph): at 60 m (t ≈ 1.0 s) drift ≈ 0.25 m ≈ **4 rings**; at 20 m (t ≈ 0.33 s) drift ≈ 0.03 m ≈ **half a ring**.
-So distance naturally makes wind matter more. Tune `windAccelPerMps` with: `K = 2 · desiredDrift / (W · t²)`.
+### 3.2 `CameraRig`: shot-sequence state machine
 
----
+Every move eases in and out, and nothing cuts. This is the main reason GamePigeon feels smooth.
 
-## 4. Arrow physics (`arrow_physics.dart`)
+| Phase | Camera | Duration | HUD |
+|---|---|---|---|
+| `atLine` | `eyeZ = camLineZ`, `eyeY = 1.6` | until touch | score bar visible, wind pill visible, "50ft" tag visible |
+| `raising` | ease `eyeZ` from `camLineZ` → `camAimZ` (easeInOutCubic) | 0.6 s | score bar fades out; bow slides out (§8.1) |
+| `aiming` | still at `camAimZ` (shake only) | until release / timer | crosshair, steady ring, timer arc, wind pill |
+| `chase` | `eyeZ = min(arrow.z − chaseBehind, D − camCloseupDist)`; `eyeX → lerp(eyeX, arrow.x, 0.8)`; `eyeY = arrow.y + chaseAbove`. Smooth with a critically damped spring (ω ≈ 14) so the start does not jerk. | ~0.4–0.6 s | nothing (clean view) |
+| `closeup` | settle at `eyeZ = D − camCloseupDist`, `eyeX = 0`, `eyeY = targetCenterY` | 1.4 s | "+10" popup, score bar fades in and counts up |
+| `returning` | ease back to `camLineZ`, `eyeY = 1.6` | 0.8 s | wind pill shows the **new** wind |
+| `setEnd` (after the 3rd arrow) | stay in close-up | 2.0 s | big "SET n  29 - 25" card over the target, "+1" set point flies to the avatar |
 
-### 4.1 State (preallocated, mutated in place)
-
-```dart
-class ArrowPhysics3D {
-  final Vector3 pos = Vector3.zero();
-  final Vector3 vel = Vector3.zero();
-  final Vector3 prevPos = Vector3.zero();
-  double timeSinceRelease = 0;
-  double _acc = 0;
-  bool inFlight = false;
-  bool stuck = false;
-  // hit result
-  final Vector3 hitPoint = Vector3.zero();
-  double hitLocalX = 0, hitLocalY = 0;  // position on target face plane, meters from centre
-  int ring = 0; bool isX = false; bool hitBoss = false;
-  // visual orientation (derived, NOT fed back into physics)
-  double pitch = 0, yaw = 0;
-}
-```
-
-### 4.2 Forces per substep
-
-1. **Gravity:** `vel.y -= g·dt`
-2. **Quadratic drag relative to air** (small — mostly gives a slight speed loss):
-   `vRel = vel - windVec`; `vel -= dragK · |vRel| · vRel · dt`
-3. **Wind push** (the gameplay force): `vel.x += windAccelPerMps · windX(t) · dt`
-   (`windX(t)` from `WindModel`, using `timeSinceRelease`, not wall-clock time.)
-4. **Position:** semi-implicit Euler — update velocity first, then `pos += vel·dt`.
-
-Write the vector maths as scalar `x/y/z` fields (as `BallPhysics3D._contact` does) to avoid creating `Vector3` temporaries.
-
-### 4.3 Fixed-step loop (same pattern as `BallPhysics3D.update`)
-
-```dart
-void update(double frameDt) {
-  if (!inFlight) return;
-  _acc += frameDt.clamp(0.0, 0.05);
-  int n = 0;
-  while (_acc >= ArcheryK.fixedDt && n < ArcheryK.maxSubstepsPerFrame) {
-    _substep(ArcheryK.fixedDt);
-    _acc -= ArcheryK.fixedDt; n++;
-    if (!inFlight) break;
-  }
-  if (_acc > ArcheryK.fixedDt * 2) _acc = ArcheryK.fixedDt * 2;
-}
-```
-
-### 4.4 Hit detection — segment crossing the target plane (no tunnelling)
-
-At 62 m/s the arrow moves ~26 cm per 240 Hz step, so **never** test "is the arrow inside the target". Test whether the segment `prevPos → pos` crosses the plane `z = D`:
-
-```dart
-if (prevPos.z < D && pos.z >= D) {
-  final f = (D - prevPos.z) / (pos.z - prevPos.z);   // 0..1
-  final hx = prevPos.x + (pos.x - prevPos.x) * f;
-  final hy = prevPos.y + (pos.y - prevPos.y) * f;
-  hitLocalX = hx - 0.0;
-  hitLocalY = hy - ArcheryK.targetCenterY;
-  // inside boss square?  -> stick + score.  outside? -> keep flying to backstop/ground.
-}
-```
-
-Also check ground (`y <= 0`) → arrow sticks in the grass at a shallow angle (0 points). Add a backstop plane at `z = D + 3` so arrows never fly forever.
-
-### 4.5 Orientation (visual only)
-
-```
-pitch = atan2(vel.y, sqrt(vel.x² + vel.z²))
-yaw   = atan2(vel.x, vel.z)
-```
-
-**Archer's paradox wobble** (sells the realism, purely visual):
-`wobbleYaw = A · e^(−t/τ) · sin(2π·f·t)` with `A = 2°`, `f = 12 Hz`, `τ = 0.15 s`. Add it to the *render* yaw only.
-
-**On impact:** freeze orientation at the impact direction. Push the arrow `0.06–0.12 m` into the boss (scale by speed) so part of the shaft disappears. The shaft then **quivers** (visual only): tail offset = `B · e^(−t/0.25) · sin(2π·18·t)`, `B = 1.5 cm`.
-
-### 4.6 Scoring (`target_scoring.dart`)
-
-```dart
-final r = sqrt(hitLocalX*hitLocalX + hitLocalY*hitLocalY);
-if (r > faceRadius) ring = 0;                         // boss or miss
-else ring = (10 - (r / ringWidth).floor()).clamp(1, 10);
-isX = r <= xRingRadius;
-```
-
-**Line-cutter rule (archery convention, feels fair):** use the arrow shaft radius (`~0.0035 m`) so touching a line scores the higher ring: `r_eff = max(0, r - shaftRadius)`.
-X counts as 10; store the X count as the tiebreaker.
+- The arrow's physics starts at the shooting line (`launchZ`) no matter where the camera is. The camera position is visual only.
+- Camera shake (keep v1's): small on release, a "thunk" on impact, bigger for X.
 
 ---
 
-## 5. Sight solver — "the sight is calibrated for this distance" (`sight_solver.dart`)
+## 4. Aiming controls (`draw_aim_controller.dart` rewrite)
 
-Real archers set a sight mark per distance. We do the same, so **at full draw with no wind, the arrow lands exactly where the reticle points.** The player then only fights **wind, sway and under-drawing**. That is where the skill and fun are.
+How GamePigeon works (confirmed by the developer, who plays it): **touch and hold**. The "hold steady" ring starts loading. You **don't drag**. You **roll or tilt your thumb** in place. The touch point shifts a few pixels, and the game magnifies that into crosshair movement. Releasing fires.
 
-- The reticle is the screen centre, i.e. the camera's forward ray.
-- At round start, solve once for `sightPitchOffset` (radians): the extra upward angle added to the launch direction so a full-draw, no-wind arrow from `launch` hits the point where the eye ray meets the plane `z = D` at the target centre.
-- Because of drag (and the launch point sitting below the eye), solve **numerically using the real simulation** (the same `ArrowPhysics3D` with wind = 0):
-  1. Initial guess (no-drag closed form, low arc):
-     `θ = atan( (v² − sqrt(v⁴ − g(g·D² + 2·Δy·v²))) / (g·D) )`
-  2. Secant iterations (5–6 max): simulate → measure vertical error at `z = D` → adjust θ. Stop when |error| < 1 mm.
-- Cache per distance. Unit-test it (section 12).
+### 4.1 Thumb-roll crosshair
+```
+onPointerDown(p):  anchor = p; crosshair = aimCenter; phase -> raising
+onPointerMove(p):  rawTarget = aimCenter + (p - anchor) * aimGain     // anchor-relative, NOT accumulated deltas
+update(dt):        crosshairSmooth += (rawTarget - crosshairSmooth) * (1 - exp(-aimSmoothOmega * dt))
+                   crosshairShown  = crosshairSmooth + swayOffsetPx
+onPointerUp:       fire at crosshairShown (if phase == aiming), else cancel back to atLine
+```
+- `aimCenter` is the projected target centre in the aiming view, so a perfectly still thumb aims dead centre.
+- Clamp the crosshair to a box of about ±1.6 × board width around the target.
+- Flutter delivers tiny pointer moves from thumb roll on iOS and Android. Don't add a "touch slop" threshold.
+- Ignore extra fingers (track the first pointer id only).
 
-**Launch direction at release:**
-`launchPitch = cameraPitch + sightPitchOffset + swayPitch`
-`launchYaw   = cameraYaw + swayYaw`
-`speed = fullDrawSpeed · lerp(minDrawSpeedRatio, 1.0, drawCurve(draw))`, where `drawCurve(d) = d >= plateau ? 1 : d / plateau`.
-An under-drawn arrow is slower, so it **drops low**. That is the punishment for releasing early, and players read it instantly.
+### 4.2 Steady ring + timer arc (drawn on the canvas, centred on the crosshair)
+- **Steady ring:** a thin, faint pink-red circle (`#EF4444` at ~30% alpha, 2 px). Its radius goes from `ringStartRadiusFrac × screenW` down to about 1.3 × crosshair size over `ringSettleSeconds` (easeOutCubic). It tells the player when they are steady.
+- **Timer arc:** a solid red arc (`#EF4444`, 4 px, round caps) just outside the steady ring, **filling clockwise from 12 o'clock** over `shotTimerSeconds`. When full, the arrow **auto-fires** at the current crosshair.
+- **Crosshair:** four short red dashes (`#EF4444`) with a 1.5 px white outline and a **gap in the middle (no centre dot)**. The dashes are ~10 px long, starting ~6 px from the centre.
+- Cache every `Paint`. Use `canvas.drawArc` with a cached `Rect`: update it only when the radius changes by more than 0.5 px, or translate the canvas and draw at a fixed rect.
+
+### 4.3 Sway (deterministic, visible)
+The crosshair the player **sees** includes the sway, and the arrow goes **exactly where the visible crosshair is** (plus wind). Nothing hidden or random happens at release.
+```
+A(t) = swaySettle * exp(-t / swaySettleTau)                          // settling after touch
+     + swayBase                                                       // steady window
+     + swayFatigue * smoothstep(fatigueStart, shotTimerSeconds, t)    // arms tiring
+swayYaw   = A(t) * (sin(1.3t + p1) + 0.5 sin(2.9t + p2)) / 1.5
+swayPitch = A(t) * (sin(1.1t + p3) + 0.5 sin(3.7t + p4)) / 1.5
+swayOffsetPx = (swayYaw, -swayPitch) * focalPx                       // small-angle conversion
+```
+`t` = seconds since touch-down; `p1..p4` come from the arrow's seed. Result: shooting too early is shaky, the best window is around 1.8–3.5 s, and waiting too long gets shaky again. The timer forces a decision.
 
 ---
 
-## 6. Wind & sway (deterministic)
+## 5. From crosshair to launch (`sight_solver.dart` extension)
 
-### 6.1 Wind (`wind_model.dart`)
-- Per round: `seed` → `Random(seed)` → base wind `W ∈ [−Wmax, Wmax]` m/s (sign = direction), plus gust phases.
-- Gusts during flight: `windX(t) = W · (1 + 0.15·sin(2.1t + φ1) + 0.08·sin(5.3t + φ2))`, where `t = timeSinceRelease`.
-- Difficulty sets `Wmax`: easy 2 m/s, medium 4, hard 6, pro 8.
-- Show wind as an **arrow + number** in the HUD (display in mph: `W × 2.237`), **and** visually through the flag and drifting particles. Players should be able to *feel* the wind, not only read it.
-- Later (online): the seed is stored in the match document so both players face identical wind.
+Rule: **with no wind, the arrow lands exactly under the crosshair.**
 
-### 6.2 Sway / fatigue (`sway_model.dart`)
-- While drawn, the aim drifts in a smooth, deterministic Lissajous pattern:
+1. Aim point on the target plane: `camera.unprojectToPlane(crosshairShown, D)` → `(Px, Py)`.
+2. Launch yaw: `atan2(Px − launchX, D − launchZ)`.
+3. Launch pitch: extend the solver to `solvePitch(distance, targetY)`. Reuse the existing secant method with `targetY` instead of `targetCenterY`. Cache the centre solution and use a small-angle correction for other heights: `pitch(Py) ≈ pitchCentre + atan((Py − centreY)/(D − launchZ))`, then **one** secant refinement step. Unit-test it: error < 1 mm for any aim within the board.
+4. Speed: always `fullDrawSpeed`.
+
+Arrow physics (v1) then adds wind (§6). Hit detection, scoring, penetration and quiver stay as built.
+
+---
+
+## 6. Wind (`wind_model.dart` rewrite)
+
+- **New wind for every arrow**, seeded from `seed = hash(matchSeed, setIndex, arrowIndex)`.
+- `display = round1(rng.nextDouble() * windMaxDisplay)` → a value like 0.8, 1.0 or 1.8, shown with one decimal.
+- `angle = rng.nextDouble() * 2π` (0 = blowing **downrange/away**, π/2 = blowing **right**).
+- Forces in `ArrowPhysics3D._substep` (replace the v1 wind term):
   ```
-  swayYaw   = A(h) · ( sin(1.3h + p1) + 0.5·sin(2.9h + p2) ) / 1.5
-  swayPitch = A(h) · ( sin(1.1h + p3) + 0.5·sin(3.7h + p4) ) / 1.5
+  ax += display * sin(angle) * windLateralAccelPerUnit * gust(t)
+  az += display * cos(angle) * windAlongAccelPerUnit   * gust(t)   // tailwind -> lands slightly higher
+  gust(t) = 1 + 0.10 sin(2.1t + φ1) + 0.05 sin(5.3t + φ2)
   ```
-  where `h` = seconds held at draw and `p1..p4` come from the seed.
-- `A(h) = baseSwayRad` until `fatigueStartSeconds`, then ramps up to `baseSwayRad × fatigueSwayMultiplier` by `fatigueFullSeconds`. This creates the "shoot before your arms shake" tension.
-- The sway moves the **camera/reticle** (so the player sees it and can counter-steer) and is included in the launch direction. Nothing is hidden or random at release.
+- **Wind pill** (world-anchored above the target, re-projected every frame so it moves with the camera): dark rounded pill (`#0A0E1A` at 70% alpha), bold white text `WIND: 0.8`, then a 22 px circle outline with a small arrow inside rotated to the wind angle (pointing up = blowing away from you, right = blowing right). Show it in `atLine` and `aiming`, hide it during chase and close-up.
 
 ---
 
-## 7. Input: hold-to-draw, drag-to-aim, release-to-fire (`draw_aim_controller.dart`)
+## 7. The scene: billboards + ground shader (replaces `range_background.dart`)
 
-One-finger gesture, phone-friendly:
+Because the camera never rotates and only slides along Z, the whole park can be **flat images standing at different depths**. Each one is scaled by `f / (z − eyeZ)`. When the camera moves forward, near objects grow fast and slide off the screen edges while far ones barely change. That parallax is what makes it feel 3D.
 
-| Phase | Gesture | Effect |
+### 7.1 Layers (back to front)
+
+| Layer | Placement | Rendering |
 |---|---|---|
-| Idle | — | Wide view (idle FOV), bow lowered. |
-| Touch down (anywhere) | hold | Bow raises; `draw` rises from 0 → 1 over `autoDrawSeconds` (ease-out). The camera zooms in as draw rises. |
-| While held | drag | Rotates the camera (aim). `Δyaw = −dx · aimSensitivity / focalPx`, `Δpitch = dy · aimSensitivity / focalPx`. Dividing by the current focal length in pixels keeps reticle motion steady at any zoom. |
-| Full draw | — | Light haptic + soft "click" sound once; draw meter flashes cyan (`#00FFCC`). |
-| Release | lift finger | Fire. Medium haptic, string twang. |
-| Cancel | drag to the bottom 12% of the screen and release | Let down without firing (no arrow used). |
+| Sky + mountains | infinitely far | one image, screen-space, fixed; optional 1–2% scale-up during the dolly for life |
+| Distant hills / tree mass | `z ≈ 60 m` | billboard strip, full width, transparent top |
+| Hedge row | `z ≈ D + 4` | billboard strip (dark green hedge) |
+| Tree line behind target | `z ≈ D + 6 … D + 15` | 6–10 tree billboards, varied scale, some flipped |
+| Side trees | both sides of the lane, `x = ±4…±9 m`, `z = 2…D + 3` | 8–14 tree billboards (reuse 4–6 images) |
+| Ground (grass, stripes, lane lines, shadows) | `y = 0` | **one fragment shader draw** (§7.2) |
+| Tree shadows | under each tree | blob-shadow sprite, flattened (§7.4) |
+| Target board + legs | `z = D` | board image + procedural rings (§8.2) |
+| Stuck / flying arrows | — | v1 components |
+| Bow | screen-space foreground | §8.1 |
 
-- Clamp aim to ±12° yaw and −5° to +10° pitch around the target.
-- Only light or medium haptics, and only on intentional actions (full draw, release). Skip haptics on web as `AudioEngine._safeHaptic` already does.
+**Billboard maths** (per object, per frame, no allocation):
+```
+camera.project(obj.x, obj.baseY, obj.z) -> (sx, sy, depth)
+scale = camera.pxPerMeterAt(depth) * obj.widthMeters / image.width
+draw anchored at bottom-centre: (sx - image.width*scale/2, sy - image.height*scale)
+```
+- **Best performance:** put all tree, hedge and hill images in **one texture atlas** and draw every billboard in **one `canvas.drawRawAtlas` call**. Keep preallocated `Float32List`s for transforms (RSTransform: scale, 0, tx, ty) and source rects; refill the transforms each frame. Sort back-to-front once at load (positions are static).
+- Otherwise: `canvas.save(); translate; scale; drawImage(img, Offset.zero, paint); restore()`. That pattern allocates nothing.
+- Skip objects with `depth <= 0.3` (the camera has passed them) and objects fully off-screen.
 
----
+### 7.2 Ground shader (`shaders/archery_ground.frag`)
 
-## 8. Camera (`archery_camera.dart`, `camera_rig.dart`)
+Perspective-correct mowed stripes, grass texture, lane lines and haze in a single draw. It stays exact while the camera moves because the camera never rotates.
 
-Do **not** reuse `PerspectiveCamera3D`. Its rim elevation correction is hard-wired to the basketball hoop. Archery needs a camera that **rotates** (yaw/pitch) and **zooms** (FOV).
+```glsl
+#version 460 core
+#include <flutter/runtime_effect.glsl>
 
-### 8.1 Projection (zero-alloc, write results into fields)
+uniform vec2  uSize;        // canvas size px
+uniform float uHorizonY;    // px (= horizonFrac * height)
+uniform float uFocal;       // px
+uniform float uEyeX;        // m
+uniform float uEyeY;        // m (camera height)
+uniform float uEyeZ;        // m
+uniform float uStripeLen;   // m, e.g. 2.0
+uniform vec4  uGrassA;      // light stripe
+uniform vec4  uGrassB;      // dark stripe
+uniform vec4  uHaze;        // haze colour (sky-ish)
+uniform float uHazeDist;    // m, e.g. 45
+uniform float uTargetZ;     // m (D)
+uniform sampler2D uGrassTex;// tileable grass detail
 
-```dart
-class ArcheryCamera {
-  double eyeX = 0, eyeY = 1.60, eyeZ = 0;
-  double yaw = 0, pitch = 0;      // radians
-  double fovY = 42 * pi / 180;    // vertical FOV
-  double screenW = 0, screenH = 0;
-  double _f = 0, _cy = 1, _sy = 0, _cp = 1, _sp = 0;
+out vec4 fragColor;
 
-  // call once per frame after yaw/pitch/fov change
-  void prepare() {
-    _f = (screenH / 2) / tan(fovY / 2);   // focal length in px
-    _cy = cos(yaw); _sy = sin(yaw); _cp = cos(pitch); _sp = sin(pitch);
-  }
+float lineMask(float x, float halfW, float pxPerM) {
+  // anti-aliased line of half-width halfW (m)
+  float d = abs(x) - halfW;
+  return 1.0 - clamp(d * pxPerM + 0.5, 0.0, 1.0);
+}
 
-  double sx = 0, sy = 0, depth = 0; // outputs
-  bool project(double x, double y, double z) {
-    // translate
-    double dx = x - eyeX, dy = y - eyeY, dz = z - eyeZ;
-    // rotate by -yaw around Y
-    final x1 =  _cy * dx - _sy * dz;
-    final z1 =  _sy * dx + _cy * dz;
-    // rotate by -pitch around X
-    final y2 =  _cp * dy - _sp * z1;
-    final z2 =  _sp * dy + _cp * z1;
-    depth = z2;
-    if (z2 <= 0.05) return false;          // behind camera
-    sx = screenW / 2 + _f * (x1 / z2);
-    sy = screenH / 2 - _f * (y2 / z2);
-    return true;
-  }
-  double pxPerMeterAt(double depth) => _f / depth;
+void main() {
+  vec2 p = FlutterFragCoord().xy;
+  float dy = p.y - uHorizonY;
+  if (dy <= 0.5) { fragColor = vec4(0.0); return; }
+
+  float dist   = uEyeY * uFocal / dy;                 // distance ahead (m)
+  float wx     = uEyeX + (p.x - uSize.x * 0.5) * dist / uFocal;
+  float wz     = uEyeZ + dist;
+  float pxPerM = uFocal / dist;
+
+  // mowed stripes (bands across the lane)
+  float stripe = mod(floor(wz / uStripeLen), 2.0);
+  vec3 col = mix(uGrassA.rgb, uGrassB.rgb, stripe);
+
+  // grass detail, faded with distance to avoid shimmer (no mipmaps)
+  vec3 tex = texture(uGrassTex, fract(vec2(wx, wz) * 0.35)).rgb;
+  float detail = exp(-dist / 18.0);
+  col *= mix(1.0, 0.7 + 0.6 * tex.g, detail);
+
+  // lane lines: centre line + two lines converging toward the target legs (the "V")
+  float onLane = step(0.0, wz) * step(wz, uTargetZ);
+  float t = clamp(wz / uTargetZ, 0.0, 1.0);
+  float sideX = mix(3.2, 0.55, t);                     // from wide at the line to the legs
+  float lines = max(lineMask(wx, 0.025, pxPerM),
+                max(lineMask(wx - sideX, 0.04, pxPerM),
+                    lineMask(wx + sideX, 0.04, pxPerM))) * onLane;
+  // shooting line across the lane at z = 0
+  lines = max(lines, lineMask(wz, 0.05, pxPerM) * step(abs(wx), 6.0));
+  col = mix(col, vec3(0.97), lines * 0.92);
+
+  // atmospheric haze
+  float haze = 1.0 - exp(-dist / uHazeDist);
+  col = mix(col, uHaze.rgb, haze * 0.55);
+
+  fragColor = vec4(col, 1.0);
 }
 ```
+- Register it under `flutter: shaders:` in `pubspec.yaml`, load once with `FragmentProgram.fromAsset`, keep one `FragmentShader`, and update uniforms each frame (`setFloat`, no allocation).
+- Draw it with one `drawRect` covering the screen below the horizon, using a cached `Paint` whose `shader` is set once.
+- Grass colours to start from: `uGrassA = #4E9A2E`, `uGrassB = #3F8424`, haze `#BFD7E6`.
 
-### 8.2 Zoom during draw
-- FOV for the target to fill `faceScreenFraction` of screen height at distance `D`:
-  `fovZoomed = 2 · atan( (2·faceRadius / faceScreenFraction) / 2 / D )`
-- `targetFov = lerp(idleFov, fovZoomed, easeOutCubic(draw))`
-- Smooth with a **critically damped spring** (no overshoot, frame-rate independent):
-  ```
-  a = ω²(target − fov) − 2ω·fovVel
-  fovVel += a·dt; fov += fovVel·dt
-  ```
-- After release: hold the zoom for ~0.15 s, then ease back out *unless* shot cam triggers.
+### 7.3 Haze on billboards
+Tint each billboard toward the haze colour by its distance (`1 − exp(−z/45)`, about 0.55 max). Billboards are static, so **precompute one `ColorFilter` per billboard at load**. Use `ColorFilter.matrix` (a lerp toward the haze colour) and keep it on that billboard's `Paint`. This is the single biggest "looks real" upgrade.
 
-### 8.3 Shot cam (the "wow" moment)
-- Predict the hit at release by running the simulation ahead (it is deterministic; this is cheap, ~240 steps).
-- If the predicted ring is **≥ 9**, or it is the round's last arrow: run **slow motion** (`timeScale = 0.3`; physics still uses fixed steps, only fed less time) and a **chase camera** that follows behind and above the arrow (`offset = (0.25, 0.12, −0.9)` m from the arrow, looking at the arrow tip). Then cut to a **target close-up** for 0.8 s showing the hit.
-- Otherwise: stay on the scope view and show the hit popup at the hit point.
-- Give the player a "skip" (tap) on slow-mo.
+### 7.4 Soft tree shadows
+Reuse the radial blob-shadow sprite idea from `lib/game/components/ball.dart`: one 64×64 cached image. For each tree, draw it on the ground at the tree's base, stretched to about 1.6× the canopy width and **flattened** by `eyeY / sqrt(eyeY² + dist²)`, at 35% alpha. Offset it slightly to one side, as if the sun is to the left.
 
-### 8.4 Shake
-Reuse `ScreenFx` from `lib/game/fx/game_feel.dart`: tiny shake on release (string recoil), slightly bigger "thunk" on impact, scaled by ring (an X gets a short zoom punch).
-
----
-
-## 9. Rendering & layers
-
-Priority order (lowest drawn first):
-
-| Priority | Layer |
-|---|---|
-| 0 | Sky gradient + far skyline (parallax) |
-| 1 | Treeline / stadium wall (parallax) |
-| 2 | Ground, lanes and distance markers (projected 3D quads) |
-| 3 | Target stand + straw boss |
-| 4 | Target face (procedural) |
-| 5 | Stuck arrows |
-| 6 | Flying arrow + trail (switch to drawing *behind* layer 4 if it misses and passes behind the boss; sort by `depth`) |
-| 7 | Wind particles (near ones) |
-| 10 | Bow overlay (foreground, screen-space) |
-| — | Flutter HUD overlay |
-
-### 9.1 Target face: procedural, not an image
-Draw the face as concentric circles (crisp at any zoom). **Cache it** as a `ui.Image` with `PictureRecorder` at the needed size, and re-rasterize only when the on-screen size changes by more than ~15%.
-World Archery colours (outer → inner pairs): white `#F5F5F0` (1–2), black `#1A1A1A` (3–4, with white lines), blue `#2E7DD7` (5–6), red `#E0322B` (7–8), gold `#F7D000` (9–10), plus a thin X ring line. Thin dividing lines between every ring.
-Then draw a **paper-texture image** over it at low opacity (multiply blend) for realism, and the **straw boss image** behind it.
-Because the camera nearly faces the target, a circle (not an ellipse) is fine. Use `pxPerMeterAt(depth)` for the radius.
-
-### 9.2 Arrow sprite drawn between two projected points
-- Project the **tip** and **nock** 3D points (shaft length `0.75 m` along the velocity direction).
-- Draw the side-view arrow image **stretched and rotated** between the two screen points. Perspective foreshortening happens automatically: as the arrow flies away it shortens and shrinks.
-- When the projected length is less than ~25% of its unforeshortened length (you are looking at it from behind), crossfade to a **rear-view sprite** (nock + 3 fletches as seen from behind).
-- **Trail:** ring buffer of the last 12 tip positions in a `Float64List`, drawn as fading thin lines (cached `Paint`, update `color` alpha only).
-
-### 9.3 Bow overlay
-- A foreground bow image (vertical, centre-left, partly off-screen like a first-person view).
-- Draw the **string** as two line segments from the limb tips to the nock point. The nock point moves back with `draw`, giving visible string tension.
-- Limbs: either 3 pre-drawn frames (rest / half / full) cross-faded by draw, or rotate the upper and lower limb images slightly toward the archer (±6°) with draw.
-- On release: the string snaps forward with a quick damped oscillation (`sin(2π·25t)·e^(−t/0.08)`); the bow kicks forward 2–3% then settles.
-- Bow lowers and slides down when idle; raises with an ease-out on touch.
-
-### 9.4 Background
-- Treat sky and treeline layers as "at infinity": on yaw change, shift them by `f · tan(Δyaw)` px. They move with camera rotation but do not change size with distance.
-- The ground is real 3D: project lane lines and distance markers (`20m`, `40m`, `60m` boards) using the camera, so zoom and rotation look correct.
-- **Recommended setting:** a *night range under floodlights*. It matches the obsidian UI, hides background art imperfections, and floodlight glow sprites (reuse `glow_sprite.dart`) look premium.
-
-### 9.5 Wind visuals
-- **Flag** on a thin pole beside the target: small verlet cloth (8 × 5 points, preallocated `Float64List`), the same technique as `fx/net_simulation.dart`. Wind force on the cloth = current `windX`.
-- **Particles:** 30–40 dust motes or leaves in structure-of-arrays typed lists (like `streak_celebration.dart`), drifting with the wind across the range at several depths, with additive glow under floodlights.
+### 7.5 Venues are data
+```dart
+class VenueTheme {
+  final String skyImage;
+  final List<BillboardSpec> billboards; // image id, x, baseY, z, widthMeters, flipX
+  final Color grassA, grassB, haze;
+  final double stripeLen;
+  final bool laneLines;
+  final TargetStyle targetStyle;        // board style for this venue
+}
+```
+- **Park** (first, matches GamePigeon): mountains + sky, hills, hedge, round broad-leaf trees, striped lawn, white lane lines.
+- **Dojo / kyudo range** (second): you shoot from a **wooden shooting hall**. Its roof edge is a foreground billboard at `z ≈ 0.6` that frames the top of the screen and slides out of view upward as the camera dollies forward, which is a lovely effect. Across a raked-sand or moss lawn (shader with `grassA == grassB`, sand colours, no lane lines) stands a **target shed (azuchi)**: a tiled roof over a sand bank, with the target hanging in front. Add pine and bamboo billboards, a stone lantern, and a white plaster wall with a dark tiled cap behind. Keep WA ring scoring, styling the face as a round hanging target with no square board.
 
 ---
 
-## 10. Static images to get (`assets/archery/images/`)
+## 8. Foreground & target visuals
 
-All **WebP with transparency** (PNG source is fine), sized at about **2× the largest on-screen size** (web DPR is capped at 1.5, so going bigger wastes memory).
+### 8.1 Bow (`bow_overlay.dart` rework)
+- **`atLine`:** wooden recurve bow on the **right edge** (`x ≈ 0.80 W`), vertical, slightly rotated (−6°), extending from about 30% to 100% of screen height. The arrow rests on it, pointing diagonally toward the target: draw the shaft from the bow's grip toward a point just below the target, with **red vanes**.
+- **`raising`:** over 0.5 s, the bow slides down and right, scales up 1.15× and fades out. For about 0.2 s you see the **arrowhead** near the bottom centre-right before it leaves the frame.
+- **`returning`:** the bow slides back in (reverse ease) with a fresh arrow nocked.
+- String: two thin lines from the limb tips to the nock (no draw animation needed now).
 
-| File | What | Approx. size |
+### 8.2 Target board (`target_board.dart` update)
+- White square board (`boardWidth`) with a thin **brown wooden frame**, a small dark **screw in each corner**, and two brown **wooden legs** down to the ground.
+- Face (procedural, cached `ui.Image`, re-rasterize only when the on-screen size changes by more than 15%): two outer **white** rings, then **black**, **blue**, **red**, **gold**, with thin dividing lines and small dots along the horizontal and vertical lines through the centre. Overlay a faint **paper texture** image (multiply, ~25%).
+- In the close-up the board fills ~70% of screen width, so rasterize the face at that size.
+
+### 8.3 Arrow in flight (`flying_arrow.dart` update)
+In the chase cam the arrow is seen **from behind and slightly above**: a thin shaft and **three red vanes**. Use the rear-view sprite when the projected length is short (as v1 planned). There is no spin and almost no wobble during chase, which keeps it clean. Keep a very faint trail or drop it.
+
+### 8.4 Hit popup + scores (`hit_popup.dart`, HUD)
+- **Popup:** `+10` / `+9` / `+6` in a chunky rounded bold font, **amber-gold fill (`#F59E0B`) with a dark 3 px outline**. It appears at the hit point, scales 0.6 → 1.15 → 1.0 (0.25 s, back-out), rises ~40 px over 1.0 s and fades over the last 0.3 s.
+- **Score bar (top):** settings gear on the left, your avatar on a green circle with "You", a dark rounded box with small `SET 1` above the big `0 - 25`, and the opponent's avatar on a purple circle. **Hidden during aiming and chase**; visible at the line and in the close-up. Scores **count up** (0.4 s) instead of jumping.
+- **Set end:** a large dark translucent card over the target showing `SET 1` / `29 - 25` with both avatars beside it. The set winner gets a `+1` that flies to their avatar, and a **gold coin with the set count** appears under the avatar.
+
+---
+
+## 9. Format & local game loop
+
+- **Sets of 3 arrows.** The higher set total wins **1 set point**; a tie gives each player 1. **First to 3 set points** wins. Keep these numbers in `ArcheryK` so they're easy to tune.
+- Local prototype modes:
+  - **Practice:** endless sets, solo.
+  - **Pass-and-play:** player 1 shoots 3 arrows, then player 2 shoots 3 arrows with the **same wind seeds**. This proves the fairness rule needed for online play.
+- Before player 2's turn, replay player 1's 3 arrows in the close-up (popups and count-up). That's how GamePigeon opens a turn, and it exercises the telemetry/replay path (§11).
+
+---
+
+## 10. Images & audio (`assets/archery/`)
+
+One consistent **painted, soft, slightly stylised** look (not photo-real, not flat vector). Generate every image with the **same style description** and lighting (sun upper-left, soft shadows), with **transparent backgrounds** wherever images overlap. WebP, about 2× the largest on-screen size (web DPR is capped at 1.5).
+
+**Park**
+| File | Notes | Size |
 |---|---|---|
-| `bow_recurve.webp` | Recurve bow, first-person view, vertical, no string (string is drawn in code) | 600 × 1600 |
-| `bow_limb_upper.webp` / `bow_limb_lower.webp` | *(optional)* separate limbs for bending | 300 × 800 each |
-| `bow_hand.webp` | *(optional)* gloved hand gripping the riser | 400 × 400 |
-| `arrow_side.webp` | Arrow side view, tip pointing right, carbon shaft, 3 vanes | 1200 × 60 |
-| `arrow_rear.webp` | Arrow seen from behind: nock + 3 vanes at 120° | 200 × 200 |
-| `target_boss.webp` | Square straw/foam boss, front view | 1024 × 1024 |
-| `target_stand.webp` | Wooden A-frame stand | 1024 × 1024 |
-| `target_paper_texture.webp` | Subtle paper grain (grayscale, tileable) | 512 × 512 |
-| `bg_sky_night.webp` | Night sky gradient with faint haze | 1024 × 1024 |
-| `bg_treeline.webp` | Dark treeline / stadium silhouette strip, transparent top | 2048 × 512 |
-| `floodlight.webp` | Floodlight head (glow added in code) | 256 × 256 |
-| `distance_board.webp` | Blank distance sign (number drawn in code) | 256 × 128 |
-| `grass_tile.webp` | Tileable dark grass texture | 512 × 512 |
+| `park/sky_mountains.webp` | soft sky, light clouds, purple-pink stylised mountains, full screen | 1500 × 1400 |
+| `park/hills.webp` | distant green hills + tree mass strip, transparent top | 2048 × 512 |
+| `park/hedge.webp` | dark green hedge strip | 2048 × 256 |
+| `park/tree_1..5.webp` | round broad-leaf trees, painted leaves, varied shapes, transparent | 800 × 900 each |
+| `park/grass_detail.webp` | tileable grass detail (greyscale is fine) for the shader | 512 × 512 |
 
-**Sources:** generate with an image tool using one consistent style prompt for every asset (same lighting and colour temperature), or use CC0 packs (e.g. Kenney.nl, OpenGameArt; check each licence). Keep one art style; mixing styles is what makes indie games look cheap.
+**Dojo / kyudo**
+| File | Notes | Size |
+|---|---|---|
+| `dojo/sky.webp` | soft dusk or overcast sky | 1500 × 1400 |
+| `dojo/hall_roof.webp` | dark wooden roof edge + beams, foreground frame, transparent bottom | 1600 × 500 |
+| `dojo/hall_floor.webp` | polished wooden floor edge at the bottom | 1600 × 300 |
+| `dojo/azuchi.webp` | target shed: tiled roof, sand bank | 1200 × 800 |
+| `dojo/wall.webp` | white plaster wall with dark tile cap strip | 2048 × 400 |
+| `dojo/pine_1..2.webp`, `dojo/bamboo.webp`, `dojo/lantern.webp` | billboards | 600–900 px |
+| `dojo/sand_detail.webp` | tileable raked-sand detail | 512 × 512 |
 
-**Audio (`assets/archery/audio/`, short WAV):** `draw_creak`, `full_draw_click`, `release_twang`, `arrow_whoosh`, `impact_boss` (thunk), `impact_face` (crisp thwack), `impact_ground`, `x_ding`. Use the existing audio backend pattern. If `AudioBackend` is keyed by the basketball `Sfx` enum, **do not modify it**; write a proposal for a generic string-keyed loader instead.
+**Shared**
+| File | Notes | Size |
+|---|---|---|
+| `bow_recurve.webp` | vertical wooden recurve bow, grip wrap, no string | 500 × 1600 |
+| `arrow_side.webp` | thin shaft, red vanes, tip pointing right | 1200 × 60 |
+| `arrow_rear.webp` | nock + 3 red vanes seen from behind | 200 × 200 |
+| `board_frame.webp` | white board with brown frame + 4 screws (face drawn in code) | 1024 × 1024 |
+| `board_legs.webp` | two wooden legs | 512 × 512 |
+| `paper_texture.webp` | subtle paper grain | 512 × 512 |
+| `shadow_blob.webp` | *(or generate in code)* | 64 × 64 |
 
----
-
-## 11. Game feel checklist (this is what makes it fun)
-
-- [ ] The draw has weight: ease-out draw curve, string creak, zoom tied to draw.
-- [ ] The full-draw moment is clear: click, flash, light haptic.
-- [ ] Release is instant: no frame delay between finger lift and the arrow leaving.
-- [ ] The impact sound reaches the player with a delay at long distance: delay impact SFX by `D / 340 s` (sound travel). Small, real, and players feel it.
-- [ ] The hit popup shows the ring number in ring colour; X gets gold text + glow + short zoom punch.
-- [ ] Stuck arrows stay on the target for the whole round (cap at 3), so players see their grouping.
-- [ ] Slow-mo shot cam only on great shots, so it stays special.
-- [ ] Sway grows if they hold too long; the tension is felt, not explained.
-- [ ] A miss is readable: the player can see *why* (wind push, drop from under-draw).
-- [ ] Constant 60 FPS on a mid-range Android phone in Chrome.
+**Audio:** `raise_whoosh`, `string_release`, `arrow_flight`, `impact_board` (thunk), `impact_center` (thwack + bright ding for X), `score_tick` (soft tick for the count-up), `set_win`. Don't modify the basketball `Sfx` enum or `AudioBackend`; if a shared change is needed, write a proposal note instead.
 
 ---
 
-## 12. Tests (pure Dart, run with `flutter test test/archery/`)
+## 11. Tests (`flutter test test/archery/`)
 
-1. **Sight solver accuracy:** for D = 20, 40, 60, a full draw with no wind aimed at the centre hits within **±1 mm** of centre.
-2. **Determinism:** the same inputs (aim, draw, seed) give a **bit-identical** hit point across 100 runs, with frame dt sequences of 1/60, 1/30 and random jitter.
-3. **No tunnelling:** an arrow at 90 m/s still registers a hit (plane-crossing test).
-4. **Scoring:** `r = 0 → 10 + X`; `r = 0.0609 → 10`; `r = 0.0611 → 9` (and with line-cutter, `0.0611 → 10`); `r = 0.62 → 0`.
-5. **Wind direction:** positive wind pushes the hit point to +X, and drift at 60 m > drift at 20 m.
-6. **Under-draw:** draw = 0.5 lands below centre.
-
----
-
-## 13. Milestones (build in this order; each ends with something playable)
-
-1. **Camera + static scene:** dev entry, background, procedural target at 20 m, touch to zoom, drag to rotate the camera. *Done when:* aiming feels smooth at 60 FPS.
-2. **Arrow flight, no wind:** release fires, arrow sprite between tip and nock, plane-crossing hit, arrow sticks. Sight solver + tests 1–3. *Done when:* a perfect full-draw shot hits the reticle at all 3 distances.
-3. **Scoring + round loop:** 3 arrows × 3 distances, HUD score, hit popup, stuck arrows, round summary. Tests 4 and 6.
-4. **Wind + sway:** seeded wind, flag, particles, HUD wind readout, fatigue sway. Test 5.
-5. **Art + audio pass:** replace placeholders with the images in section 10, bow string animation, sounds, impact sound delay.
-6. **Feel pass:** shot cam slow-mo, shake, X celebration, tuning numbers in `archery_constants.dart`.
-7. **Telemetry:** `ArrowShot` record `{t, yaw, pitch, draw, seed, holdTime, ring, x}` with short JSON keys, plus a "replay last arrow" button that re-simulates from the record. This proves it is ready for multiplayer.
-
-**Stop after milestone 7.** No routing, Firebase or inbox work. That integration gets reviewed and planned separately.
+Keep v1's tests (determinism, no tunnelling, scoring) and add:
+1. **Crosshair → hit:** with no wind and no sway, the hit point equals the unprojected crosshair point within **1 mm**, for 25 aim points across the board.
+2. **Wind:** display 1.0 at angle π/2 drifts the hit to +X by 5–7 cm; angle 0 (tailwind) raises the hit slightly; display 0 → no drift.
+3. **Seeds:** the same `(matchSeed, set, arrow)` always gives the same wind and sway phases. Different arrows give different winds.
+4. **Sway curve:** `A(0) > A(2.5)` and `A(4.9) > A(2.5)` (shaky → steady → shaky).
+5. **Projection round-trip:** `project(unprojectToPlane(p)) == p` within 0.01 px.
 
 ---
 
-## 14. What *not* to do
+## 12. Milestones (continuing from v1's milestone 3)
 
+4. **Controls + camera migration:** dolly-only camera, thumb-roll crosshair, steady ring, timer arc with auto-fire, new sway, crosshair→launch (§3.1, §4, §5). Per-arrow wind with pill (§6). Fix the HUD notify bug (§1.1). Tests 1–5.
+   *Done when:* touch-hold-release at 50 ft feels like GamePigeon on a phone.
+5. **Shot sequence:** state machine (§3.2), bow slide-out/in, chase cam, close-up, popups, hidden/visible score bar, count-up, set format + set-end card (§8, §9).
+6. **Park scene:** billboard renderer + atlas, ground shader, haze, shadows, park images (§7, §10). Remove the floodlight night range.
+7. **Audio + feel pass:** sounds, shake tuning, easing tuning, aim gain tuning on real phones (iPhone Safari + Android Chrome).
+8. **Dojo venue** as a second `VenueTheme`.
+9. **Telemetry + replay:** `ArrowShot {seed, holdMs, crossX, crossY, hitX, hitY, ring, x}` with short JSON keys, plus the turn-start replay (§9).
+
+**Stop after 9.** No routing, Firebase or inbox work. That integration is reviewed and planned separately.
+
+---
+
+## 13. Don'ts
+
+- Don't rotate the camera (it breaks billboards and the ground shader).
 - Don't use Forge2D, `audioplayers` or `just_audio`.
-- Don't use `Random()` unseeded or `DateTime.now()` in gameplay logic.
-- Don't put physics in `render()`, or rendering maths that allocates in `update()`.
-- Don't use images for the target rings (procedural only; textures sit on top).
-- Don't touch basketball files, `main.dart`, Firebase files or deploy configs.
-- Don't add trajectory-preview lines on normal difficulty (wind reading is the skill). An "easy" ghost preview is allowed later as an option.
+- Don't use unseeded randomness or wall-clock time in gameplay.
+- Don't draw the target rings from an image (procedural only; texture on top).
+- Don't show a trajectory preview line.
+- Don't touch basketball files, `main.dart`, Firebase or deploy configs.
