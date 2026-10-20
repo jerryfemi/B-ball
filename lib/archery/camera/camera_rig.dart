@@ -59,8 +59,6 @@ class CameraRig {
     targetDistance = distance;
   }
 
-  void addAimDelta(double dx, double dy) {}
-
   void addShake(double pixels) {
     if (pixels > _shakeAmp) {
       _shakeAmp = pixels;
