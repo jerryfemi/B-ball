@@ -16,31 +16,12 @@ class WindModel {
   final double phi1;
   final double phi2;
 
-  const WindModel.raw({
+  const WindModel({
     required this.display,
     required this.angle,
-    required this.phi1,
-    required this.phi2,
+    this.phi1 = 0.0,
+    this.phi2 = 0.0,
   });
-
-  /// Factory constructor supporting both seeded instantiation and direct parameters.
-  factory WindModel({
-    int? seed,
-    double? display,
-    double? angle,
-    double phi1 = 0.0,
-    double phi2 = 0.0,
-  }) {
-    if (seed != null) {
-      return WindModel.fromSeed(seed);
-    }
-    return WindModel.raw(
-      display: display ?? 0.0,
-      angle: angle ?? 0.0,
-      phi1: phi1,
-      phi2: phi2,
-    );
-  }
 
   /// Creates a deterministic wind instance from a unique hash seed.
   factory WindModel.fromSeed(int seed) {
@@ -51,7 +32,7 @@ class WindModel {
     final double phi1 = rng.nextDouble() * 2.0 * math.pi;
     final double phi2 = rng.nextDouble() * 2.0 * math.pi;
 
-    return WindModel.raw(
+    return WindModel(
       display: display,
       angle: angle,
       phi1: phi1,
@@ -74,10 +55,5 @@ class WindModel {
     return display * math.cos(angle) * ArcheryK.windAlongAccelPerUnit * getGust(t);
   }
 
-  // Compatibility helpers
-  double get baseWind => display * math.sin(angle) * 2.5;
-  double get baseWindMps => baseWind;
-  double get windMph => display;
   bool get blowsRight => math.sin(angle) >= 0;
-  double getWindAt(double t) => getLateralAccel(t);
 }
