@@ -74,6 +74,7 @@ flutter:
   
   shaders:
     - shaders/basketball.frag
+    - shaders/archery_ground.frag
 
   # To add assets to your application, add an assets section, like this:
   assets:
@@ -81,6 +82,8 @@ flutter:
     - assets/audio/
     - assets/avatars/
     - assets/music/short/
+    - assets/archery/
+    - assets/archery/park/
 
   # Shot callout lettering (SWISH! / BANK! / +3). Poppins Bold Italic
   # (SIL Open Font License), subset to basic Latin: ~9 KB.
