@@ -1,91 +1,123 @@
 import 'package:flutter/material.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+import '../archery_constants.dart';
 import '../archery_game.dart';
 import '../camera/camera_rig.dart';
 import '../physics/target_scoring.dart';
-import 'hit_popup.dart';
+import '../state/archery_match_notifier.dart';
 import 'round_summary.dart';
 
-/// Flutter HUD Overlay for the GamePigeon-style Archery prototype (Build Plan v2).
+/// Flutter HUD Overlay for the GamePigeon-style Archery prototype (Build Plan v2 §5, Review §1.2).
 ///
 /// Features:
+/// - Riverpod [ConsumerWidget] with slice-based updates (`ref.watch(select(...))`).
 /// - Top score bar with avatars, set points, count-up scores, and quiver dots.
-/// - Automatically fades out during raising, aiming, and chase phases.
-/// - Automatically fades in during atLine, closeup, and returning phases.
-/// - Hit score popup at target impact point (#F59E0B with dark outline).
-/// - Set End Card modal over the target.
-/// - Only rebuilds on real game state changes (no 60 fps notify bug).
-class ArcheryHud extends StatelessWidget {
+/// - Capped at `maxWidth: 520` with fluid horizontal margins for desktop/phone responsiveness.
+/// - Dynamic distance label using [ArcheryK.distanceLabel].
+/// - Fades out during raising, aiming, and chase phases.
+/// - Explicit phase-driven [SetEndCard] modal when `phase == ShotPhase.setEnd`.
+/// - Wrapped with [IgnorePointer] on non-interactive areas for touch input isolation (Bug #7).
+class ArcheryHud extends ConsumerWidget {
   final ArcheryGame game;
 
   const ArcheryHud({super.key, required this.game});
 
   @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<int>(
-      valueListenable: game.hudNotifier,
-      builder: (context, _, child) {
-        final ShotPhase phase = game.cameraRig.phase;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ShotPhase phase = ref.watch(
+      archeryMatchProvider.select((s) => s.phase),
+    );
+    final int setIdx = ref.watch(
+      archeryMatchProvider.select((s) => s.setIndex),
+    );
+    final List<ShotScore> currentScores = ref.watch(
+      archeryMatchProvider.select((s) => s.setShots),
+    );
+    final int currentScore = ref.watch(
+      archeryMatchProvider.select((s) => s.currentSetScore),
+    );
+    final int userSets = ref.watch(
+      archeryMatchProvider.select((s) => s.userSets),
+    );
+    final int botSets = ref.watch(
+      archeryMatchProvider.select((s) => s.botSets),
+    );
+    final bool isMatchOver = ref.watch(
+      archeryMatchProvider.select((s) => s.matchOver),
+    );
 
-        // Hide score bar during raising, aiming, and chase
-        final bool showScoreBar = phase == ShotPhase.atLine ||
-            phase == ShotPhase.closeup ||
-            phase == ShotPhase.returning ||
-            phase == ShotPhase.setEnd;
+    // Hide score bar during raising, aiming, and chase
+    final bool showScoreBar = phase == ShotPhase.atLine ||
+        phase == ShotPhase.closeup ||
+        phase == ShotPhase.returning ||
+        phase == ShotPhase.setEnd;
 
-        return Stack(
-          children: [
-            // Top App Bar / Scoreboard
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 10.0,
-              left: 16.0,
-              right: 16.0,
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 250),
-                opacity: showScoreBar ? 1.0 : 0.0,
-                child: _buildTopScoreBar(context),
+    return Stack(
+      children: [
+        // Top App Bar / Scoreboard (capped at maxWidth 520, fluid on smaller screens)
+        Positioned(
+          top: MediaQuery.paddingOf(context).top + 10.0,
+          left: 0.0,
+          right: 0.0,
+          child: IgnorePointer(
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 520.0),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 250),
+                    opacity: showScoreBar ? 1.0 : 0.0,
+                    child: _buildTopScoreBar(
+                      context,
+                      setIdx: setIdx,
+                      currentScores: currentScores,
+                      currentScore: currentScore,
+                      userSets: userSets,
+                      botSets: botSets,
+                    ),
+                  ),
+                ),
               ),
             ),
+          ),
+        ),
 
-            // Bottom Guide at Shooting Line
-            if (phase == ShotPhase.atLine)
-              Positioned(
-                bottom: 24.0,
-                left: 20.0,
-                right: 20.0,
-                child: _buildBottomGuide(),
-              ),
+        // Bottom Guide at Shooting Line (non-interactive, passes touches through)
+        if (phase == ShotPhase.atLine)
+          const Positioned(
+            bottom: 24.0,
+            left: 20.0,
+            right: 20.0,
+            child: IgnorePointer(
+              child: _BottomGuide(),
+            ),
+          ),
 
-            // Hit score floating popup at impact point
-            if (game.lastShotScore != null && game.lastHitScreenPos != null)
-              HitPopupOverlay(
-                key: ValueKey(game.lastShotScore.hashCode),
-                score: game.lastShotScore!,
-                position: game.lastHitScreenPos!,
-                onDismissed: game.clearLastHitPopup,
-              ),
-
-            // Set End Summary Modal Card
-            if (phase == ShotPhase.setEnd || (game.isSetComplete && phase == ShotPhase.closeup && game.cameraRig.phaseTime > 1.0))
-              SetEndCard(
-                setIndex: game.currentSetIndex,
-                userScores: game.setScores[game.currentSetIndex],
-                userSetPoints: game.userSetPoints,
-                opponentSetPoints: game.opponentSetPoints,
-                isMatchOver: game.isMatchComplete,
-                onContinue: game.advanceNextSet,
-              ),
-          ],
-        );
-      },
+        // Set End Summary Modal Card
+        if (phase == ShotPhase.setEnd)
+          SetEndCard(
+            setIndex: setIdx,
+            userScores: currentScores,
+            userSetPoints: userSets,
+            opponentSetPoints: botSets,
+            isMatchOver: isMatchOver,
+            onContinue: isMatchOver ? game.restartMatch : game.advanceNextSet,
+          ),
+      ],
     );
   }
 
-  Widget _buildTopScoreBar(BuildContext context) {
-    final int setIdx = game.currentSetIndex;
-    final List<ShotScore> currentScores =
-        setIdx < game.setScores.length ? game.setScores[setIdx] : [];
-    final int currentScore = game.currentSetScore;
-
+  Widget _buildTopScoreBar(
+    BuildContext context, {
+    required int setIdx,
+    required List<ShotScore> currentScores,
+    required int currentScore,
+    required int userSets,
+    required int botSets,
+  }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 8.0),
       decoration: BoxDecoration(
@@ -105,10 +137,11 @@ class ArcheryHud extends StatelessWidget {
         children: [
           // Left: User Avatar & Set Points Won
           Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 38.0,
-                height: 38.0,
+                width: 36.0,
+                height: 36.0,
                 decoration: BoxDecoration(
                   color: const Color(0xFF10B981).withValues(alpha: 0.2),
                   shape: BoxShape.circle,
@@ -125,43 +158,49 @@ class ArcheryHud extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 6.0),
-              _buildCoinIndicators(game.userSetPoints),
+              _buildCoinIndicators(userSets),
             ],
           ),
 
           // Center: Set Label & Count-Up Score
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'SET ${setIdx + 1} • 50ft',
-                style: const TextStyle(
-                  color: Color(0xFF38BDF8),
-                  fontSize: 11.0,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.8,
-                ),
-              ),
-              const SizedBox(height: 2.0),
-              TweenAnimationBuilder<double>(
-                tween: Tween<double>(begin: 0.0, end: currentScore.toDouble()),
-                duration: const Duration(milliseconds: 400),
-                builder: (context, value, child) {
-                  return Text(
-                    '${value.toInt()}',
+          Flexible(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'SET ${setIdx + 1} • ${ArcheryK.distanceLabel}',
                     style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 22.0,
-                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF38BDF8),
+                      fontSize: 11.0,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.8,
                     ),
-                  );
-                },
+                  ),
+                  const SizedBox(height: 2.0),
+                  TweenAnimationBuilder<double>(
+                    tween: Tween<double>(begin: 0.0, end: currentScore.toDouble()),
+                    duration: const Duration(milliseconds: 400),
+                    builder: (context, value, child) {
+                      return Text(
+                        '${value.toInt()}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 22.0,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      );
+                    },
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
 
           // 3 Arrows Quiver Bubbles
           Row(
+            mainAxisSize: MainAxisSize.min,
             children: List.generate(3, (i) {
               if (i < currentScores.length) {
                 final ShotScore s = currentScores[i];
@@ -222,12 +261,13 @@ class ArcheryHud extends StatelessWidget {
 
           // Right: Opponent / Bot Avatar & Set Points Won
           Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              _buildCoinIndicators(game.opponentSetPoints),
+              _buildCoinIndicators(botSets),
               const SizedBox(width: 6.0),
               Container(
-                width: 38.0,
-                height: 38.0,
+                width: 36.0,
+                height: 36.0,
                 decoration: BoxDecoration(
                   color: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
                   shape: BoxShape.circle,
@@ -271,8 +311,13 @@ class ArcheryHud extends StatelessWidget {
       }),
     );
   }
+}
 
-  Widget _buildBottomGuide() {
+class _BottomGuide extends StatelessWidget {
+  const _BottomGuide();
+
+  @override
+  Widget build(BuildContext context) {
     return Center(
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
