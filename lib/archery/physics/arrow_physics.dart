@@ -27,7 +27,7 @@ class ArrowPhysics3D {
   bool hitBackstop = false;
 
   // --- Target & Collision Parameters ---
-  double targetDistance = ArcheryK.distNear;
+  double targetDistance = ArcheryK.distanceM;
 
   // --- Hit Point Results ---
   final Vector3 hitPoint = Vector3.zero();
@@ -40,12 +40,9 @@ class ArrowPhysics3D {
   double pitch = 0.0; // Radians
   double yaw = 0.0;   // Radians
   double wobbleYaw = 0.0; // Archer's paradox oscillation
-  double quiverTime = 0.0;
-  double quiverOffset = 0.0; // Tail quiver offset on impact (meters)
 
-  // --- Wind Model & Provider ---
+  // --- Wind Model ---
   WindModel? windModel;
-  double Function(double t)? windProvider;
 
   /// Resets and launches the arrow with given orientation and speed.
   void launch({
@@ -58,11 +55,9 @@ class ArrowPhysics3D {
     required double speed,
     required double targetDist,
     WindModel? windModel,
-    double Function(double t)? wind,
   }) {
     this.windModel = windModel;
     targetDistance = targetDist;
-    windProvider = wind;
 
     if (startPos != null) {
       pos.setFrom(startPos);
@@ -90,29 +85,12 @@ class ArrowPhysics3D {
     hitBackstop = false;
     hitBoss = false;
     penetrationDepth = 0.0;
-    quiverTime = 0.0;
-    quiverOffset = 0.0;
 
     _updateOrientation();
   }
 
   /// Steps physics forward by [frameDt] using fixed 240 Hz sub-steps.
   void update(double frameDt) {
-    if (stuck) {
-      // Update tail quiver decay after impact
-      if (quiverTime < 0.75) {
-        quiverTime += frameDt;
-        // Tail offset = B * exp(-t / 0.25) * sin(2π * 18t), B = 1.5 cm
-        const double b = 0.015;
-        quiverOffset = b *
-            math.exp(-quiverTime / 0.25) *
-            math.sin(2.0 * math.pi * 18.0 * quiverTime);
-      } else {
-        quiverOffset = 0.0;
-      }
-      return;
-    }
-
     if (!inFlight) return;
 
     _accumulator += frameDt.clamp(0.0, 0.05);
@@ -137,9 +115,7 @@ class ArrowPhysics3D {
     timeSinceRelease += dt;
 
     // 1. Wind lateral and along-track acceleration
-    final double windLateral = windModel != null
-        ? windModel!.getLateralAccel(timeSinceRelease)
-        : (windProvider?.call(timeSinceRelease) ?? 0.0);
+    final double windLateral = windModel?.getLateralAccel(timeSinceRelease) ?? 0.0;
     final double windAlong = windModel?.getAlongTrackAccel(timeSinceRelease) ?? 0.0;
 
     // 2. Relative velocity to air for quadratic drag
@@ -224,8 +200,6 @@ class ArrowPhysics3D {
     pos.x = hitPoint.x;
     pos.y = hitPoint.y;
     pos.z = hitPoint.z + penetrationDepth;
-
-    quiverTime = 0.0;
   }
 
   void _updateOrientation() {
