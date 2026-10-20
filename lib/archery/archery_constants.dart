@@ -15,10 +15,6 @@ abstract final class ArcheryK {
   static const double distanceM = 15.24;
   static const String distanceLabel = '50ft';
 
-  /// Standard round distances (backward compatibility + v2 default 15.24m).
-  static const double distNear = 15.24;
-  static const List<double> roundDistances = [15.24];
-
   /// Archer eye position height above ground (m).
   static const double eyeY = 1.60;
 
@@ -57,8 +53,6 @@ abstract final class ArcheryK {
   static const double bossWidth = boardWidth;
   static const double bossHeight = boardHeight;
   static const double bossDepth = 0.15;
-  static const double fullDrawPlateau = 0.90;
-  static const double minDrawSpeedRatio = 0.65;
 
   // --- Physics Constants ---
   static const double gravity = 9.81;
@@ -114,14 +108,4 @@ abstract final class ArcheryK {
   static const double windMaxDisplay = 2.0;
   static const double windLateralAccelPerUnit = 1.9; // m/s² per 1.0 displayed wind
   static const double windAlongAccelPerUnit = 0.6;   // m/s² per 1.0 displayed wind
-
-  // --- Colors (DunkVerse luxury obsidian) ---
-  static const int colorBgDark = 0xFF0A0E1A;
-  static const int colorSurfaceCard = 0xFF0F172A;
-  static const int colorSurfaceTile = 0xFF1E2638;
-  static const int colorAccentCyan = 0xFF00FFCC;
-  static const int colorAccentSky = 0xFF38BDF8;
-  static const int colorAccentAmber = 0xFFF59E0B;
-  static const int colorAccentRed = 0xFFEF4444;
-  static const int colorTextMuted = 0xFF94A3B8;
 }
