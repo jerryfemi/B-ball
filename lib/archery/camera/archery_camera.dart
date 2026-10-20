@@ -75,6 +75,7 @@ class ArcheryCamera {
 
   /// Effective focal length in pixels.
   double get focalLengthPx => _f;
+  double get focal => _f;
 
   double get opticalCenterX => _cx;
   double get opticalCenterY => _cy;
