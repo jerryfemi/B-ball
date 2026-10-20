@@ -64,6 +64,11 @@ abstract final class ArcheryK {
   // --- Camera & Dolly Viewpoints ---
   static const double fovYDeg = 60.0;
   static const double fovYRad = fovYDeg * math.pi / 180.0;
+  static const double minFovXDeg = 56.0; // Never show less than this horizontally (contain rule)
+  static const double minFovXRad = minFovXDeg * math.pi / 180.0;
+
+  /// Fraction of smaller screen side occupied by target face diameter while aiming.
+  static const double aimFaceFrac = 0.26;
 
   /// Horizon lens shift (fraction of screen height).
   static const double horizonFrac = 0.52;
