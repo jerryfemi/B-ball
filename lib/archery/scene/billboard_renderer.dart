@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import '../archery_constants.dart';
 import '../camera/archery_camera.dart';
 import '../util/image_loader.dart';
 import 'venue_theme.dart';
@@ -12,6 +13,9 @@ class _LoadedBillboard {
   final Paint paint;
   final double widthPx;
   final double heightPx;
+
+  /// Effective world Z (spec.z, shifted back for followTarget objects).
+  double z = 0.0;
 
   _LoadedBillboard({
     required this.spec,
@@ -66,32 +70,14 @@ class BillboardRenderer {
       _shadowBlob = _generateFallbackShadowBlob();
     }
 
-    // 3. Prepare pre-sorted billboards with precomputed haze filters
+    // 3. Prepare billboards (haze filters + back-to-front order)
     for (final spec in theme.billboards) {
       final img = _loadedImages[spec.imageKey];
       if (img == null) continue;
 
-      // Distance haze filter: 1 - exp(-z / hazeDist)
-      final double distFactor = 1.0 - math.exp(-spec.z / theme.hazeDist);
-      final double hazeAmount = (distFactor * 0.55).clamp(0.0, 1.0);
-
       final Paint paint = Paint()
         ..isAntiAlias = true
         ..filterQuality = FilterQuality.low;
-
-      if (hazeAmount > 0.02) {
-        final double invF = 1.0 - hazeAmount;
-        final double addR = hazeAmount * theme.haze.r * 255.0;
-        final double addG = hazeAmount * theme.haze.g * 255.0;
-        final double addB = hazeAmount * theme.haze.b * 255.0;
-
-        paint.colorFilter = ColorFilter.matrix(<double>[
-          invF, 0, 0, 0, addR,
-          0, invF, 0, 0, addG,
-          0, 0, invF, 0, addB,
-          0, 0, 0, 1, 0,
-        ]);
-      }
 
       _billboards.add(_LoadedBillboard(
         spec: spec,
@@ -101,6 +87,36 @@ class BillboardRenderer {
     }
 
     _isLoaded = true;
+    setTargetDistance(_targetDistance);
+  }
+
+  double _targetDistance = ArcheryK.distanceM;
+
+  /// Moves followTarget objects back with the target, then refreshes haze and
+  /// draw order. Called on load and when a new set changes the distance
+  /// (an event, so allocating the filters here is fine).
+  void setTargetDistance(double distance) {
+    _targetDistance = distance;
+    final double shift = distance - ArcheryK.distanceM;
+    for (final b in _billboards) {
+      b.z = b.spec.z + (b.spec.followTarget ? shift : 0.0);
+
+      // Distance haze: 1 - exp(-z / hazeDist)
+      final double hazeAmount =
+          ((1.0 - math.exp(-b.z / theme.hazeDist)) * 0.55).clamp(0.0, 1.0);
+      if (hazeAmount > 0.02) {
+        final double invF = 1.0 - hazeAmount;
+        b.paint.colorFilter = ColorFilter.matrix(<double>[
+          invF, 0, 0, 0, hazeAmount * theme.haze.r * 255.0,
+          0, invF, 0, 0, hazeAmount * theme.haze.g * 255.0,
+          0, 0, invF, 0, hazeAmount * theme.haze.b * 255.0,
+          0, 0, 0, 1, 0,
+        ]);
+      } else {
+        b.paint.colorFilter = null;
+      }
+    }
+    _billboards.sort((a, b) => b.z.compareTo(a.z));
   }
 
   ui.Image _generateFallbackShadowBlob() {
@@ -135,7 +151,7 @@ class BillboardRenderer {
       final b = _billboards[i];
       if (!b.spec.castShadow) continue;
 
-      if (!camera.project(b.spec.x, b.spec.baseY, b.spec.z)) continue;
+      if (!camera.project(b.spec.x, b.spec.baseY, b.z)) continue;
       final double depth = camera.depth;
       if (depth <= 0.3) continue;
 
@@ -171,7 +187,7 @@ class BillboardRenderer {
       final BillboardSpec spec = b.spec;
 
       // Project bottom-center contact point
-      if (!camera.project(spec.x, spec.baseY, spec.z)) continue;
+      if (!camera.project(spec.x, spec.baseY, b.z)) continue;
       final double depth = camera.depth;
       if (depth <= 0.3) continue;
 
