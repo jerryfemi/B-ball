@@ -3,7 +3,7 @@ import '../archery_constants.dart';
 import '../camera/archery_camera.dart';
 import '../camera/camera_rig.dart';
 
-/// Red "50ft" tag lying on the shooting line, left of the lane (GamePigeon).
+/// Red distance tag ("50ft", "100ft", "150ft") on the shooting line (GamePigeon).
 /// World-anchored, so it slides away naturally as the camera moves forward.
 class DistanceTag {
   final ArcheryCamera camera;
@@ -21,6 +21,7 @@ class DistanceTag {
 
   TextPainter? _text;
   double _textScale = 0.0;
+  String _label = '';
   RRect _box = RRect.zero;
   RRect _shadowBox = RRect.zero;
   Offset _textOffset = Offset.zero;
@@ -34,11 +35,13 @@ class DistanceTag {
     if (camera.sy > camera.screenH + 40.0) return;
 
     final double ui = camera.uiScale;
-    if (_text == null || _textScale != ui) {
+    final String label = cameraRig.distanceLabel;
+    if (_text == null || _textScale != ui || _label != label) {
       _textScale = ui;
+      _label = label;
       _text = TextPainter(
         text: TextSpan(
-          text: ArcheryK.distanceLabel,
+          text: label,
           style: TextStyle(
             color: Colors.white,
             fontSize: 13.0 * ui,
