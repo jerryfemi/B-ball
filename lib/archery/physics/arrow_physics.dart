@@ -44,6 +44,9 @@ class ArrowPhysics3D {
   // --- Wind Model ---
   WindModel? windModel;
 
+  /// Multiplier on wind acceleration for this flight (see [ArcheryK.windScaleFor]).
+  double windScale = 1.0;
+
   /// Resets and launches the arrow with given orientation and speed.
   void launch({
     Vector3? startPos,
@@ -55,8 +58,10 @@ class ArrowPhysics3D {
     required double speed,
     required double targetDist,
     WindModel? windModel,
+    double windScale = 1.0,
   }) {
     this.windModel = windModel;
+    this.windScale = windScale;
     targetDistance = targetDist;
 
     if (startPos != null) {
@@ -115,8 +120,8 @@ class ArrowPhysics3D {
     timeSinceRelease += dt;
 
     // 1. Wind lateral and along-track acceleration
-    final double windLateral = windModel?.getLateralAccel(timeSinceRelease) ?? 0.0;
-    final double windAlong = windModel?.getAlongTrackAccel(timeSinceRelease) ?? 0.0;
+    final double windLateral = (windModel?.getLateralAccel(timeSinceRelease) ?? 0.0) * windScale;
+    final double windAlong = (windModel?.getAlongTrackAccel(timeSinceRelease) ?? 0.0) * windScale;
 
     // 2. Relative velocity to air for quadratic drag
     final double vRelX = vel.x;
