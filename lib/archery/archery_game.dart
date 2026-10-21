@@ -8,6 +8,7 @@ import 'audio/archery_audio.dart';
 import 'camera/archery_camera.dart';
 import 'camera/camera_rig.dart';
 import 'components/bow_overlay.dart';
+import 'components/distance_tag.dart';
 import 'components/flying_arrow.dart';
 import 'components/hit_popup_canvas.dart';
 import 'components/range_background.dart';
@@ -21,19 +22,13 @@ import 'physics/target_scoring.dart';
 import 'physics/wind_model.dart';
 import 'state/archery_match_notifier.dart';
 
-/// Flame game instance managing the 50 ft GamePigeon-style archery range (Build Plan v2).
+/// Flame game for the 50 ft GamePigeon-style archery range.
 ///
-/// Features:
-/// - 50 ft (15.24 m) fixed target distance.
-/// - Sets of 3 arrows format with set points.
-/// - Per-arrow deterministic wind and sway.
-/// - Dolly-only camera with 7-phase cinematic shot sequence.
-/// - World-anchored wind pill.
-/// - Decoupled state architecture emitting to [ArcheryGameEvents].
-/// - Canvas-rendered 3D re-projecting HitPopup (Bug #6).
-/// - Zero allocations per frame in [update] and [render].
+/// Owns the camera, physics and drawing only. Scores, sets and the match seed
+/// live in [ArcheryGameEvents] (the Riverpod notifier); the game reads the seed
+/// and arrow position from it and reports each shot back.
 class ArcheryGame extends FlameGame {
-  final ArcheryGameEvents? events;
+  final ArcheryGameEvents events;
 
   // --- Core Systems ---
   late final ArcheryCamera archeryCamera;
@@ -43,7 +38,6 @@ class ArcheryGame extends FlameGame {
   // --- Physics & Wind Models ---
   final ArrowPhysics3D arrowPhysics = ArrowPhysics3D();
   late WindModel windModel;
-  int matchSeed;
 
   // --- Components ---
   late final RangeBackground background;
@@ -52,27 +46,15 @@ class ArcheryGame extends FlameGame {
   late final BowOverlay bowOverlay;
   late final FlyingArrow flyingArrow;
   late final HitPopupCanvas hitPopup;
+  late final DistanceTag distanceTag;
   final List<StuckArrow> stuckArrows = [];
 
-  // --- Sets & Match Scoring State ---
-  int currentSetIndex = 0; // 0-indexed set number
-  int currentArrowIndex = 0; // 0, 1, 2
-  final List<List<ShotScore>> setScores = [[]];
-  int userSetPoints = 0;
-  int opponentSetPoints = 0;
-  bool isSetComplete = false;
-  bool isMatchComplete = false;
+  /// True between the last arrow of a set landing and "Next set".
+  bool _setOver = false;
 
-  // --- Hit Popup Trigger State (Legacy fallback) ---
-  ShotScore? lastShotScore;
-  Offset? lastHitScreenPos;
-
-  // --- State & HUD Link ---
-  final ValueNotifier<int> hudNotifier = ValueNotifier<int>(0);
   double targetDistance = ArcheryK.distanceM;
 
-  ArcheryGame({this.events})
-      : matchSeed = math.Random().nextInt(1000000) + 1 {
+  ArcheryGame({required this.events}) {
     archeryCamera = ArcheryCamera();
     cameraRig = CameraRig(camera: archeryCamera);
     controller = DrawAimController(camera: archeryCamera, cameraRig: cameraRig);
@@ -85,21 +67,24 @@ class ArcheryGame extends FlameGame {
     bowOverlay = BowOverlay(camera: archeryCamera);
     flyingArrow = FlyingArrow(camera: archeryCamera, physics: arrowPhysics);
     hitPopup = HitPopupCanvas();
+    distanceTag = DistanceTag(camera: archeryCamera, cameraRig: cameraRig);
 
     _setupCurrentArrow();
   }
 
-  int _getArrowSeed(int setIdx, int arrowIdx) {
-    int h = matchSeed;
-    h = (h * 31 + setIdx) & 0x7FFFFFFF;
-    h = (h * 31 + arrowIdx) & 0x7FFFFFFF;
+  /// Seed for the next arrow, derived from the match seed so both players of a
+  /// future online match get identical wind and sway.
+  int get _arrowSeed {
+    int h = events.matchSeed;
+    h = (h * 31 + events.setIndex) & 0x7FFFFFFF;
+    h = (h * 31 + events.arrowIndex) & 0x7FFFFFFF;
     return h;
   }
 
   void _setupCurrentArrow() {
-    final int arrowSeed = _getArrowSeed(currentSetIndex, currentArrowIndex);
-    windModel = WindModel.fromSeed(arrowSeed);
-    controller.initSwaySeed(arrowSeed);
+    final int seed = _arrowSeed;
+    windModel = WindModel.fromSeed(seed);
+    controller.initSwaySeed(seed);
   }
 
   @override
@@ -113,11 +98,11 @@ class ArcheryGame extends FlameGame {
     await bowOverlay.load();
 
     // Broadcast initial wind outside widget build cycle
-    events?.windChanged(windModel.display);
+    events.windChanged(windModel.display);
 
     // Connect aim controller firing hook
     controller.onFireAt = (double crossX, double crossY) {
-      if (isSetComplete || arrowPhysics.inFlight) return;
+      if (_setOver || arrowPhysics.inFlight) return;
 
       ArcheryAudio.playReleaseTwang();
 
@@ -142,125 +127,41 @@ class ArcheryGame extends FlameGame {
         windModel: windModel,
       );
 
-      flyingArrow.resetTrail();
       cameraRig.fireShot();
       cameraRig.addShake(3.5);
-      _notifyHud();
     };
 
-    controller.onHoldStarted = () {
-      ArcheryAudio.playDrawCreak();
-      _notifyHud();
-    };
-
-    controller.onHoldCancelled = () {
-      _notifyHud();
-    };
+    controller.onHoldStarted = ArcheryAudio.playDrawCreak;
 
     // Camera Rig phase transitions
-    cameraRig.onPhaseChanged = (phase) {
-      events?.phaseChanged(phase);
-      _notifyHud();
-    };
-
-    cameraRig.onCloseupStarted = () {
-      _notifyHud();
-    };
+    cameraRig.onPhaseChanged = events.phaseChanged;
 
     cameraRig.onReturnedToLine = () {
       _setupCurrentArrow();
-      events?.windChanged(windModel.display);
-      _notifyHud();
-    };
-
-    cameraRig.onSetEndStarted = () {
-      _notifyHud();
+      events.windChanged(windModel.display);
     };
   }
 
-  /// Advances to next set, clearing stuck arrows and generating new wind.
+  /// "Next set" from the set-end card: clear the target and walk back to the line.
   void advanceNextSet() {
-    // Award set point to winner of completed set
-    final int currentSetTotal = setScores[currentSetIndex].fold(
-      0,
-      (sum, s) => sum + s.points,
-    );
-    const int simulatedOpponentTotal = 26; // Simulated benchmark opponent
-
-    if (currentSetTotal > simulatedOpponentTotal) {
-      userSetPoints++;
-    } else if (currentSetTotal < simulatedOpponentTotal) {
-      opponentSetPoints++;
-    } else {
-      userSetPoints++;
-      opponentSetPoints++;
-    }
-
-    if (userSetPoints >= 3 || opponentSetPoints >= 3) {
-      isMatchComplete = true;
-      _notifyHud();
-      return;
-    }
-
-    currentSetIndex++;
-    currentArrowIndex = 0;
-    isSetComplete = false;
+    events.nextSet();
+    _setOver = false;
     stuckArrows.clear();
     hitPopup.reset();
-    lastShotScore = null;
-    lastHitScreenPos = null;
-    setScores.add([]);
-
     _setupCurrentArrow();
-    events?.nextSetStarted(currentSetIndex);
-    events?.windChanged(windModel.display);
-
+    events.windChanged(windModel.display);
     cameraRig.returnToLine();
-    _notifyHud();
   }
 
-  /// Restarts the match from Set 1 with a randomized seed (Bug #12).
+  /// "Play again" after the match: new seed (in the notifier), fresh target.
   void restartMatch() {
-    matchSeed = math.Random().nextInt(1000000) + 1;
-    currentSetIndex = 0;
-    currentArrowIndex = 0;
-    userSetPoints = 0;
-    opponentSetPoints = 0;
-    isSetComplete = false;
-    isMatchComplete = false;
-    setScores.clear();
-    setScores.add([]);
+    events.restartMatch();
+    _setOver = false;
     stuckArrows.clear();
     hitPopup.reset();
-    lastShotScore = null;
-    lastHitScreenPos = null;
-
     _setupCurrentArrow();
-    events?.matchRestarted(matchSeed);
-    events?.windChanged(windModel.display);
-
+    events.windChanged(windModel.display);
     cameraRig.reset();
-    _notifyHud();
-  }
-
-  /// Dismisses active hit popup.
-  void clearLastHitPopup() {
-    hitPopup.reset();
-    lastShotScore = null;
-    lastHitScreenPos = null;
-    _notifyHud();
-  }
-
-  int get totalScore =>
-      setScores.expand((r) => r).fold(0, (sum, s) => sum + s.points);
-
-  int get totalXCount => setScores.expand((r) => r).where((s) => s.isX).length;
-
-  int get currentSetScore =>
-      setScores[currentSetIndex].fold(0, (sum, s) => sum + s.points);
-
-  void _notifyHud() {
-    hudNotifier.value = hudNotifier.value + 1;
   }
 
   @override
@@ -292,7 +193,6 @@ class ArcheryGame extends FlameGame {
     // 2. Update Camera Rig with arrow follow and phase transitions
     cameraRig.update(
       clampedDt,
-      controller.draw,
       controller.isHolding,
       arrow: arrowPhysics,
     );
@@ -321,13 +221,6 @@ class ArcheryGame extends FlameGame {
         hitGround: arrowPhysics.hitGround,
       );
 
-      // Record shot
-      if (currentSetIndex < setScores.length &&
-          setScores[currentSetIndex].length < 3) {
-        setScores[currentSetIndex].add(score);
-        currentArrowIndex = setScores[currentSetIndex].length;
-      }
-
       // Hit Popup canvas 3D coordinates & event emission (Bug #6)
       hitPopup.trigger(
         worldX: arrowPhysics.hitPoint.x,
@@ -335,22 +228,9 @@ class ArcheryGame extends FlameGame {
         worldZ: arrowPhysics.hitPoint.z,
         score: score,
       );
-      events?.shotScored(score);
-
-      // Hit Popup screen coordinates for legacy listeners
-      if (archeryCamera.project(
-        arrowPhysics.hitPoint.x,
-        arrowPhysics.hitPoint.y,
-        arrowPhysics.hitPoint.z,
-      )) {
-        lastHitScreenPos = Offset(archeryCamera.sx, archeryCamera.sy);
-      } else {
-        lastHitScreenPos = Offset(
-          archeryCamera.screenW * 0.5,
-          archeryCamera.screenH * 0.5,
-        );
-      }
-      lastShotScore = score;
+      // Report the shot; the notifier reveals the bot's arrow and scores the set.
+      final bool isLastArrow = events.shotScored(score);
+      _setOver = isLastArrow;
 
       if (arrowPhysics.hitBoss) {
         cameraRig.addShake(score.isX ? 7.0 : 4.5);
@@ -368,19 +248,8 @@ class ArcheryGame extends FlameGame {
         cameraRig.addShake(1.5);
       }
 
-      final bool isLastArrow = currentArrowIndex >= 3;
-      if (isLastArrow) {
-        isSetComplete = true;
-        final int userTotal = setScores[currentSetIndex].fold(
-          0,
-          (sum, s) => sum + s.points,
-        );
-        events?.setCompleted(userTotal: userTotal, opponentTotal: 26);
-      }
-
       // Trigger closeup inspection
       cameraRig.onImpact(isLastArrowOfSet: isLastArrow);
-      _notifyHud();
     }
 
     // 6. Update Stuck Arrows
@@ -396,8 +265,15 @@ class ArcheryGame extends FlameGame {
   void render(Canvas canvas) {
     super.render(canvas);
 
+    // Camera shake moves the 3D world only; the bow, popup and crosshair stay steady.
+    canvas.save();
+    canvas.translate(cameraRig.shakeOffsetX, cameraRig.shakeOffsetY);
+
     // Layer 0: Park Background
     background.render(canvas);
+
+    // "50ft" tag lying on the shooting line
+    distanceTag.render(canvas);
 
     // Layer 1: White Target Board, Wooden Frame & WA Face
     targetBoard.render(canvas);
@@ -412,6 +288,8 @@ class ArcheryGame extends FlameGame {
 
     // Layer 4: World-Anchored Wind Pill
     windPill.render(canvas, windModel);
+
+    canvas.restore();
 
     // Layer 5: Foreground Recurve Bow Overlay
     bowOverlay.render(canvas);
