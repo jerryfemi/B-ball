@@ -59,17 +59,17 @@ void main() {
   col = mix(col, col * vec3(1.10, 1.03, 0.82), patchNoise * 0.35);
 
   // lane lines: centre line + two lines converging toward target legs (the "V")
-  // lanes start at the painted shooting line (z = 1.0, see ArcheryK.shootingLineZ)
-  float onLane = step(1.0, wz) * step(wz, uTargetZ);
-  float t      = clamp((wz - 1.0) / (uTargetZ - 1.0), 0.0, 1.0);
-  float sideX  = mix(3.2, 0.55, t);                    // from wide at the line to the legs
+  // lanes start at the painted shooting line (z = 4.0, see ArcheryK.shootingLineZ)
+  float onLane = step(4.0, wz) * step(wz, uTargetZ);
+  float t      = clamp((wz - 4.0) / (uTargetZ - 4.0), 0.0, 1.0);
+  float sideX  = mix(1.6, 0.55, t);                    // ArcheryK.laneHalfWidthAtLine -> target legs
   float lines  = max(lineMask(wx, 0.025, pxPerMx),
                  max(lineMask(wx - sideX, 0.04, pxPerMx),
                      lineMask(wx + sideX, 0.04, pxPerMx))) * onLane;
                      
   // shooting line across the lane at z = 0 (using pxPerMz for horizontal line AA)
-  // (z = 1.0 m must match ArcheryK.shootingLineZ)
-  lines = max(lines, (1.0 - clamp(abs(wz - 1.0) * pxPerMz - 0.05 * pxPerMz + 0.5, 0.0, 1.0)) * step(abs(wx), 6.0));
+  // (z = 4.0 m must match ArcheryK.shootingLineZ)
+  lines = max(lines, (1.0 - clamp(abs(wz - 4.0) * pxPerMz - 0.05 * pxPerMz + 0.5, 0.0, 1.0)) * step(abs(wx), 6.0));
   col = mix(col, vec3(0.97), lines * 0.92);
 
   // soft contact darkening under the target stand (grounds the target board)
