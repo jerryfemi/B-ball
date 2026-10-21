@@ -28,36 +28,36 @@ class _VaneData {
 class ArrowRenderer3D {
   static const double shaftR = 0.0045; // Arcade-thick shaft radius (meters)
   static const double vaneHeight = 0.024; // Vane radial extension (meters)
-  static const double pointLength = 0.040; // Steel field point length (meters)
+  static const double pointLength = 0.060; // Steel broadhead length (meters)
 
   // Cached Paints
   static final Paint _shaftPaint = Paint()
-    ..color = const Color(0xFF1F2937)
+    ..color = const Color(0xFF8A5A30)
     ..style = PaintingStyle.fill;
 
   static final Paint _highlightPaint = Paint()
-    ..color = const Color(0xFF374151)
+    ..color = const Color(0xFFC9935A)
     ..strokeWidth = 1.0
     ..style = PaintingStyle.stroke;
 
   static final Paint _pointPaint = Paint()
-    ..color = const Color(0xFF94A3B8)
+    ..color = const Color(0xFFD1D5DB)
     ..style = PaintingStyle.fill;
 
   static final Paint _vanePaint = Paint()
     ..style = PaintingStyle.fill;
 
   static final Paint _nockCapPaint = Paint()
-    ..color = const Color(0xFF1F2937)
+    ..color = const Color(0xFF8A5A30)
     ..style = PaintingStyle.fill;
 
   static final Paint _entryHolePaint = Paint()
     ..color = const Color(0xFF0F172A)
     ..style = PaintingStyle.fill;
 
-  static const Color _shaftColor = Color(0xFF1F2937);
-  static const Color _highlightColor = Color(0xFF374151);
-  static const Color _pointColor = Color(0xFF94A3B8);
+  static const Color _shaftColor = Color(0xFF8A5A30); // wooden shaft
+  static const Color _highlightColor = Color(0xFFC9935A);
+  static const Color _pointColor = Color(0xFFD1D5DB); // steel broadhead
 
   /// 8 precomputed vane shades, dark (facing away) -> bright (facing camera).
   /// Avoids a Color.lerp allocation per vane per frame.
@@ -253,7 +253,7 @@ class ArrowRenderer3D {
       final double nx = -screenDy * invLen;
       final double ny = screenDx * invLen;
 
-      // Carbon Shaft perspective quad
+      // Wooden shaft perspective quad
       _shaftPath.reset();
       _shaftPath.moveTo(sxNock - nx * wNock, syNock - ny * wNock);
       _shaftPath.lineTo(sxTip - nx * wTip, syTip - ny * wTip);
@@ -262,14 +262,15 @@ class ArrowRenderer3D {
       _shaftPath.close();
       canvas.drawPath(_shaftPath, _shaftPaint);
 
-      // Highlight line
+      // Varnish highlight along the shaft, scaled with its on-screen width
+      _highlightPaint.strokeWidth = math.max(1.0, (wNock + wTip) * 0.3);
       canvas.drawLine(
         Offset(sxNock - nx * (wNock * 0.4), syNock - ny * (wNock * 0.4)),
         Offset(sxTip - nx * (wTip * 0.4), syTip - ny * (wTip * 0.4)),
         _highlightPaint,
       );
 
-      // Steel Field Point (last 0.04m at tip)
+      // Steel broadhead (last 6 cm at the tip)
       final double pBaseX = tipX - forwardX * pointLength;
       final double pBaseY = tipY - forwardY * pointLength;
       final double pBaseZ = tipZ - forwardZ * pointLength;
@@ -277,7 +278,7 @@ class ArrowRenderer3D {
       if (camera.project(pBaseX, pBaseY, pBaseZ)) {
         final double sxPBase = camera.sx;
         final double syPBase = camera.sy;
-        final double wPBase = camera.pxPerMeterAt(camera.depth) * (shaftR * 1.3);
+        final double wPBase = camera.pxPerMeterAt(camera.depth) * (shaftR * 2.6); // broadhead blades
 
         _pointPath.reset();
         _pointPath.moveTo(sxPBase - nx * wPBase, syPBase - ny * wPBase);
