@@ -161,7 +161,7 @@ class CameraRig {
     }
   }
 
-  void update(double dt, double drawRatio, bool isHolding, {ArrowPhysics3D? arrow}) {
+  void update(double dt, bool isHolding, {ArrowPhysics3D? arrow}) {
     phaseTime += dt;
 
     switch (phase) {
