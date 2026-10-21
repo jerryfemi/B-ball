@@ -8,7 +8,7 @@ import '../physics/wind_model.dart';
 /// World-anchored wind pill rendered above the target board (Build Plan v2 §6).
 ///
 /// Features:
-/// - World-anchored at (0.0, targetCenterY + boardHeight/2 + 0.28, distanceM).
+/// - World-anchored above the current set's target board.
 /// - Reprojected every frame to naturally scale and track camera moves.
 /// - Shows dark rounded pill (#0A0E1A at 75% alpha).
 /// - Bold white text "WIND: X.X".
@@ -63,12 +63,13 @@ class WindPill {
       return;
     }
 
-    // World anchor: 28 cm above top edge of 1.0m board
-    final double anchorY = ArcheryK.targetCenterY + ArcheryK.boardHeight * 0.5 + 0.28;
-    if (!camera.project(0.0, anchorY, ArcheryK.distanceM)) return;
+    // Anchored to the top edge of the board, then lifted by a fixed number of
+    // pixels so it never overlaps the (small) far targets.
+    final double boardTopY = ArcheryK.targetCenterY + ArcheryK.boardHeight * 0.5;
+    if (!camera.project(0.0, boardTopY, cameraRig.targetDistance)) return;
 
     final double cx = camera.sx;
-    final double cy = camera.sy;
+    final double boardTopSy = camera.sy;
 
     // Cache / update TextPainter if display value changed
     if (_textPainter == null || _lastDisplay != wind.display) {
@@ -99,6 +100,7 @@ class WindPill {
     final double textH = _textPainter!.height;
     final double pillW = pillPadH * 2.0 + textW + spacing + dialDiameter;
     final double pillH = math.max(textH, dialDiameter) + pillPadV * 2.0;
+    final double cy = boardTopSy - pillH * 0.5 - 10.0;
 
     final Rect pillRect = Rect.fromCenter(
       center: Offset(cx, cy),
