@@ -171,6 +171,9 @@ class RangeBackground {
       shader.setFloat(20, theme.hazeDist);
       shader.setFloat(21, activeDistance);
 
+      // Explicitly bind sampler every frame for Web CanvasKit reliability
+      shader.setImageSampler(0, _grassTexture!);
+
       canvas.drawRect(groundRect, _groundShaderPaint);
     } else {
       _renderFallbackGround(canvas, screenW, screenH, horizonY);
