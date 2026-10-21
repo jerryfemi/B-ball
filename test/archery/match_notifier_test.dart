@@ -22,11 +22,30 @@ void main() {
   });
   tearDown(() => container.dispose());
 
-  test('bot reveals one arrow per player arrow', () {
+  test('bot arrows land in the set-start replay, not with yours', () {
+    expect(notifier.botArrowLanded(), isNotNull);
+    expect(notifier.botArrowLanded(), isNotNull);
+    expect(notifier.botArrowLanded(), isNotNull);
+    expect(notifier.botArrowLanded(), isNull); // only three per set
+    expect(container.read(archeryMatchProvider).botShots.length, 3);
+
     expect(notifier.shotScored(_shot(0.0)), isFalse);
-    expect(container.read(archeryMatchProvider).botShots.length, 1);
-    expect(notifier.shotScored(_shot(0.0)), isFalse);
-    expect(container.read(archeryMatchProvider).botShots.length, 2);
+    expect(container.read(archeryMatchProvider).botShots.length, 3);
+  });
+
+  test('set still completes if the replay was skipped', () {
+    notifier.shotScored(_shot(0.0));
+    notifier.shotScored(_shot(0.0));
+    expect(notifier.shotScored(_shot(0.0)), isTrue);
+    expect(container.read(archeryMatchProvider).botShots.length, 3);
+  });
+
+  test('replayed bot score matches its deterministic shot', () {
+    final shot = notifier.botArrowLanded()!;
+    final again = ArcheryMatchNotifier.botShot(notifier.matchSeed, 0, 0);
+    expect(shot.points, again.points);
+    expect(shot.localX, again.localX);
+    expect(shot.localY, again.localY);
   });
 
   test('set points are awarded exactly once, on the third arrow', () {
