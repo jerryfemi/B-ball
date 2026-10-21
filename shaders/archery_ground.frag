@@ -53,21 +53,23 @@ void main() {
   col *= 0.86 + 0.28 * patchNoise;
 
   // mowing sheen: blades on light stripes catch more light
-  col *= mix(1.0, 1.06, stripe < 0.5 ? 1.0 : 0.0);
+  col *= mix(1.06, 1.0, stripe);
 
   // subtle hue drift so the field is not a single uniform flat green
   col = mix(col, col * vec3(1.10, 1.03, 0.82), patchNoise * 0.35);
 
   // lane lines: centre line + two lines converging toward target legs (the "V")
-  float onLane = step(0.0, wz) * step(wz, uTargetZ);
-  float t      = clamp(wz / uTargetZ, 0.0, 1.0);
+  // lanes start at the painted shooting line (z = 1.0, see ArcheryK.shootingLineZ)
+  float onLane = step(1.0, wz) * step(wz, uTargetZ);
+  float t      = clamp((wz - 1.0) / (uTargetZ - 1.0), 0.0, 1.0);
   float sideX  = mix(3.2, 0.55, t);                    // from wide at the line to the legs
   float lines  = max(lineMask(wx, 0.025, pxPerMx),
                  max(lineMask(wx - sideX, 0.04, pxPerMx),
                      lineMask(wx + sideX, 0.04, pxPerMx))) * onLane;
                      
   // shooting line across the lane at z = 0 (using pxPerMz for horizontal line AA)
-  lines = max(lines, (1.0 - clamp(abs(wz) * pxPerMz - 0.05 * pxPerMz + 0.5, 0.0, 1.0)) * step(abs(wx), 6.0));
+  // (z = 1.0 m must match ArcheryK.shootingLineZ)
+  lines = max(lines, (1.0 - clamp(abs(wz - 1.0) * pxPerMz - 0.05 * pxPerMz + 0.5, 0.0, 1.0)) * step(abs(wx), 6.0));
   col = mix(col, vec3(0.97), lines * 0.92);
 
   // soft contact darkening under the target stand (grounds the target board)
