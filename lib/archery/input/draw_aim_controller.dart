@@ -67,15 +67,18 @@ class DrawAimController {
   /// Target center X on screen in aiming pose (centered).
   double get aimingTargetCenterX => screenW * 0.5;
 
-  /// Target face radius in screen pixels in the aiming pose.
-  double get _aimFaceRadiusPx {
-    final double depth = ArcheryK.distanceM - ArcheryK.camAimZ;
+  /// Target face radius in screen pixels in the aiming pose at [distance].
+  double _faceRadiusPxAt(double distance) {
+    final double depth = distance - ArcheryK.camAimZ;
     return camera.baseFocal * cameraRig.aimZoom / depth * ArcheryK.faceRadius;
   }
 
-  /// Target center Y on screen computed in the aiming pose (Bug #1).
+  /// Face radius of the current set's target while aiming.
+  double get _aimFaceRadiusPx => _faceRadiusPxAt(cameraRig.targetDistance);
+
+  /// Target center Y on screen computed in the aiming pose.
   double get aimingTargetCenterY {
-    final double depth = ArcheryK.distanceM - ArcheryK.camAimZ;
+    final double depth = cameraRig.targetDistance - ArcheryK.camAimZ;
     final double focal = camera.baseFocal * cameraRig.aimZoom;
     return camera.opticalCenterY - focal * (ArcheryK.targetCenterY - ArcheryK.eyeY) / depth;
   }
@@ -107,11 +110,12 @@ class DrawAimController {
   void onPointerMove(int pointerId, double x, double y) {
     if (_activePointerId != pointerId || !isHolding) return;
 
-    // Screen-independent aim gain: thumb pixels needed to reach the face edge
-    const double thumbPxToFaceEdge = 22.0; // tune 16-30
-    final double depth = ArcheryK.distanceM - ArcheryK.camAimZ;
+    // Aim gain is calibrated on the 50 ft face and NOT rescaled for farther
+    // sets: the same thumb roll covers more rings at 100/150 ft (harder).
+    const double thumbPxToFaceEdge = 22.0; // at 50 ft; tune 16-30
+    final double depth = cameraRig.targetDistance - ArcheryK.camAimZ;
     final double focal = camera.baseFocal * cameraRig.aimZoom;
-    final double gain = _aimFaceRadiusPx / thumbPxToFaceEdge;
+    final double gain = _faceRadiusPxAt(ArcheryK.distanceM) / thumbPxToFaceEdge;
 
     // Anchor-relative thumb-roll movement
     final double deltaX = (x - _anchorX) * gain;
