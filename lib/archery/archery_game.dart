@@ -64,12 +64,24 @@ class ArcheryGame extends FlameGame {
       initialDistance: targetDistance,
     );
     windPill = WindPill(camera: archeryCamera, cameraRig: cameraRig);
-    bowOverlay = BowOverlay(camera: archeryCamera);
+    bowOverlay = BowOverlay(camera: archeryCamera, cameraRig: cameraRig);
     flyingArrow = FlyingArrow(camera: archeryCamera, physics: arrowPhysics);
     hitPopup = HitPopupCanvas();
     distanceTag = DistanceTag(camera: archeryCamera, cameraRig: cameraRig);
 
     _setupCurrentArrow();
+  }
+
+  /// Moves the target to this set's distance: 50 ft, 100 ft, then 150 ft.
+  void _applySetDistance() {
+    final int set = events.setIndex;
+    targetDistance = ArcheryK.distanceForSet(set);
+    cameraRig.setTargetDistance(
+      targetDistance,
+      label: ArcheryK.distanceLabelForSet(set),
+    );
+    targetBoard.distance = targetDistance;
+    background.activeDistance = targetDistance;
   }
 
   /// Seed for the next arrow, derived from the match seed so both players of a
@@ -92,8 +104,7 @@ class ArcheryGame extends FlameGame {
     await super.onLoad();
 
     ArcheryAudio.init();
-    cameraRig.setTargetDistance(targetDistance);
-    background.activeDistance = targetDistance;
+    _applySetDistance();
     await background.load();
     await bowOverlay.load();
 
@@ -125,6 +136,7 @@ class ArcheryGame extends FlameGame {
         speed: ArcheryK.fullDrawSpeed,
         targetDist: targetDistance,
         windModel: windModel,
+        windScale: ArcheryK.windScaleFor(targetDistance),
       );
 
       cameraRig.fireShot();
@@ -148,9 +160,12 @@ class ArcheryGame extends FlameGame {
     _setOver = false;
     stuckArrows.clear();
     hitPopup.reset();
+    _applySetDistance();
     _setupCurrentArrow();
     events.windChanged(windModel.display);
-    cameraRig.returnToLine();
+    // Cut straight to the line (the set card covers the cut) instead of flying
+    // back from the old target, which has just moved to the new distance.
+    cameraRig.reset();
   }
 
   /// "Play again" after the match: new seed (in the notifier), fresh target.
@@ -159,6 +174,7 @@ class ArcheryGame extends FlameGame {
     _setOver = false;
     stuckArrows.clear();
     hitPopup.reset();
+    _applySetDistance();
     _setupCurrentArrow();
     events.windChanged(windModel.display);
     cameraRig.reset();
