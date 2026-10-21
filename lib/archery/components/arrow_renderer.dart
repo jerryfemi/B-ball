@@ -55,6 +55,30 @@ class ArrowRenderer3D {
     ..color = const Color(0xFF0F172A)
     ..style = PaintingStyle.fill;
 
+  static const Color _shaftColor = Color(0xFF1F2937);
+  static const Color _highlightColor = Color(0xFF374151);
+  static const Color _pointColor = Color(0xFF94A3B8);
+
+  /// 8 precomputed vane shades, dark (facing away) -> bright (facing camera).
+  /// Avoids a Color.lerp allocation per vane per frame.
+  static final List<Color> _vaneShades = List<Color>.generate(
+    8,
+    (i) => Color.lerp(const Color(0xFFB91C1C), const Color(0xFFEF4444), i / 7.0)!,
+    growable: false,
+  );
+
+  static double _opacity = 1.0;
+
+  static void _applyOpacity(double opacity) {
+    if (opacity == _opacity) return;
+    _opacity = opacity;
+    final bool opaque = opacity >= 0.999;
+    _shaftPaint.color = opaque ? _shaftColor : _shaftColor.withValues(alpha: opacity);
+    _nockCapPaint.color = _shaftPaint.color;
+    _highlightPaint.color = opaque ? _highlightColor : _highlightColor.withValues(alpha: opacity);
+    _pointPaint.color = opaque ? _pointColor : _pointColor.withValues(alpha: opacity);
+  }
+
   // Reusable Paths
   static final Path _shaftPath = Path();
   static final Path _pointPath = Path();
@@ -81,7 +105,11 @@ class ArrowRenderer3D {
     double roll = 0.0,
     double quiverOffsetX = 0.0,
     bool drawEntryHole = false,
+    double opacity = 1.0,
   }) {
+    if (opacity <= 0.01) return;
+    _applyOpacity(opacity);
+
     // 1. Calculate Nock Position in 3D
     final double nockX = tipX - forwardX * length + quiverOffsetX;
     final double nockY = tipY - forwardY * length;
@@ -148,8 +176,10 @@ class ArrowRenderer3D {
       final double dy = cosT * ry + sinT * uy;
       final double dz = cosT * rz + sinT * uz;
 
-      // Facing dot product
-      vane.dot = (dx * vx + dy * vy + dz * vz) * invV;
+      // Facing: v points from the camera to the nock, so a vane whose radial
+      // direction runs along v points AWAY from the camera. Negate so that
+      // dot > 0 means "facing the camera" (drawn last, brighter).
+      vane.dot = -(dx * vx + dy * vy + dz * vz) * invV;
 
       // 4 corners in 3D:
       final double rOuter = shaftR + vaneHeight;
@@ -277,7 +307,8 @@ class ArrowRenderer3D {
 
     // Shaded red: brighter when facing camera, deeper when facing away
     final double t = (vane.dot * 0.5 + 0.5).clamp(0.0, 1.0);
-    _vanePaint.color = Color.lerp(const Color(0xFFB91C1C), const Color(0xFFEF4444), t)!;
+    final Color shade = _vaneShades[(t * 7.0).round()];
+    _vanePaint.color = _opacity >= 0.999 ? shade : shade.withValues(alpha: _opacity);
     canvas.drawPath(_vanePath, _vanePaint);
   }
 }
