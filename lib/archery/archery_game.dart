@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'archery_constants.dart';
 import 'audio/archery_audio.dart';
@@ -21,6 +22,7 @@ import 'physics/sight_solver.dart';
 import 'physics/target_scoring.dart';
 import 'physics/wind_model.dart';
 import 'state/archery_match_notifier.dart';
+import 'state/archery_match_state.dart';
 
 /// Flame game for the 50 ft GamePigeon-style archery range.
 ///
@@ -48,6 +50,17 @@ class ArcheryGame extends FlameGame {
   late final HitPopupCanvas hitPopup;
   late final DistanceTag distanceTag;
   final List<StuckArrow> stuckArrows = [];
+
+  /// The opponent's arrows shown landing at the start of each set.
+  final List<StuckArrow> _botArrows = [];
+
+  // Set-start replay timeline (seconds). _introTime < 0 = not running.
+  static const double _introFirst = 0.6;
+  static const double _introGap = 0.75;
+  static const double _introHold = 1.2;
+  static const double _botFadeSeconds = 0.45;
+  double _introTime = -1.0;
+  int _introLanded = 0;
 
   /// True between the last arrow of a set landing and "Next set".
   bool _setOver = false;
@@ -116,6 +129,7 @@ class ArcheryGame extends FlameGame {
       if (_setOver || arrowPhysics.inFlight) return;
 
       ArcheryAudio.playReleaseTwang();
+      HapticFeedback.lightImpact();
 
       // 1. Unproject visible crosshair point to target plane Z = D
       archeryCamera.unprojectToPlane(crossX, crossY, targetDistance);
@@ -146,12 +160,71 @@ class ArcheryGame extends FlameGame {
     controller.onHoldStarted = ArcheryAudio.playDrawCreak;
 
     // Camera Rig phase transitions
-    cameraRig.onPhaseChanged = events.phaseChanged;
+    cameraRig.onPhaseChanged = (ShotPhase phase) {
+      if (phase == ShotPhase.aiming) ArcheryAudio.playFullDrawClick();
+      events.phaseChanged(phase);
+    };
 
     cameraRig.onReturnedToLine = () {
+      _botArrows.clear();
       _setupCurrentArrow();
       events.windChanged(windModel.display);
     };
+
+    _startIntro();
+  }
+
+  /// Set start: the camera waits at the target while the opponent's three
+  /// arrows land one by one, then dollies back to the line for your turn.
+  void _startIntro() {
+    _botArrows.clear();
+    _introTime = 0.0;
+    _introLanded = 0;
+    cameraRig.startIntro();
+  }
+
+  void _updateIntro(double dt) {
+    if (_introTime < 0.0) return;
+    _introTime += dt;
+    const int n = ArcheryMatchState.arrowsPerSet;
+    if (_introLanded < n && _introTime >= _introFirst + _introLanded * _introGap) {
+      _introLanded++;
+      final ShotScore? shot = events.botArrowLanded();
+      if (shot != null) _landBotArrow(shot);
+    }
+    if (_introLanded >= n && _introTime >= _introFirst + (n - 1) * _introGap + _introHold) {
+      _introTime = -1.0;
+      cameraRig.endIntro();
+    }
+  }
+
+  void _landBotArrow(ShotScore shot) {
+    // Came in from the shooting line, dropping slightly.
+    final double yaw = math.atan2(shot.localX, targetDistance);
+    final double pitch = -0.015 - 0.0008 * targetDistance;
+    _botArrows.add(
+      StuckArrow(
+        hitLocalX: shot.localX,
+        hitLocalY: shot.localY,
+        hitZ: targetDistance,
+        pitch: pitch,
+        yaw: yaw,
+        penetrationDepth: 0.10,
+      ),
+    );
+    hitPopup.trigger(
+      worldX: shot.localX,
+      worldY: ArcheryK.targetCenterY + shot.localY,
+      worldZ: targetDistance,
+      score: shot,
+    );
+    ArcheryAudio.playImpact(
+      distance: 0.0, // heard from the camera at the target: no delay
+      isX: shot.ring >= 10,
+      hitBoss: true,
+      hitGround: false,
+    );
+    cameraRig.addShake(shot.isX ? 4.0 : 2.5);
   }
 
   /// "Next set" from the set-end card: clear the target and walk back to the line.
@@ -163,9 +236,9 @@ class ArcheryGame extends FlameGame {
     _applySetDistance();
     _setupCurrentArrow();
     events.windChanged(windModel.display);
-    // Cut straight to the line (the set card covers the cut) instead of flying
-    // back from the old target, which has just moved to the new distance.
-    cameraRig.reset();
+    // Cut to the new target (the set card covers the cut) and replay the
+    // opponent's arrows for this set.
+    _startIntro();
   }
 
   /// "Play again" after the match: new seed (in the notifier), fresh target.
@@ -177,7 +250,7 @@ class ArcheryGame extends FlameGame {
     _applySetDistance();
     _setupCurrentArrow();
     events.windChanged(windModel.display);
-    cameraRig.reset();
+    _startIntro();
   }
 
   @override
@@ -206,6 +279,9 @@ class ArcheryGame extends FlameGame {
     // 1. Update Input & Crosshair
     controller.update(clampedDt);
 
+    // 1b. Set-start replay of the opponent's arrows
+    _updateIntro(clampedDt);
+
     // 2. Update Camera Rig with arrow follow and phase transitions
     cameraRig.update(
       clampedDt,
@@ -232,7 +308,7 @@ class ArcheryGame extends FlameGame {
       // Distance-delayed impact audio
       ArcheryAudio.playImpact(
         distance: targetDistance,
-        isX: score.isX,
+        isX: score.ring >= 10,
         hitBoss: arrowPhysics.hitBoss,
         hitGround: arrowPhysics.hitGround,
       );
@@ -244,7 +320,9 @@ class ArcheryGame extends FlameGame {
         worldZ: arrowPhysics.hitPoint.z,
         score: score,
       );
-      // Report the shot; the notifier reveals the bot's arrow and scores the set.
+      if (arrowPhysics.hitBoss) HapticFeedback.mediumImpact();
+
+      // Report the shot; the notifier scores it (and the set on the last arrow).
       final bool isLastArrow = events.shotScored(score);
       _setOver = isLastArrow;
 
@@ -273,6 +351,17 @@ class ArcheryGame extends FlameGame {
       arrow.update(clampedDt);
     }
 
+    // Opponent's replay arrows fade out as the camera heads back to the line.
+    if (_botArrows.isNotEmpty) {
+      final double o = cameraRig.phase == ShotPhase.returning
+          ? (1.0 - cameraRig.phaseTime / _botFadeSeconds).clamp(0.0, 1.0)
+          : (cameraRig.phase == ShotPhase.intro ? 1.0 : 0.0);
+      for (final arrow in _botArrows) {
+        arrow.opacity = o;
+        arrow.update(clampedDt);
+      }
+    }
+
     // 7. Update Canvas Hit Popup
     hitPopup.update(clampedDt);
   }
@@ -295,6 +384,9 @@ class ArcheryGame extends FlameGame {
     targetBoard.render(canvas);
 
     // Layer 2: Stuck Arrows embedded in board
+    for (final arrow in _botArrows) {
+      arrow.render(canvas, archeryCamera);
+    }
     for (final arrow in stuckArrows) {
       arrow.render(canvas, archeryCamera);
     }
