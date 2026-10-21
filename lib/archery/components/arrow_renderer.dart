@@ -26,38 +26,52 @@ class _VaneData {
 /// - Launch depth culling (nockDepth < 0.35m) preventing pop-in.
 /// - Zero heap allocations per frame via pre-allocated paths and registers.
 class ArrowRenderer3D {
-  static const double shaftR = 0.0045; // Arcade-thick shaft radius (meters)
+  static const double shaftR = 0.0055; // Arcade-thick shaft radius (meters)
   static const double vaneHeight = 0.024; // Vane radial extension (meters)
-  static const double pointLength = 0.060; // Steel broadhead length (meters)
+  static const double pointLength = 0.075; // Steel broadhead length (meters)
 
-  // Cached Paints
-  static final Paint _shaftPaint = Paint()
-    ..color = const Color(0xFF8A5A30)
-    ..style = PaintingStyle.fill;
+  // ---- Look (GamePigeon-style wooden arrow, steel broadhead, red vanes) ----
+  // Every solid paint is listed in [_solid] with its base colour so the bow's
+  // fade-out can scale alpha on all of them without allocating per frame.
+  static Paint _fill(Color c) => Paint()
+    ..color = c
+    ..style = PaintingStyle.fill
+    ..isAntiAlias = true;
 
-  static final Paint _highlightPaint = Paint()
-    ..color = const Color(0xFFC9935A)
+  static const Color _cShaftEdge = Color(0xFF4A2B14); // shaded rim of the shaft
+  static const Color _cShaft = Color(0xFF8E5C31); // wood
+  static const Color _cShaftLit = Color(0xFFDDAE74); // varnish highlight
+  static const Color _cNock = Color(0xFFF1F5F9); // white plastic nock
+  static const Color _cFerrule = Color(0xFF8B95A3); // steel collar
+  static const Color _cFerruleLit = Color(0xFFE5E9EF);
+  static const Color _cBladeLit = Color(0xFFF4F6F9); // lit blade half
+  static const Color _cBladeDark = Color(0xFF9AA4B2); // shaded blade half
+  static const Color _cRidge = Color(0xFF5B6573); // centre ridge / edge line
+
+  static final Paint _shaftEdgePaint = _fill(_cShaftEdge);
+  static final Paint _shaftPaint = _fill(_cShaft);
+  static final Paint _shaftLitPaint = _fill(_cShaftLit);
+  static final Paint _nockPaint = _fill(_cNock);
+  static final Paint _ferrulePaint = _fill(_cFerrule);
+  static final Paint _ferruleLitPaint = _fill(_cFerruleLit);
+  static final Paint _bladeLitPaint = _fill(_cBladeLit);
+  static final Paint _bladeDarkPaint = _fill(_cBladeDark);
+  static final Paint _ridgePaint = Paint()
+    ..color = _cRidge
+    ..style = PaintingStyle.stroke
     ..strokeWidth = 1.0
-    ..style = PaintingStyle.stroke;
+    ..isAntiAlias = true;
+  static final Paint _vanePaint = Paint()..style = PaintingStyle.fill;
+  static final Paint _entryHolePaint = _fill(const Color(0xFF0F172A));
 
-  static final Paint _pointPaint = Paint()
-    ..color = const Color(0xFFD1D5DB)
-    ..style = PaintingStyle.fill;
-
-  static final Paint _vanePaint = Paint()
-    ..style = PaintingStyle.fill;
-
-  static final Paint _nockCapPaint = Paint()
-    ..color = const Color(0xFF8A5A30)
-    ..style = PaintingStyle.fill;
-
-  static final Paint _entryHolePaint = Paint()
-    ..color = const Color(0xFF0F172A)
-    ..style = PaintingStyle.fill;
-
-  static const Color _shaftColor = Color(0xFF8A5A30); // wooden shaft
-  static const Color _highlightColor = Color(0xFFC9935A);
-  static const Color _pointColor = Color(0xFFD1D5DB); // steel broadhead
+  static final List<Paint> _solid = [
+    _shaftEdgePaint, _shaftPaint, _shaftLitPaint, _nockPaint, _ferrulePaint,
+    _ferruleLitPaint, _bladeLitPaint, _bladeDarkPaint, _ridgePaint,
+  ];
+  static const List<Color> _solidColors = [
+    _cShaftEdge, _cShaft, _cShaftLit, _cNock, _cFerrule,
+    _cFerruleLit, _cBladeLit, _cBladeDark, _cRidge,
+  ];
 
   /// 8 precomputed vane shades, dark (facing away) -> bright (facing camera).
   /// Avoids a Color.lerp allocation per vane per frame.
@@ -73,16 +87,18 @@ class ArrowRenderer3D {
     if (opacity == _opacity) return;
     _opacity = opacity;
     final bool opaque = opacity >= 0.999;
-    _shaftPaint.color = opaque ? _shaftColor : _shaftColor.withValues(alpha: opacity);
-    _nockCapPaint.color = _shaftPaint.color;
-    _highlightPaint.color = opaque ? _highlightColor : _highlightColor.withValues(alpha: opacity);
-    _pointPaint.color = opaque ? _pointColor : _pointColor.withValues(alpha: opacity);
+    for (int i = 0; i < _solid.length; i++) {
+      _solid[i].color = opaque ? _solidColors[i] : _solidColors[i].withValues(alpha: opacity);
+    }
   }
 
   // Reusable Paths
-  static final Path _shaftPath = Path();
-  static final Path _pointPath = Path();
+  static final Path _stripPath = Path();
   static final Path _vanePath = Path();
+
+  // Screen-space registers for points along the shaft (zero allocation).
+  static double _ax = 0, _ay = 0, _aw = 0; // segment start (toward nock)
+  static double _bx = 0, _by = 0, _bw = 0; // segment end (toward tip)
 
   // Reusable Vane Registers
   static final List<_VaneData> _vanes = [
@@ -237,55 +253,73 @@ class ArrowRenderer3D {
       }
     }
 
-    // Step B: Shaft & Steel Field Point
-    final double wTip = camera.pxPerMeterAt(tipDepth) * shaftR;
+    // Step B: shaft, nock, steel collar and broadhead.
     final double wNock = camera.pxPerMeterAt(nockDepth) * shaftR;
-
     final double screenDx = sxTip - sxNock;
     final double screenDy = syTip - syNock;
     final double screenLen = math.sqrt(screenDx * screenDx + screenDy * screenDy);
 
     if (screenLen < wNock * 1.2) {
-      // Looking almost straight down the shaft
-      canvas.drawCircle(Offset(sxNock, syNock), wNock, _nockCapPaint);
+      // Looking straight down the shaft: just the white nock.
+      canvas.drawCircle(Offset(sxNock, syNock), wNock, _nockPaint);
     } else {
-      final double invLen = 1.0 / screenLen;
-      final double nx = -screenDy * invLen;
-      final double ny = screenDx * invLen;
+      // Perpendicular on screen, flipped so +n faces the light (upper left).
+      double nx = -screenDy / screenLen;
+      double ny = screenDx / screenLen;
+      if (nx * -0.55 + ny * -0.83 < 0) {
+        nx = -nx;
+        ny = -ny;
+      }
 
-      // Wooden shaft perspective quad
-      _shaftPath.reset();
-      _shaftPath.moveTo(sxNock - nx * wNock, syNock - ny * wNock);
-      _shaftPath.lineTo(sxTip - nx * wTip, syTip - ny * wTip);
-      _shaftPath.lineTo(sxTip + nx * wTip, syTip + ny * wTip);
-      _shaftPath.lineTo(sxNock + nx * wNock, syNock + ny * wNock);
-      _shaftPath.close();
-      canvas.drawPath(_shaftPath, _shaftPaint);
-
-      // Varnish highlight along the shaft, scaled with its on-screen width
-      _highlightPaint.strokeWidth = math.max(1.0, (wNock + wTip) * 0.3);
-      canvas.drawLine(
-        Offset(sxNock - nx * (wNock * 0.4), syNock - ny * (wNock * 0.4)),
-        Offset(sxTip - nx * (wTip * 0.4), syTip - ny * (wTip * 0.4)),
-        _highlightPaint,
-      );
-
-      // Steel broadhead (last 6 cm at the tip)
-      final double pBaseX = tipX - forwardX * pointLength;
-      final double pBaseY = tipY - forwardY * pointLength;
-      final double pBaseZ = tipZ - forwardZ * pointLength;
-
-      if (camera.project(pBaseX, pBaseY, pBaseZ)) {
-        final double sxPBase = camera.sx;
-        final double syPBase = camera.sy;
-        final double wPBase = camera.pxPerMeterAt(camera.depth) * (shaftR * 2.6); // broadhead blades
-
-        _pointPath.reset();
-        _pointPath.moveTo(sxPBase - nx * wPBase, syPBase - ny * wPBase);
-        _pointPath.lineTo(sxTip, syTip);
-        _pointPath.lineTo(sxPBase + nx * wPBase, syPBase + ny * wPBase);
-        _pointPath.close();
-        canvas.drawPath(_pointPath, _pointPaint);
+      final double len = length;
+      // A stuck arrow's head is buried in the board: shaft runs to the entry
+      // point and no collar/broadhead is drawn.
+      final bool showHead = !drawEntryHole;
+      final double shaftFront = showHead ? pointLength + 0.02 : 0.0;
+      // Wooden shaft from the nock to the steel collar, as three tapered strips
+      // (shaded rim, wood, varnish highlight) so it reads as a round dowel.
+      if (_segment(camera, tipX, tipY, tipZ, forwardX, forwardY, forwardZ,
+          len, shaftFront, quiverOffsetX)) {
+        _strip(canvas, _shaftEdgePaint, nx, ny, 1.0, 0.0);
+        _strip(canvas, _shaftPaint, nx, ny, 0.74, 0.16);
+        _strip(canvas, _shaftLitPaint, nx, ny, 0.22, 0.48);
+      }
+      // White nock (last 1.8 cm at the back).
+      if (_segment(camera, tipX, tipY, tipZ, forwardX, forwardY, forwardZ,
+          len, len - 0.018, quiverOffsetX)) {
+        _strip(canvas, _nockPaint, nx, ny, 1.08, 0.0);
+      }
+      // Steel collar (ferrule).
+      if (showHead && _segment(camera, tipX, tipY, tipZ, forwardX, forwardY, forwardZ,
+          pointLength + 0.02, pointLength - 0.004, 0.0)) {
+        _strip(canvas, _ferrulePaint, nx, ny, 1.18, 0.0);
+        _strip(canvas, _ferruleLitPaint, nx, ny, 0.35, 0.45);
+      }
+      // Broadhead: two-tone blade with a centre ridge and a notched back.
+      if (showHead && _segment(camera, tipX, tipY, tipZ, forwardX, forwardY, forwardZ,
+          pointLength, 0.0, 0.0)) {
+        final double bw = _aw * 3.4; // blade half-width at its back
+        final double notchX = _ax + (_bx - _ax) * 0.12;
+        final double notchY = _ay + (_by - _ay) * 0.12;
+        // lit half
+        _stripPath
+          ..reset()
+          ..moveTo(notchX, notchY)
+          ..lineTo(_ax + nx * bw, _ay + ny * bw)
+          ..lineTo(_bx, _by)
+          ..close();
+        canvas.drawPath(_stripPath, _bladeLitPaint);
+        // shaded half
+        _stripPath
+          ..reset()
+          ..moveTo(notchX, notchY)
+          ..lineTo(_ax - nx * bw, _ay - ny * bw)
+          ..lineTo(_bx, _by)
+          ..close();
+        canvas.drawPath(_stripPath, _bladeDarkPaint);
+        // ridge
+        _ridgePaint.strokeWidth = math.max(1.0, _aw * 0.35);
+        canvas.drawLine(Offset(notchX, notchY), Offset(_bx, _by), _ridgePaint);
       }
     }
 
@@ -296,6 +330,55 @@ class ArrowRenderer3D {
         _renderVane(canvas, vane);
       }
     }
+  }
+
+  /// Projects the shaft section between [fromBack] and [toBack] metres
+  /// behind the tip into the screen registers (_a = back end, _b = front end).
+  /// [backOffsetX] bends the back end sideways (quiver / paradox wobble).
+  static bool _segment(
+    ArcheryCamera camera,
+    double tipX,
+    double tipY,
+    double tipZ,
+    double fx,
+    double fy,
+    double fz,
+    double fromBack,
+    double toBack,
+    double backOffsetX,
+  ) {
+    final double total = math.max(fromBack, 1e-6);
+    final double offA = backOffsetX * (fromBack / total);
+    if (!camera.project(tipX - fx * fromBack + offA, tipY - fy * fromBack, tipZ - fz * fromBack)) {
+      return false;
+    }
+    _ax = camera.sx;
+    _ay = camera.sy;
+    _aw = camera.pxPerMeterAt(camera.depth) * shaftR;
+    final double offB = backOffsetX * (toBack / total);
+    if (!camera.project(tipX - fx * toBack + offB, tipY - fy * toBack, tipZ - fz * toBack)) {
+      return false;
+    }
+    _bx = camera.sx;
+    _by = camera.sy;
+    _bw = camera.pxPerMeterAt(camera.depth) * shaftR;
+    return true;
+  }
+
+  /// Fills a tapered strip along the current segment: [widthK] of the shaft
+  /// width, shifted toward the lit side by [shift] (fraction of the radius).
+  static void _strip(Canvas canvas, Paint paint, double nx, double ny,
+      double widthK, double shift) {
+    final double wa = _aw * widthK, wb = _bw * widthK;
+    final double sa = _aw * shift, sb = _bw * shift;
+    _stripPath
+      ..reset()
+      ..moveTo(_ax + nx * (sa + wa), _ay + ny * (sa + wa))
+      ..lineTo(_bx + nx * (sb + wb), _by + ny * (sb + wb))
+      ..lineTo(_bx + nx * (sb - wb), _by + ny * (sb - wb))
+      ..lineTo(_ax + nx * (sa - wa), _ay + ny * (sa - wa))
+      ..close();
+    canvas.drawPath(_stripPath, paint);
   }
 
   static void _renderVane(Canvas canvas, _VaneData vane) {
