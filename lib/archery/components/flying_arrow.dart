@@ -11,8 +11,6 @@ class FlyingArrow {
 
   FlyingArrow({required this.camera, required this.physics});
 
-  void resetTrail() {}
-
   void render(Canvas canvas) {
     if (!physics.inFlight) return;
 
