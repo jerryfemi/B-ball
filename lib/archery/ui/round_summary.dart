@@ -10,6 +10,7 @@ import '../physics/target_scoring.dart';
 class SetEndCard extends StatelessWidget {
   final int setIndex; // 0-indexed
   final List<ShotScore> userScores;
+  final int opponentTotal;
   final int userSetPoints;
   final int opponentSetPoints;
   final bool isMatchOver;
@@ -19,6 +20,7 @@ class SetEndCard extends StatelessWidget {
     super.key,
     required this.setIndex,
     required this.userScores,
+    required this.opponentTotal,
     required this.userSetPoints,
     required this.opponentSetPoints,
     required this.isMatchOver,
@@ -28,7 +30,6 @@ class SetEndCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final int userTotal = userScores.fold(0, (sum, s) => sum + s.points);
-    const int opponentTotal = 26; // Benchmark simulated opponent
 
     final bool userWon = userTotal > opponentTotal;
     final bool isTie = userTotal == opponentTotal;
