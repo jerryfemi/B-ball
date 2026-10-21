@@ -42,6 +42,8 @@ class TargetBoard {
     ..strokeCap = StrokeCap.square
     ..style = PaintingStyle.stroke;
   final Paint _imagePaint = Paint()..filterQuality = FilterQuality.medium;
+  // Ground contact shadow: three stacked ovals fake a soft edge without a blur.
+  final Paint _shadowPaint = Paint()..color = const Color(0x1A000000);
 
   // --- Target Face ui.Image Cache ---
   ui.Image? _cachedFaceImage;
@@ -66,14 +68,45 @@ class TargetBoard {
     _woodCrossPaint.strokeWidth = pxPerM * 0.035;
     _woodStrutPaint.strokeWidth = pxPerM * 0.035;
 
-    // 2. Render Wooden A-Frame Stand behind the board
+    // 2. Soft shadow where the stand meets the grass
+    _renderGroundShadow(canvas);
+
+    // 3. Render Wooden A-Frame Stand behind the board
     _renderStand(canvas, depth);
 
-    // 3. Render 1.0m x 1.0m White Board & Wooden Frame
+    // 4. Render 1.0m x 1.0m White Board & Wooden Frame
     _renderBoss(canvas, cx, cy, pxPerM);
 
-    // 4. Render 80cm WA Target Face (Cached)
+    // 5. Render 80cm WA Target Face (Cached)
     _renderTargetFace(canvas, cx, cy, pxPerM);
+  }
+
+  void _renderGroundShadow(Canvas canvas) {
+    // Front edge (toward the archer) and back edge (under the rear strut).
+    if (!camera.project(-0.62, 0.0, distance - 0.12)) return;
+    final double left = camera.sx;
+    final double bottom = camera.sy;
+    if (!camera.project(0.62, 0.0, distance - 0.12)) return;
+    final double right = camera.sx;
+    if (!camera.project(0.0, 0.0, distance + 0.80)) return;
+    final double top = camera.sy;
+
+    final double w = right - left;
+    final double h = bottom - top;
+    if (w < 2.0) return;
+    // Outer, middle and inner ovals; overlaps darken toward the centre.
+    for (int i = 0; i < 3; i++) {
+      final double inset = i * 0.14;
+      canvas.drawOval(
+        Rect.fromLTRB(
+          left + w * inset,
+          top + h * inset,
+          right - w * inset,
+          bottom - h * inset * 0.6,
+        ),
+        _shadowPaint,
+      );
+    }
   }
 
   void _renderStand(Canvas canvas, double depth) {
