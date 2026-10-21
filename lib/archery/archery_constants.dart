@@ -68,13 +68,17 @@ abstract final class ArcheryK {
   static const double minFovXRad = minFovXDeg * math.pi / 180.0;
 
   /// Fraction of smaller screen side occupied by target face diameter while aiming.
-  static const double aimFaceFrac = 0.26;
+  static const double aimFaceFrac = 0.235;
 
   /// Horizon lens shift (fraction of screen height).
   static const double horizonFrac = 0.52;
 
   /// "At the line" camera position (behind the archer).
   static const double camLineZ = -2.0;
+
+  /// Painted shooting line on the ground. Drawn 1 m ahead of the archer so it
+  /// is visible from the "at the line" camera (the archer's feet are off-screen).
+  static const double shootingLineZ = 1.0;
 
   /// Aiming camera position (pushed in).
   static const double camAimZ = 1.0;
