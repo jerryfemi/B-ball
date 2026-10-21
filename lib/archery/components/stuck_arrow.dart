@@ -13,6 +13,9 @@ class StuckArrow {
   final double yaw;
   final double penetrationDepth;
 
+  /// 1 = solid. Used to fade the opponent's replay arrows away.
+  double opacity = 1.0;
+
   double timeSinceImpact = 0.0;
   double quiverOffset = 0.0;
 
@@ -39,6 +42,7 @@ class StuckArrow {
   }
 
   void render(Canvas canvas, ArcheryCamera camera) {
+    if (opacity <= 0.0) return;
     // 3D coordinates on target face
     final double entryX = hitLocalX;
     final double entryY = ArcheryK.targetCenterY + hitLocalY;
@@ -70,6 +74,7 @@ class StuckArrow {
       roll: 0.0,
       quiverOffsetX: quiverOffset,
       drawEntryHole: true,
+      opacity: opacity,
     );
   }
 }
