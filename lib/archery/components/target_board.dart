@@ -37,6 +37,10 @@ class TargetBoard {
   final Paint _woodCrossPaint = Paint()
     ..color = const Color(0xFF432C18)
     ..style = PaintingStyle.stroke;
+  final Paint _woodStrutPaint = Paint()
+    ..color = const Color(0xFF3A2614)
+    ..strokeCap = StrokeCap.square
+    ..style = PaintingStyle.stroke;
   final Paint _imagePaint = Paint()..filterQuality = FilterQuality.medium;
 
   // --- Target Face ui.Image Cache ---
@@ -60,6 +64,7 @@ class TargetBoard {
     // Dynamically scale stand stroke widths with distance (§2 #9)
     _woodLegPaint.strokeWidth = pxPerM * 0.05;
     _woodCrossPaint.strokeWidth = pxPerM * 0.035;
+    _woodStrutPaint.strokeWidth = pxPerM * 0.035;
 
     // 2. Render Wooden A-Frame Stand behind the board
     _renderStand(canvas, depth);
@@ -75,11 +80,13 @@ class TargetBoard {
     const double legTopY = ArcheryK.targetCenterY - ArcheryK.boardHeight * 0.4;
     const double halfLegX = ArcheryK.boardWidth * 0.38;
 
+    // Rear support strut first (behind everything), thinner and darker so it
+    // reads as depth instead of a third front leg.
+    _draw3DLeg(canvas, 0.0, legTopY, distance + 0.02, 0.0, 0.0, distance + 0.70,
+        paint: _woodStrutPaint);
     // Left and right legs extending down to ground (Y = 0)
     _draw3DLeg(canvas, -halfLegX, legTopY, distance, -halfLegX - 0.05, 0.0, distance - 0.05);
     _draw3DLeg(canvas, halfLegX, legTopY, distance, halfLegX + 0.05, 0.0, distance - 0.05);
-    // Rear tripod support strut angled backward
-    _draw3DLeg(canvas, 0.0, ArcheryK.targetCenterY, distance, 0.0, 0.0, distance + 0.70);
 
     // Cross-brace between front legs at Y = 0.38m
     if (camera.project(-halfLegX - 0.02, 0.38, distance - 0.03)) {
@@ -100,8 +107,9 @@ class TargetBoard {
     double z1,
     double x2,
     double y2,
-    double z2,
-  ) {
+    double z2, {
+    Paint? paint,
+  }) {
     if (!camera.project(x1, y1, z1)) return;
     final double sx1 = camera.sx;
     final double sy1 = camera.sy;
@@ -110,7 +118,7 @@ class TargetBoard {
     final double sx2 = camera.sx;
     final double sy2 = camera.sy;
 
-    canvas.drawLine(Offset(sx1, sy1), Offset(sx2, sy2), _woodLegPaint);
+    canvas.drawLine(Offset(sx1, sy1), Offset(sx2, sy2), paint ?? _woodLegPaint);
   }
 
   void _renderBoss(Canvas canvas, double cx, double cy, double pxPerM) {
