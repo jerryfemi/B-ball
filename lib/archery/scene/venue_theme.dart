@@ -28,6 +28,10 @@ class BillboardSpec {
   /// Optional shadow scale multiplier relative to width.
   final double shadowScale;
 
+  /// If true, [z] is relative to the 50 ft target and the object moves back
+  /// with the target for longer sets (see BillboardRenderer.setTargetDistance).
+  final bool followTarget;
+
   const BillboardSpec({
     required this.imageKey,
     required this.x,
@@ -37,6 +41,7 @@ class BillboardSpec {
     this.flipX = false,
     this.castShadow = true,
     this.shadowScale = 1.6,
+    this.followTarget = false,
   });
 }
 
@@ -81,125 +86,43 @@ class VenueTheme {
   }) {
     final double D = targetDistance;
 
+    // Trees behind the target are placed relative to it (followTarget) so the
+    // backdrop moves back with the target for the 100 ft and 150 ft sets.
+    // Lane trees are fixed and run the full 150 ft so longer sets stay framed.
     final billboards = <BillboardSpec>[
-      // 1. Distant hills & mountain tree-mass strip at z ≈ 60m
+      // Distant hills strip
       const BillboardSpec(
         imageKey: 'hills',
         x: 0.0,
-        baseY: 0.0,
         z: 60.0,
         widthMeters: 140.0,
         castShadow: false,
       ),
 
-      // 2. Tree line behind target (z = D + 6 ... D + 16)
-      BillboardSpec(
-        imageKey: 'tree_1',
-        x: -8.5,
-        baseY: 0.0,
-        z: D + 12.0,
-        widthMeters: 8.5,
-      ),
-      BillboardSpec(
-        imageKey: 'tree_2',
-        x: -4.5,
-        baseY: 0.0,
-        z: D + 8.5,
-        widthMeters: 6.8,
-        flipX: true,
-      ),
-      BillboardSpec(
-        imageKey: 'tree_3',
-        x: -3.8,
-        baseY: 0.0,
-        z: D + 16.0,
-        widthMeters: 7.2,
-      ),
-      BillboardSpec(
-        imageKey: 'tree_1',
-        x: 3.9,
-        baseY: 0.0,
-        z: D + 17.0,
-        widthMeters: 8.0,
-        flipX: true,
-      ),
-      BillboardSpec(
-        imageKey: 'tree_2',
-        x: 5.2,
-        baseY: 0.0,
-        z: D + 9.0,
-        widthMeters: 7.0,
-      ),
-      BillboardSpec(
-        imageKey: 'tree_3',
-        x: 9.0,
-        baseY: 0.0,
-        z: D + 13.0,
-        widthMeters: 7.8,
-      ),
+      // Behind the target (z relative to the target)
+      BillboardSpec(imageKey: 'tree_2', x: -2.6, z: D + 5.0, widthMeters: 5.5, flipX: true, followTarget: true),
+      BillboardSpec(imageKey: 'tree_3', x: 2.9, z: D + 6.0, widthMeters: 6.0, followTarget: true),
+      BillboardSpec(imageKey: 'tree_1', x: -6.0, z: D + 9.0, widthMeters: 7.5, followTarget: true),
+      BillboardSpec(imageKey: 'tree_1', x: 6.4, z: D + 8.0, widthMeters: 7.2, flipX: true, followTarget: true),
+      BillboardSpec(imageKey: 'tree_3', x: 0.4, z: D + 13.0, widthMeters: 7.0, followTarget: true),
+      BillboardSpec(imageKey: 'tree_2', x: -9.5, z: D + 12.0, widthMeters: 6.5, followTarget: true),
+      BillboardSpec(imageKey: 'tree_3', x: 9.8, z: D + 11.0, widthMeters: 7.0, flipX: true, followTarget: true),
 
-      // 3. Side trees along the lane (left side: x = -5.5 to -8.5, z = 3 to D + 3)
-      const BillboardSpec(
-        imageKey: 'tree_1',
-        x: -5.8,
-        baseY: 0.0,
-        z: 3.2,
-        widthMeters: 6.2,
-      ),
-      const BillboardSpec(
-        imageKey: 'tree_2',
-        x: -6.5,
-        baseY: 0.0,
-        z: 7.5,
-        widthMeters: 5.8,
-        flipX: true,
-      ),
-      BillboardSpec(
-        imageKey: 'tree_3',
-        x: -6.0,
-        baseY: 0.0,
-        z: 12.0,
-        widthMeters: 6.5,
-      ),
-      BillboardSpec(
-        imageKey: 'tree_1',
-        x: -7.2,
-        baseY: 0.0,
-        z: D + 2.5,
-        widthMeters: 7.0,
-      ),
+      // Left side of the lane (fixed)
+      const BillboardSpec(imageKey: 'tree_1', x: -3.3, z: 7.0, widthMeters: 4.8),
+      const BillboardSpec(imageKey: 'tree_2', x: -4.0, z: 12.0, widthMeters: 5.8, flipX: true),
+      const BillboardSpec(imageKey: 'tree_3', x: -3.8, z: 19.0, widthMeters: 6.0),
+      const BillboardSpec(imageKey: 'tree_1', x: -4.4, z: 27.0, widthMeters: 6.5, flipX: true),
+      const BillboardSpec(imageKey: 'tree_3', x: -4.2, z: 36.0, widthMeters: 6.6),
+      const BillboardSpec(imageKey: 'tree_2', x: -4.8, z: 44.0, widthMeters: 7.0, flipX: true),
 
-      // 4. Side trees along the lane (right side: x = +5.5 to +8.5, z = 4 to D + 3)
-      const BillboardSpec(
-        imageKey: 'tree_3',
-        x: 6.2,
-        baseY: 0.0,
-        z: 4.5,
-        widthMeters: 6.0,
-        flipX: true,
-      ),
-      const BillboardSpec(
-        imageKey: 'tree_1',
-        x: 7.0,
-        baseY: 0.0,
-        z: 9.0,
-        widthMeters: 6.8,
-      ),
-      BillboardSpec(
-        imageKey: 'tree_2',
-        x: 6.2,
-        baseY: 0.0,
-        z: 13.5,
-        widthMeters: 5.6,
-      ),
-      BillboardSpec(
-        imageKey: 'tree_3',
-        x: 7.5,
-        baseY: 0.0,
-        z: D + 3.0,
-        widthMeters: 6.6,
-        flipX: true,
-      ),
+      // Right side of the lane (fixed)
+      const BillboardSpec(imageKey: 'tree_3', x: 3.4, z: 8.0, widthMeters: 5.0, flipX: true),
+      const BillboardSpec(imageKey: 'tree_1', x: 4.1, z: 13.5, widthMeters: 5.6),
+      const BillboardSpec(imageKey: 'tree_2', x: 3.9, z: 21.0, widthMeters: 6.2, flipX: true),
+      const BillboardSpec(imageKey: 'tree_3', x: 4.5, z: 29.0, widthMeters: 6.4),
+      const BillboardSpec(imageKey: 'tree_1', x: 4.3, z: 38.0, widthMeters: 6.8, flipX: true),
+      const BillboardSpec(imageKey: 'tree_2', x: 4.9, z: 46.0, widthMeters: 7.0),
     ];
 
     // Sort back-to-front by Z descending for proper painter's algorithm rendering
