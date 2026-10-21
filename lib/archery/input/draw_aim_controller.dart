@@ -23,7 +23,6 @@ class DrawAimController {
   double _anchorY = 0.0;
   bool isHolding = false;
   double holdTime = 0.0;
-  double draw = 0.0; // Legacy 0..1 ratio for HUD
 
   // Screen metrics & target center
   double screenW = 0.0;
@@ -68,6 +67,12 @@ class DrawAimController {
   /// Target center X on screen in aiming pose (centered).
   double get aimingTargetCenterX => screenW * 0.5;
 
+  /// Target face radius in screen pixels in the aiming pose.
+  double get _aimFaceRadiusPx {
+    final double depth = ArcheryK.distanceM - ArcheryK.camAimZ;
+    return camera.baseFocal * cameraRig.aimZoom / depth * ArcheryK.faceRadius;
+  }
+
   /// Target center Y on screen computed in the aiming pose (Bug #1).
   double get aimingTargetCenterY {
     final double depth = ArcheryK.distanceM - ArcheryK.camAimZ;
@@ -102,12 +107,11 @@ class DrawAimController {
   void onPointerMove(int pointerId, double x, double y) {
     if (_activePointerId != pointerId || !isHolding) return;
 
-    // Screen-independent aim gain (§1.4): thumb pixels to reach target face edge
+    // Screen-independent aim gain: thumb pixels needed to reach the face edge
     const double thumbPxToFaceEdge = 22.0; // tune 16-30
     final double depth = ArcheryK.distanceM - ArcheryK.camAimZ;
     final double focal = camera.baseFocal * cameraRig.aimZoom;
-    final double faceRadiusPx = (focal / depth) * ArcheryK.faceRadius;
-    final double gain = faceRadiusPx / thumbPxToFaceEdge;
+    final double gain = _aimFaceRadiusPx / thumbPxToFaceEdge;
 
     // Anchor-relative thumb-roll movement
     final double deltaX = (x - _anchorX) * gain;
@@ -152,7 +156,6 @@ class DrawAimController {
   void update(double dt) {
     if (isHolding) {
       holdTime += dt;
-      draw = (holdTime / 0.6).clamp(0.0, 1.0);
 
       // Low-pass exponential filter on crosshair (removes finger jitter)
       final double smoothFactor = 1.0 - math.exp(-ArcheryK.aimSmoothOmega * dt);
@@ -188,9 +191,10 @@ class DrawAimController {
     canvas.save();
     canvas.translate(cx, cy);
 
-    // 1. Steady Ring (shrinks from ringStartRadiusFrac down to ~24px * uiScale over 1.8s)
-    final double minRadius = 24.0 * uiScale;
-    final double maxRadius = screenW * ArcheryK.ringStartRadiusFrac;
+    // 1. Steady Ring (shrinks from ringStartRadiusFrac down to just outside the face over 1.8s)
+    // Settle just outside the target face (GamePigeon), never over the rings.
+    final double minRadius = math.max(24.0 * uiScale, _aimFaceRadiusPx * 1.18);
+    final double maxRadius = math.max(screenW * ArcheryK.ringStartRadiusFrac, minRadius * 1.6);
     final double settleT = (holdTime / ArcheryK.ringSettleSeconds).clamp(0.0, 1.0);
     final double ease = 1.0 - math.pow(1.0 - settleT, 3.0); // easeOutCubic
     final double ringRadius = maxRadius + (minRadius - maxRadius) * ease;
@@ -201,7 +205,7 @@ class DrawAimController {
     // 2. Shot Timer Arc (clockwise fill from 12 o'clock outside steady ring)
     final double timerRatio = (holdTime / ArcheryK.shotTimerSeconds).clamp(0.0, 1.0);
     if (timerRatio > 0.0) {
-      final double arcRadius = ringRadius + 4.0 * uiScale;
+      final double arcRadius = ringRadius + 5.0 * uiScale;
       canvas.save();
       canvas.scale(arcRadius);
       _timerArcPaint.strokeWidth = (4.0 * uiScale) / arcRadius;
