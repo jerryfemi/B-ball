@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 /// Single Source of Truth (SSOT) for all tunable archery parameters (Build Plan v2).
 ///
 /// Follows GamePigeon-style archery conventions:
@@ -11,9 +9,19 @@ import 'dart:math' as math;
 /// - Sets of 3 arrows format
 abstract final class ArcheryK {
   // --- Distance & World Geometry ---
-  /// Target distance: 50 ft in meters.
+  /// Reference distance (set 1): 50 ft in meters. Camera framing, aim
+  /// sensitivity and wind strength are all calibrated at this distance.
   static const double distanceM = 15.24;
-  static const String distanceLabel = '50ft';
+
+  /// Target distance per set (GamePigeon): 50 ft → 100 ft → 150 ft,
+  /// then stays at 150 ft for any further sets.
+  static const List<double> setDistancesM = [15.24, 30.48, 45.72];
+  static const List<String> setDistanceLabels = ['50ft', '100ft', '150ft'];
+
+  static double distanceForSet(int setIndex) =>
+      setDistancesM[setIndex.clamp(0, setDistancesM.length - 1)];
+  static String distanceLabelForSet(int setIndex) =>
+      setDistanceLabels[setIndex.clamp(0, setDistanceLabels.length - 1)];
 
   /// Archer eye position height above ground (m).
   static const double eyeY = 1.60;
@@ -62,13 +70,22 @@ abstract final class ArcheryK {
   static const int maxSubstepsPerFrame = 8;
 
   // --- Camera & Dolly Viewpoints ---
-  static const double fovYDeg = 60.0;
-  static const double fovYRad = fovYDeg * math.pi / 180.0;
-  static const double minFovXDeg = 56.0; // Never show less than this horizontally (contain rule)
-  static const double minFovXRad = minFovXDeg * math.pi / 180.0;
+  // Framing is defined by how big the target face looks (GamePigeon-style
+  // long lens), measured against a portrait "reference width":
+  //   refW = min(screenWidth, screenHeight * refAspect)
+  // so phones, tablets and desktop all frame the target the same way.
+  static const double refAspect = 0.62;
 
-  /// Fraction of smaller screen side occupied by target face diameter while aiming.
-  static const double aimFaceFrac = 0.235;
+  /// Target face diameter / refW at the line, at 50 ft.
+  static const double lineFaceFrac = 0.11;
+
+  /// Target face diameter / refW while aiming, at 50 ft (about 1.5× the line
+  /// view, like GamePigeon). Farther sets look proportionally smaller.
+  static const double aimFaceFrac = 0.175;
+
+  /// Focal zoom applied while aiming (constant; the dolly adds the rest).
+  static const double aimZoom = (aimFaceFrac / lineFaceFrac) *
+      ((distanceM - camAimZ) / (distanceM - camLineZ));
 
   /// Horizon lens shift (fraction of screen height).
   static const double horizonFrac = 0.52;
@@ -76,15 +93,19 @@ abstract final class ArcheryK {
   /// "At the line" camera position (behind the archer).
   static const double camLineZ = -2.0;
 
-  /// Painted shooting line on the ground. Drawn 1 m ahead of the archer so it
-  /// is visible from the "at the line" camera (the archer's feet are off-screen).
-  static const double shootingLineZ = 1.0;
+  /// Painted shooting line on the ground, drawn ahead of the archer so it is
+  /// visible near the bottom of the long-lens line view (the archer's feet are
+  /// off-screen). Must match the value in shaders/archery_ground.frag.
+  static const double shootingLineZ = 4.0;
+
+  /// Half-width of the lane at the shooting line (the "V" lines start here).
+  static const double laneHalfWidthAtLine = 1.6;
 
   /// Aiming camera position (pushed in).
   static const double camAimZ = 1.0;
 
-  /// Close-up camera distance in front of target.
-  static const double camCloseupDist = 2.2;
+  /// Close-up camera distance in front of target (board fills ~60% of refW).
+  static const double camCloseupDist = 3.8;
 
   /// Chase camera offset behind and above arrow.
   static const double chaseBehind = 1.2;
@@ -117,4 +138,10 @@ abstract final class ArcheryK {
   static const double windMaxDisplay = 2.0;
   static const double windLateralAccelPerUnit = 1.9; // m/s² per 1.0 displayed wind
   static const double windAlongAccelPerUnit = 0.6;   // m/s² per 1.0 displayed wind
+
+  /// Wind is calibrated at 50 ft. Drift grows with flight time², so without
+  /// scaling a 150 ft arrow would drift ~9× more and leave the board. Scaling
+  /// the push by 50ft/D makes drift grow ~linearly with distance instead
+  /// (≈1.5 rings per 1.0 wind at 50 ft, ≈4 rings at 150 ft).
+  static double windScaleFor(double distance) => distanceM / distance;
 }
