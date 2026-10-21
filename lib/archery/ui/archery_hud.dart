@@ -1,15 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../archery_game.dart';
 import '../camera/camera_rig.dart';
-import '../physics/target_scoring.dart';
 import '../state/archery_match_notifier.dart';
 import 'round_summary.dart';
 
-/// Flutter HUD over the Flame canvas: compact scoreboard, shooting-line hint
-/// and the set-end card. Every piece watches only the state slice it shows.
+/// Flutter HUD over the Flame canvas: GamePigeon-style scoreboard and the
+/// set-end card. Each piece watches only the state slice it shows.
 class ArcheryHud extends ConsumerWidget {
   final ArcheryGame game;
 
@@ -22,24 +20,23 @@ class ArcheryHud extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final ShotPhase phase = ref.watch(archeryMatchProvider.select((s) => s.phase));
     final bool showScoreBar = phase == ShotPhase.atLine ||
+        phase == ShotPhase.intro ||
         phase == ShotPhase.closeup ||
         phase == ShotPhase.returning ||
         phase == ShotPhase.setEnd;
 
     return Stack(
       children: [
-        // Scoreboard: compact, centred, never wider than 360 px.
         Positioned(
-          top: MediaQuery.paddingOf(context).top + 10.0,
-          left: 12.0,
-          right: 12.0,
+          top: MediaQuery.paddingOf(context).top + 8.0,
+          left: 0.0,
+          right: 0.0,
           child: IgnorePointer(
-            child: Align(
-              alignment: Alignment.topCenter,
+            child: Center(
               child: AnimatedSlide(
                 duration: const Duration(milliseconds: 220),
                 curve: Curves.easeOutCubic,
-                offset: showScoreBar ? Offset.zero : const Offset(0, -0.15),
+                offset: showScoreBar ? Offset.zero : const Offset(0, -0.2),
                 child: AnimatedOpacity(
                   duration: const Duration(milliseconds: 220),
                   opacity: showScoreBar ? 1.0 : 0.0,
@@ -49,16 +46,6 @@ class ArcheryHud extends ConsumerWidget {
             ),
           ),
         ),
-
-        // Hint at the shooting line (touches pass through to the game).
-        if (phase == ShotPhase.atLine)
-          const Positioned(
-            bottom: 24.0,
-            left: 20.0,
-            right: 20.0,
-            child: IgnorePointer(child: _BottomGuide()),
-          ),
-
         if (phase == ShotPhase.setEnd) _SetEnd(game: game),
       ],
     );
@@ -84,9 +71,8 @@ class _SetEnd extends ConsumerWidget {
   }
 }
 
-/// [avatar]  ┌ SET 1 ┐  [avatar]
-///  (coin)   │18 – 26│   (coin)
-///           └◉ ◉ ○ ┘
+/// GamePigeon layout:   (avatar)  [ SET 1 / 18 - 26 ]  (avatar)
+///                       You  ●2                         ●1
 class _Scoreboard extends ConsumerWidget {
   const _Scoreboard();
 
@@ -98,70 +84,59 @@ class _Scoreboard extends ConsumerWidget {
         (s) => (s.setIndex, s.userSetScore, s.botSetScore, s.userSets, s.botSets),
       ),
     );
-    final List<ShotScore> shots = ref.watch(archeryMatchProvider.select((s) => s.setShots));
 
-    // The overlaps below pull the row 12 px left; shift it back so it stays centred.
-    return Transform.translate(
-      offset: const Offset(6.0, 0.0),
-      child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 360.0),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _Avatar(
-            image: ArcheryHud.userAvatar,
-            label: 'YOU',
-            sets: youSets,
-            ring: const Color(0xFF00FFCC),
-          ),
-          // Centre box overlaps both avatars slightly (GamePigeon layout).
-          Transform.translate(
-            offset: const Offset(-6.0, 0.0),
-            child: _CenterBox(setIndex: setIndex, you: you, them: them, shots: shots),
-          ),
-          Transform.translate(
-            offset: const Offset(-12.0, 0.0),
-            child: _Avatar(
-              image: ArcheryHud.botAvatar,
-              label: 'BOT',
-              sets: themSets,
-              ring: const Color(0xFF8B5CF6),
-            ),
-          ),
-        ],
-      ),
-      ),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _Avatar(
+          image: ArcheryHud.userAvatar,
+          label: 'You',
+          labelColor: const Color(0xFF00FFCC),
+          ring: const Color(0xFF00FFCC),
+          sets: youSets,
+        ),
+        const SizedBox(width: 10.0),
+        _ScoreBox(setIndex: setIndex, you: you, them: them),
+        const SizedBox(width: 10.0),
+        _Avatar(
+          image: ArcheryHud.botAvatar,
+          label: 'Bot',
+          labelColor: const Color(0xFFC4B5FD),
+          ring: const Color(0xFF8B5CF6),
+          sets: themSets,
+        ),
+      ],
     );
   }
 }
 
-class _CenterBox extends StatelessWidget {
+class _ScoreBox extends StatelessWidget {
   final int setIndex;
   final int you;
   final int them;
-  final List<ShotScore> shots;
 
-  const _CenterBox({
-    required this.setIndex,
-    required this.you,
-    required this.them,
-    required this.shots,
-  });
+  const _ScoreBox({required this.setIndex, required this.you, required this.them});
 
-  static const Color _cyan = Color(0xFF00FFCC);
+  static const TextStyle _scoreStyle = TextStyle(
+    color: Colors.white,
+    fontSize: 28.0,
+    height: 1.05,
+    fontWeight: FontWeight.w900,
+    fontFeatures: [FontFeature.tabularFigures()],
+    shadows: [Shadow(color: Color(0x66000000), offset: Offset(0, 1.5), blurRadius: 2)],
+  );
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(top: 4.0),
-      padding: const EdgeInsets.fromLTRB(22.0, 6.0, 22.0, 8.0),
+      margin: const EdgeInsets.only(top: 6.0),
+      padding: const EdgeInsets.fromLTRB(18.0, 6.0, 18.0, 8.0),
       decoration: BoxDecoration(
-        color: const Color(0xFF0F172A).withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(16.0),
-        border: Border.all(color: const Color(0xFF1E2638), width: 1.2),
+        color: const Color(0xE60F172A),
+        borderRadius: BorderRadius.circular(14.0),
         boxShadow: const [
-          BoxShadow(color: Color(0x66000000), blurRadius: 14.0, offset: Offset(0, 4)),
+          BoxShadow(color: Color(0x59000000), blurRadius: 12.0, offset: Offset(0, 4)),
         ],
       ),
       child: Column(
@@ -170,38 +145,18 @@ class _CenterBox extends StatelessWidget {
           Text(
             'SET ${setIndex + 1}',
             style: const TextStyle(
-              color: Color(0xFF94A3B8),
-              fontSize: 10.0,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.2,
+              color: Color(0xFFE2E8F0),
+              fontSize: 11.0,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.0,
             ),
           ),
-          const SizedBox(height: 1.0),
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _CountUp(value: you, color: you > them ? _cyan : Colors.white),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 8.0),
-                child: Text(
-                  '–',
-                  style: TextStyle(color: Color(0xFF94A3B8), fontSize: 22.0, fontWeight: FontWeight.w700),
-                ),
-              ),
-              _CountUp(value: them, color: them > you ? _cyan : Colors.white),
-            ],
-          ),
-          const SizedBox(height: 4.0),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (int i = 0; i < 3; i++)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 2.5),
-                  child: i < shots.length
-                      ? _ShotPip(score: shots[i])
-                      : (i == shots.length ? const _NextPip() : const _EmptyPip()),
-                ),
+              _CountUp(value: you, style: _scoreStyle),
+              const Text(' - ', style: _scoreStyle),
+              _CountUp(value: them, style: _scoreStyle),
             ],
           ),
         ],
@@ -210,196 +165,154 @@ class _CenterBox extends StatelessWidget {
   }
 }
 
-/// Score that counts up instead of jumping; tabular digits so it doesn't wobble.
+/// Score that counts up instead of jumping.
 class _CountUp extends StatelessWidget {
   final int value;
-  final Color color;
-  const _CountUp({required this.value, required this.color});
+  final TextStyle style;
+  const _CountUp({required this.value, required this.style});
 
   @override
   Widget build(BuildContext context) {
     return TweenAnimationBuilder<int>(
       tween: IntTween(begin: value, end: value),
-      duration: const Duration(milliseconds: 400),
-      builder: (context, v, _) => Text(
-        '$v',
-        style: TextStyle(
-          color: color,
-          fontSize: 26.0,
-          height: 1.1,
-          fontWeight: FontWeight.w900,
-          fontFeatures: const [FontFeature.tabularFigures()],
-        ),
-      ),
+      duration: const Duration(milliseconds: 450),
+      builder: (context, v, _) => Text('$v', style: style),
     );
   }
 }
 
+/// Round avatar zoomed onto the character's head, coloured ring, small name
+/// label, and a gold coin with the set count once they've won a set.
 class _Avatar extends StatelessWidget {
   final String image;
   final String label;
-  final int sets;
+  final Color labelColor;
   final Color ring;
+  final int sets;
 
   const _Avatar({
     required this.image,
     required this.label,
-    required this.sets,
+    required this.labelColor,
     required this.ring,
+    required this.sets,
   });
+
+  static const double size = 56.0;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 52.0,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Stack(
-            clipBehavior: Clip.none,
-            alignment: Alignment.center,
-            children: [
-              Container(
-                width: 46.0,
-                height: 46.0,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: const Color(0xFF1E2638),
-                  border: Border.all(color: ring, width: 2.0),
-                  boxShadow: const [BoxShadow(color: Color(0x66000000), blurRadius: 8.0)],
-                ),
-                child: ClipOval(
-                  child: Image.asset(image, fit: BoxFit.cover, filterQuality: FilterQuality.medium),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              width: size,
+              height: size,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: ring, width: 3.0),
+                boxShadow: const [
+                  BoxShadow(color: Color(0x66000000), blurRadius: 10.0, offset: Offset(0, 3)),
+                ],
+              ),
+              child: ClipOval(
+                // The avatar art is a full character; zoom onto the head.
+                child: Transform.scale(
+                  scale: 1.9,
+                  alignment: const Alignment(0.0, -0.36),
+                  child: Image.asset(
+                    image,
+                    fit: BoxFit.cover,
+                    filterQuality: FilterQuality.medium,
+                  ),
                 ),
               ),
-              // Set points: one gold coin with the count (hidden at 0).
-              if (sets > 0)
-                Positioned(
-                  bottom: -6.0,
-                  child: Container(
-                    width: 20.0,
-                    height: 20.0,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: const Color(0xFFF59E0B),
-                      border: Border.all(color: const Color(0xFF0A0E1A), width: 1.5),
-                    ),
-                    child: Text(
-                      '$sets',
-                      style: const TextStyle(
-                        color: Color(0xFF0A0E1A),
-                        fontSize: 11.0,
-                        fontWeight: FontWeight.w900,
-                      ),
+            ),
+            if (sets > 0)
+              Positioned(
+                right: -4.0,
+                bottom: -4.0,
+                child: _SetCoin(count: sets),
+              ),
+          ],
+        ),
+        const SizedBox(height: 3.0),
+        Text(
+          label,
+          style: TextStyle(
+            color: labelColor,
+            fontSize: 12.0,
+            fontWeight: FontWeight.w900,
+            shadows: const [Shadow(color: Color(0x99000000), blurRadius: 3.0)],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Gold set coin. When the count goes up it pops in and a "+1" floats off it.
+class _SetCoin extends StatelessWidget {
+  final int count;
+  const _SetCoin({required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      // New key per count = the animation replays every time a set is won.
+      key: ValueKey<int>(count),
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 900),
+      builder: (context, t, coin) {
+        final double pop = Curves.elasticOut.transform((t / 0.6).clamp(0.0, 1.0));
+        final double rise = Curves.easeOutCubic.transform(t);
+        final double fade = t < 0.6 ? 1.0 : (1.0 - (t - 0.6) / 0.4);
+        return Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.center,
+          children: [
+            Transform.scale(scale: 0.3 + 0.7 * pop, child: coin),
+            if (t < 1.0)
+              Positioned(
+                top: -14.0 - 22.0 * rise,
+                child: Opacity(
+                  opacity: fade.clamp(0.0, 1.0),
+                  child: const Text(
+                    '+1',
+                    style: TextStyle(
+                      color: Color(0xFFFDE68A),
+                      fontSize: 16.0,
+                      fontWeight: FontWeight.w900,
+                      shadows: [Shadow(color: Color(0xCCF59E0B), blurRadius: 8.0)],
                     ),
                   ),
                 ),
-            ],
-          ),
-          SizedBox(height: sets > 0 ? 9.0 : 3.0),
-          Text(
-            label,
-            style: TextStyle(
-              color: ring,
-              fontSize: 9.0,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0.8,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ShotPip extends StatelessWidget {
-  final ShotScore score;
-  const _ShotPip({required this.score});
-
-  @override
-  Widget build(BuildContext context) {
-    final Color c = Color(score.colorValue);
-    return Container(
-      width: 17.0,
-      height: 17.0,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: const Color(0xFF0A0E1A),
-        border: Border.all(color: c, width: 1.5),
-      ),
-      child: Text(
-        score.displayLabel,
-        style: TextStyle(color: c, fontSize: 9.0, fontWeight: FontWeight.w900),
-      ),
-    );
-  }
-}
-
-/// The next arrow to shoot: a softly pulsing cyan pip.
-class _NextPip extends HookWidget {
-  const _NextPip();
-
-  @override
-  Widget build(BuildContext context) {
-    final controller = useAnimationController(duration: const Duration(milliseconds: 900));
-    useEffect(() {
-      controller.repeat(reverse: true);
-      return null;
-    }, const []);
-    return FadeTransition(
-      opacity: Tween<double>(begin: 0.45, end: 1.0).animate(controller),
+              ),
+          ],
+        );
+      },
       child: Container(
-        width: 17.0,
-        height: 17.0,
+        width: 22.0,
+        height: 22.0,
+        alignment: Alignment.center,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: const Color(0x2200FFCC),
-          border: Border.all(color: const Color(0xFF00FFCC), width: 1.5),
+          gradient: const RadialGradient(
+            center: Alignment(-0.3, -0.4),
+            colors: [Color(0xFFFDE68A), Color(0xFFF59E0B), Color(0xFFB45309)],
+            stops: [0.0, 0.6, 1.0],
+          ),
+          border: Border.all(color: const Color(0xFF0A0E1A), width: 1.5),
         ),
-      ),
-    );
-  }
-}
-
-class _EmptyPip extends StatelessWidget {
-  const _EmptyPip();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 17.0,
-      height: 17.0,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: const Color(0xFF1E2638),
-        border: Border.all(color: const Color(0xFF334155), width: 1.0),
-      ),
-    );
-  }
-}
-
-class _BottomGuide extends StatelessWidget {
-  const _BottomGuide();
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
-        decoration: BoxDecoration(
-          color: const Color(0xFF0A0E1A).withValues(alpha: 0.75),
-          borderRadius: BorderRadius.circular(20.0),
-          border: Border.all(color: const Color(0xFF1E2638), width: 1.0),
-        ),
-        child: const Text(
-          'HOLD ANYWHERE TO AIM',
-          style: TextStyle(
-            color: Color(0xFF94A3B8),
+        child: Text(
+          '$count',
+          style: const TextStyle(
+            color: Color(0xFF3B1F04),
             fontSize: 12.0,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1.0,
+            fontWeight: FontWeight.w900,
           ),
         ),
       ),
