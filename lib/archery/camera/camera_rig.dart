@@ -44,8 +44,9 @@ class CameraRig {
   double shakeOffsetX = 0.0;
   double shakeOffsetY = 0.0;
 
-  // Target distance
+  // Current set's target distance and its label (e.g. 15.24 m, "50ft")
   double targetDistance = ArcheryK.distanceM;
+  String distanceLabel = ArcheryK.setDistanceLabels.first;
 
   // Track if current closeup is for the final arrow of the set
   bool _isLastArrowOfSet = false;
@@ -58,8 +59,9 @@ class CameraRig {
 
   CameraRig({required this.camera});
 
-  void setTargetDistance(double distance) {
+  void setTargetDistance(double distance, {String? label}) {
     targetDistance = distance;
+    if (label != null) distanceLabel = label;
   }
 
   void addShake(double pixels) {
@@ -70,14 +72,9 @@ class CameraRig {
   }
 
   /// Target-size-preserving aiming zoom based on screen dimensions and distance.
-  double get aimZoom {
-    if (camera.screenW <= 0.0 || camera.screenH <= 0.0 || camera.baseFocal <= 0.0) return 1.0;
-    final double depth = targetDistance - ArcheryK.camAimZ;
-    final double minSide = math.min(camera.screenW, camera.screenH);
-    final double calculated = (ArcheryK.aimFaceFrac * minSide * depth) /
-        (2.0 * ArcheryK.faceRadius * camera.baseFocal);
-    return calculated.clamp(1.0, 5.0);
-  }
+  /// Constant focal zoom while aiming (about 1.3×; the dolly adds the rest).
+  /// Deliberately the same for every distance: farther targets stay smaller.
+  double get aimZoom => ArcheryK.aimZoom;
 
   /// Internal state transition recorder storing starting coordinates for deterministic easing.
   void _enter(ShotPhase p) {
