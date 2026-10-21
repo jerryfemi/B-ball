@@ -1,53 +1,26 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-import '../archery_constants.dart';
 import '../archery_game.dart';
 import '../camera/camera_rig.dart';
 import '../physics/target_scoring.dart';
 import '../state/archery_match_notifier.dart';
 import 'round_summary.dart';
 
-/// Flutter HUD Overlay for the GamePigeon-style Archery prototype (Build Plan v2 §5, Review §1.2).
-///
-/// Features:
-/// - Riverpod [ConsumerWidget] with slice-based updates (`ref.watch(select(...))`).
-/// - Top score bar with avatars, set points, count-up scores, and quiver dots.
-/// - Capped at `maxWidth: 520` with fluid horizontal margins for desktop/phone responsiveness.
-/// - Dynamic distance label using [ArcheryK.distanceLabel].
-/// - Fades out during raising, aiming, and chase phases.
-/// - Explicit phase-driven [SetEndCard] modal when `phase == ShotPhase.setEnd`.
-/// - Wrapped with [IgnorePointer] on non-interactive areas for touch input isolation (Bug #7).
+/// Flutter HUD over the Flame canvas: compact scoreboard, shooting-line hint
+/// and the set-end card. Every piece watches only the state slice it shows.
 class ArcheryHud extends ConsumerWidget {
   final ArcheryGame game;
 
   const ArcheryHud({super.key, required this.game});
 
+  static const String userAvatar = 'assets/avatars/dunk_heads (1).webp';
+  static const String botAvatar = 'assets/avatars/dunk_heads (2).webp';
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final ShotPhase phase = ref.watch(
-      archeryMatchProvider.select((s) => s.phase),
-    );
-    final int setIdx = ref.watch(
-      archeryMatchProvider.select((s) => s.setIndex),
-    );
-    final List<ShotScore> currentScores = ref.watch(
-      archeryMatchProvider.select((s) => s.setShots),
-    );
-    final int currentScore = ref.watch(
-      archeryMatchProvider.select((s) => s.currentSetScore),
-    );
-    final int userSets = ref.watch(
-      archeryMatchProvider.select((s) => s.userSets),
-    );
-    final int botSets = ref.watch(
-      archeryMatchProvider.select((s) => s.botSets),
-    );
-    final bool isMatchOver = ref.watch(
-      archeryMatchProvider.select((s) => s.matchOver),
-    );
-
-    // Hide score bar during raising, aiming, and chase
+    final ShotPhase phase = ref.watch(archeryMatchProvider.select((s) => s.phase));
     final bool showScoreBar = phase == ShotPhase.atLine ||
         phase == ShotPhase.closeup ||
         phase == ShotPhase.returning ||
@@ -55,260 +28,354 @@ class ArcheryHud extends ConsumerWidget {
 
     return Stack(
       children: [
-        // Top App Bar / Scoreboard (capped at maxWidth 520, fluid on smaller screens)
+        // Scoreboard: compact, centred, never wider than 360 px.
         Positioned(
           top: MediaQuery.paddingOf(context).top + 10.0,
-          left: 0.0,
-          right: 0.0,
+          left: 12.0,
+          right: 12.0,
           child: IgnorePointer(
             child: Align(
               alignment: Alignment.topCenter,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 520.0),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12.0),
-                  child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 250),
-                    opacity: showScoreBar ? 1.0 : 0.0,
-                    child: _buildTopScoreBar(
-                      context,
-                      setIdx: setIdx,
-                      currentScores: currentScores,
-                      currentScore: currentScore,
-                      userSets: userSets,
-                      botSets: botSets,
-                    ),
-                  ),
+              child: AnimatedSlide(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                offset: showScoreBar ? Offset.zero : const Offset(0, -0.15),
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 220),
+                  opacity: showScoreBar ? 1.0 : 0.0,
+                  child: const _Scoreboard(),
                 ),
               ),
             ),
           ),
         ),
 
-        // Bottom Guide at Shooting Line (non-interactive, passes touches through)
+        // Hint at the shooting line (touches pass through to the game).
         if (phase == ShotPhase.atLine)
           const Positioned(
             bottom: 24.0,
             left: 20.0,
             right: 20.0,
-            child: IgnorePointer(
-              child: _BottomGuide(),
-            ),
+            child: IgnorePointer(child: _BottomGuide()),
           ),
 
-        // Set End Summary Modal Card
-        if (phase == ShotPhase.setEnd)
-          SetEndCard(
-            setIndex: setIdx,
-            userScores: currentScores,
-            userSetPoints: userSets,
-            opponentSetPoints: botSets,
-            isMatchOver: isMatchOver,
-            onContinue: isMatchOver ? game.restartMatch : game.advanceNextSet,
-          ),
+        if (phase == ShotPhase.setEnd) _SetEnd(game: game),
       ],
     );
   }
+}
 
-  Widget _buildTopScoreBar(
-    BuildContext context, {
-    required int setIdx,
-    required List<ShotScore> currentScores,
-    required int currentScore,
-    required int userSets,
-    required int botSets,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 8.0),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0F172A).withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(18.0),
-        border: Border.all(color: const Color(0xFF1E283D), width: 1.2),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x66000000),
-            blurRadius: 16.0,
-            offset: Offset(0, 4),
+class _SetEnd extends ConsumerWidget {
+  final ArcheryGame game;
+  const _SetEnd({required this.game});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(archeryMatchProvider);
+    return SetEndCard(
+      setIndex: s.setIndex,
+      userScores: s.setShots,
+      opponentTotal: s.botSetScore,
+      userSetPoints: s.userSets,
+      opponentSetPoints: s.botSets,
+      isMatchOver: s.matchOver,
+      onContinue: s.matchOver ? game.restartMatch : game.advanceNextSet,
+    );
+  }
+}
+
+/// [avatar]  ┌ SET 1 ┐  [avatar]
+///  (coin)   │18 – 26│   (coin)
+///           └◉ ◉ ○ ┘
+class _Scoreboard extends ConsumerWidget {
+  const _Scoreboard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Records compare by value, so this only rebuilds when one field changes.
+    final (setIndex, you, them, youSets, themSets) = ref.watch(
+      archeryMatchProvider.select(
+        (s) => (s.setIndex, s.userSetScore, s.botSetScore, s.userSets, s.botSets),
+      ),
+    );
+    final List<ShotScore> shots = ref.watch(archeryMatchProvider.select((s) => s.setShots));
+
+    // The overlaps below pull the row 12 px left; shift it back so it stays centred.
+    return Transform.translate(
+      offset: const Offset(6.0, 0.0),
+      child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 360.0),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _Avatar(
+            image: ArcheryHud.userAvatar,
+            label: 'YOU',
+            sets: youSets,
+            ring: const Color(0xFF00FFCC),
+          ),
+          // Centre box overlaps both avatars slightly (GamePigeon layout).
+          Transform.translate(
+            offset: const Offset(-6.0, 0.0),
+            child: _CenterBox(setIndex: setIndex, you: you, them: them, shots: shots),
+          ),
+          Transform.translate(
+            offset: const Offset(-12.0, 0.0),
+            child: _Avatar(
+              image: ArcheryHud.botAvatar,
+              label: 'BOT',
+              sets: themSets,
+              ring: const Color(0xFF8B5CF6),
+            ),
           ),
         ],
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          // Left: User Avatar & Set Points Won
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 36.0,
-                height: 36.0,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF10B981).withValues(alpha: 0.2),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0xFF10B981), width: 1.8),
-                ),
-                alignment: Alignment.center,
-                child: const Text(
-                  'YOU',
-                  style: TextStyle(
-                    color: Color(0xFF10B981),
-                    fontSize: 10.0,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 6.0),
-              _buildCoinIndicators(userSets),
-            ],
-          ),
+      ),
+    );
+  }
+}
 
-          // Center: Set Label & Count-Up Score
-          Flexible(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'SET ${setIdx + 1} • ${ArcheryK.distanceLabel}',
-                    style: const TextStyle(
-                      color: Color(0xFF38BDF8),
-                      fontSize: 11.0,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.8,
-                    ),
-                  ),
-                  const SizedBox(height: 2.0),
-                  TweenAnimationBuilder<double>(
-                    tween: Tween<double>(begin: 0.0, end: currentScore.toDouble()),
-                    duration: const Duration(milliseconds: 400),
-                    builder: (context, value, child) {
-                      return Text(
-                        '${value.toInt()}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 22.0,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
+class _CenterBox extends StatelessWidget {
+  final int setIndex;
+  final int you;
+  final int them;
+  final List<ShotScore> shots;
+
+  const _CenterBox({
+    required this.setIndex,
+    required this.you,
+    required this.them,
+    required this.shots,
+  });
+
+  static const Color _cyan = Color(0xFF00FFCC);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(top: 4.0),
+      padding: const EdgeInsets.fromLTRB(22.0, 6.0, 22.0, 8.0),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F172A).withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(16.0),
+        border: Border.all(color: const Color(0xFF1E2638), width: 1.2),
+        boxShadow: const [
+          BoxShadow(color: Color(0x66000000), blurRadius: 14.0, offset: Offset(0, 4)),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'SET ${setIndex + 1}',
+            style: const TextStyle(
+              color: Color(0xFF94A3B8),
+              fontSize: 10.0,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.2,
             ),
           ),
-
-          // 3 Arrows Quiver Bubbles
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: List.generate(3, (i) {
-              if (i < currentScores.length) {
-                final ShotScore s = currentScores[i];
-                final Color ringColor = Color(s.colorValue);
-                return Container(
-                  width: 22.0,
-                  height: 22.0,
-                  margin: const EdgeInsets.symmetric(horizontal: 2.5),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0A0E1A),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: ringColor, width: 1.6),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    s.displayLabel,
-                    style: TextStyle(
-                      color: ringColor,
-                      fontSize: 10.0,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                );
-              } else if (i == currentScores.length) {
-                return Container(
-                  width: 22.0,
-                  height: 22.0,
-                  margin: const EdgeInsets.symmetric(horizontal: 2.5),
-                  decoration: BoxDecoration(
-                    color: const Color(0x2200FFCC),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: const Color(0xFF00FFCC), width: 1.8),
-                  ),
-                  alignment: Alignment.center,
-                  child: Container(
-                    width: 6.0,
-                    height: 6.0,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF00FFCC),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                );
-              } else {
-                return Container(
-                  width: 22.0,
-                  height: 22.0,
-                  margin: const EdgeInsets.symmetric(horizontal: 2.5),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1E283D),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: const Color(0xFF334155), width: 1.0),
-                  ),
-                );
-              }
-            }),
-          ),
-
-          // Right: Opponent / Bot Avatar & Set Points Won
+          const SizedBox(height: 1.0),
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _buildCoinIndicators(botSets),
-              const SizedBox(width: 6.0),
-              Container(
-                width: 36.0,
-                height: 36.0,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0xFF8B5CF6), width: 1.8),
-                ),
-                alignment: Alignment.center,
-                child: const Text(
-                  'BOT',
-                  style: TextStyle(
-                    color: Color(0xFF8B5CF6),
-                    fontSize: 10.0,
-                    fontWeight: FontWeight.w900,
-                  ),
+              _CountUp(value: you, color: you > them ? _cyan : Colors.white),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8.0),
+                child: Text(
+                  '–',
+                  style: TextStyle(color: Color(0xFF94A3B8), fontSize: 22.0, fontWeight: FontWeight.w700),
                 ),
               ),
+              _CountUp(value: them, color: them > you ? _cyan : Colors.white),
+            ],
+          ),
+          const SizedBox(height: 4.0),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (int i = 0; i < 3; i++)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2.5),
+                  child: i < shots.length
+                      ? _ShotPip(score: shots[i])
+                      : (i == shots.length ? const _NextPip() : const _EmptyPip()),
+                ),
             ],
           ),
         ],
       ),
     );
   }
+}
 
-  Widget _buildCoinIndicators(int count) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: List.generate(3, (i) {
-        final bool earned = i < count;
-        return Container(
-          width: 8.0,
-          height: 8.0,
-          margin: const EdgeInsets.symmetric(horizontal: 1.5),
-          decoration: BoxDecoration(
-            color: earned ? const Color(0xFFF59E0B) : const Color(0xFF1E283D),
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: earned ? const Color(0xFFFBBF24) : const Color(0xFF334155),
-              width: 0.8,
+/// Score that counts up instead of jumping; tabular digits so it doesn't wobble.
+class _CountUp extends StatelessWidget {
+  final int value;
+  final Color color;
+  const _CountUp({required this.value, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<int>(
+      tween: IntTween(begin: value, end: value),
+      duration: const Duration(milliseconds: 400),
+      builder: (context, v, _) => Text(
+        '$v',
+        style: TextStyle(
+          color: color,
+          fontSize: 26.0,
+          height: 1.1,
+          fontWeight: FontWeight.w900,
+          fontFeatures: const [FontFeature.tabularFigures()],
+        ),
+      ),
+    );
+  }
+}
+
+class _Avatar extends StatelessWidget {
+  final String image;
+  final String label;
+  final int sets;
+  final Color ring;
+
+  const _Avatar({
+    required this.image,
+    required this.label,
+    required this.sets,
+    required this.ring,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 52.0,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Stack(
+            clipBehavior: Clip.none,
+            alignment: Alignment.center,
+            children: [
+              Container(
+                width: 46.0,
+                height: 46.0,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFF1E2638),
+                  border: Border.all(color: ring, width: 2.0),
+                  boxShadow: const [BoxShadow(color: Color(0x66000000), blurRadius: 8.0)],
+                ),
+                child: ClipOval(
+                  child: Image.asset(image, fit: BoxFit.cover, filterQuality: FilterQuality.medium),
+                ),
+              ),
+              // Set points: one gold coin with the count (hidden at 0).
+              if (sets > 0)
+                Positioned(
+                  bottom: -6.0,
+                  child: Container(
+                    width: 20.0,
+                    height: 20.0,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: const Color(0xFFF59E0B),
+                      border: Border.all(color: const Color(0xFF0A0E1A), width: 1.5),
+                    ),
+                    child: Text(
+                      '$sets',
+                      style: const TextStyle(
+                        color: Color(0xFF0A0E1A),
+                        fontSize: 11.0,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          SizedBox(height: sets > 0 ? 9.0 : 3.0),
+          Text(
+            label,
+            style: TextStyle(
+              color: ring,
+              fontSize: 9.0,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.8,
             ),
           ),
-        );
-      }),
+        ],
+      ),
+    );
+  }
+}
+
+class _ShotPip extends StatelessWidget {
+  final ShotScore score;
+  const _ShotPip({required this.score});
+
+  @override
+  Widget build(BuildContext context) {
+    final Color c = Color(score.colorValue);
+    return Container(
+      width: 17.0,
+      height: 17.0,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: const Color(0xFF0A0E1A),
+        border: Border.all(color: c, width: 1.5),
+      ),
+      child: Text(
+        score.displayLabel,
+        style: TextStyle(color: c, fontSize: 9.0, fontWeight: FontWeight.w900),
+      ),
+    );
+  }
+}
+
+/// The next arrow to shoot: a softly pulsing cyan pip.
+class _NextPip extends HookWidget {
+  const _NextPip();
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = useAnimationController(duration: const Duration(milliseconds: 900));
+    useEffect(() {
+      controller.repeat(reverse: true);
+      return null;
+    }, const []);
+    return FadeTransition(
+      opacity: Tween<double>(begin: 0.45, end: 1.0).animate(controller),
+      child: Container(
+        width: 17.0,
+        height: 17.0,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: const Color(0x2200FFCC),
+          border: Border.all(color: const Color(0xFF00FFCC), width: 1.5),
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyPip extends StatelessWidget {
+  const _EmptyPip();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 17.0,
+      height: 17.0,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: const Color(0xFF1E2638),
+        border: Border.all(color: const Color(0xFF334155), width: 1.0),
+      ),
     );
   }
 }
