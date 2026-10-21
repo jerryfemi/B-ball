@@ -17,8 +17,12 @@ abstract interface class ArcheryGameEvents {
   void phaseChanged(ShotPhase phase);
   void windChanged(double windDisplay);
 
-  /// Records your arrow, reveals the bot's matching arrow and, on the last
-  /// arrow of the set, awards set points. Returns true when the set is over.
+  /// The opponent's next arrow of this set has landed (set-start replay).
+  /// Returns its score, or null once all of its arrows are in.
+  ShotScore? botArrowLanded();
+
+  /// Records your arrow and, on the last arrow of the set, awards set points.
+  /// Returns true when the set is over.
   bool shotScored(ShotScore score);
 
   void nextSet();
@@ -59,19 +63,28 @@ class ArcheryMatchNotifier extends Notifier<ArcheryMatchState>
   }
 
   @override
+  ShotScore? botArrowLanded() {
+    final int i = state.botShots.length;
+    if (i >= ArcheryMatchState.arrowsPerSet) return null;
+    final ShotScore shot = botShot(state.matchSeed, state.setIndex, i);
+    state = state.copyWith(botShots: [...state.botShots, shot.points]);
+    return shot;
+  }
+
+  @override
   bool shotScored(ShotScore score) {
     if (state.setOver) return true;
 
     final shots = [...state.setShots, score];
-    final bot = [
-      ...state.botShots,
-      botRing(state.matchSeed, state.setIndex, state.botShots.length),
-    ];
-    final bool setDone = shots.length >= ArcheryMatchState.arrowsPerSet;
-
-    if (!setDone) {
-      state = state.copyWith(setShots: shots, botShots: bot);
+    if (shots.length < ArcheryMatchState.arrowsPerSet) {
+      state = state.copyWith(setShots: shots);
       return false;
+    }
+
+    // Normally the replay already revealed all bot arrows; fill any missing.
+    final bot = [...state.botShots];
+    while (bot.length < ArcheryMatchState.arrowsPerSet) {
+      bot.add(botShot(state.matchSeed, state.setIndex, bot.length).points);
     }
 
     final int you = shots.fold(0, (sum, s) => sum + s.points);
@@ -116,22 +129,37 @@ class ArcheryMatchNotifier extends Notifier<ArcheryMatchState>
         .copyWith(windDisplay: state.windDisplay);
   }
 
-  /// Deterministic bot arrow: a 2D normal hit offset scored on the same rings.
-  static int botRing(int seed, int setIndex, int arrowIndex) {
+  /// Deterministic bot arrow: a 2D normal hit offset on the face, scored by
+  /// the same rules as yours. Its grouping opens up a little with distance.
+  static ShotScore botShot(int seed, int setIndex, int arrowIndex) {
     int h = seed;
     h = (h * 31 + setIndex) & 0x7FFFFFFF;
     h = (h * 31 + arrowIndex) & 0x7FFFFFFF;
     h = (h * 31 + 0xB07) & 0x7FFFFFFF;
     final rng = math.Random(h);
-    // Box–Muller: radius is Rayleigh-distributed from u1 alone (u2 would be angle).
+    final double distance = ArcheryK.distanceForSet(setIndex);
+    final double sigma =
+        botSigmaM * (0.8 + 0.2 * distance / ArcheryK.setDistancesM.first);
+    // Box–Muller: Rayleigh radius from u1, angle from u2.
     final double u1 = math.max(rng.nextDouble(), 1e-9);
-    rng.nextDouble(); // advance RNG for angle
-    // The radius of a 2D normal offset is Rayleigh-distributed:
-    // r = σ·sqrt(-2 ln u1). (u2 would only give the angle, which can't change the ring.)
-    final double r = botSigmaM * math.sqrt(-2.0 * math.log(u1));
-    if (r > ArcheryK.faceRadius) return 0;
-    return (10 - (r / ArcheryK.ringWidth).floor()).clamp(1, 10);
+    final double u2 = rng.nextDouble();
+    final double r = sigma * math.sqrt(-2.0 * math.log(u1));
+    final double a = 2.0 * math.pi * u2;
+    // Keep it on the board so it always sticks somewhere visible.
+    const double edge = ArcheryK.boardWidth * 0.5 - 0.03;
+    final double dx = (r * math.cos(a)).clamp(-edge, edge);
+    final double dy = (r * math.sin(a)).clamp(-edge, edge);
+    return TargetScoring.calculate(
+      localX: dx,
+      localY: dy,
+      hitBoss: true,
+      distance: distance,
+    );
   }
+
+  /// Points of [botShot] (kept for tests and callers that only need the ring).
+  static int botRing(int seed, int setIndex, int arrowIndex) =>
+      botShot(seed, setIndex, arrowIndex).points;
 }
 
 final archeryMatchProvider =
