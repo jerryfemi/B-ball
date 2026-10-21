@@ -55,6 +55,13 @@ class SetEndCard extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (isMatchOver) ...[
+              _MatchWinner(
+                userWon: userSetPoints > opponentSetPoints,
+                draw: userSetPoints == opponentSetPoints,
+              ),
+              const SizedBox(height: 14.0),
+            ],
             // Top Badge
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 4.0),
@@ -246,6 +253,50 @@ class SetEndCard extends StatelessWidget {
           ),
         );
       }),
+    );
+  }
+}
+
+
+/// Big trophy headline on the final card.
+class _MatchWinner extends StatelessWidget {
+  final bool userWon;
+  final bool draw;
+  const _MatchWinner({required this.userWon, required this.draw});
+
+  @override
+  Widget build(BuildContext context) {
+    final Color color = draw
+        ? const Color(0xFF94A3B8)
+        : (userWon ? const Color(0xFFF59E0B) : const Color(0xFFEF4444));
+    final String text = draw ? 'DRAW' : (userWon ? 'YOU WIN!' : 'BOT WINS');
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 700),
+      curve: Curves.elasticOut,
+      builder: (context, t, child) => Transform.scale(scale: 0.6 + 0.4 * t, child: child),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            userWon ? Icons.emoji_events_rounded : Icons.sports_score_rounded,
+            color: color,
+            size: 46.0,
+            shadows: [Shadow(color: color.withValues(alpha: 0.6), blurRadius: 18.0)],
+          ),
+          const SizedBox(height: 4.0),
+          Text(
+            text,
+            style: TextStyle(
+              color: color,
+              fontSize: 30.0,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.0,
+              shadows: [Shadow(color: color.withValues(alpha: 0.5), blurRadius: 14.0)],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
