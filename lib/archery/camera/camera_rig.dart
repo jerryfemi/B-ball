@@ -5,6 +5,7 @@ import 'archery_camera.dart';
 
 /// Shot sequence phases matching GamePigeon archery flow.
 enum ShotPhase {
+  intro,    // Set start: parked at the target while the opponent's arrows land
   atLine,   // Wide view behind shooting line (Z = -2.0)
   raising,  // Easing in towards aiming stance (Z: -2.0 -> 1.0, zoom: 1.0 -> aimZoom)
   aiming,   // Static aiming viewpoint with crosshair and steady ring
@@ -127,6 +128,23 @@ class CameraRig {
     }
   }
 
+  /// Set start: park at the close-up so the opponent's arrows can be shown
+  /// landing. Call [endIntro] to dolly back to the line.
+  void startIntro() {
+    _enter(ShotPhase.intro);
+    currentEyeX = 0.0;
+    currentEyeY = ArcheryK.targetCenterY;
+    currentEyeZ = targetDistance - ArcheryK.camCloseupDist;
+    camera.zoom = 1.0;
+    _shakeAmp = 0.0;
+    shakeOffsetX = 0.0;
+    shakeOffsetY = 0.0;
+  }
+
+  void endIntro() {
+    if (phase == ShotPhase.intro) _enter(ShotPhase.returning);
+  }
+
   /// Hard reset to line pose (e.g. on match restart).
   void reset() {
     _enter(ShotPhase.atLine);
@@ -147,6 +165,7 @@ class CameraRig {
       case ShotPhase.raising:
         final double t = (phaseTime / 0.5).clamp(0.0, 1.0);
         return _lerp(_fromBowSlide, 1.0, _easeInOutCubic(t));
+      case ShotPhase.intro:
       case ShotPhase.aiming:
       case ShotPhase.chase:
       case ShotPhase.closeup:
@@ -253,6 +272,7 @@ class CameraRig {
         }
         break;
 
+      case ShotPhase.intro:
       case ShotPhase.setEnd:
         currentEyeX = 0.0;
         currentEyeY = ArcheryK.targetCenterY;
