@@ -19,7 +19,16 @@ class RangeBackground {
   late VenueTheme theme;
   late final BillboardRenderer billboardRenderer;
 
-  double activeDistance = ArcheryK.distanceM;
+  double _activeDistance = ArcheryK.distanceM;
+  double get activeDistance => _activeDistance;
+
+  /// Target distance for the current set: feeds the ground shader (lane lines,
+  /// contact shadow) and moves the trees behind the target.
+  set activeDistance(double d) {
+    if (d == _activeDistance) return;
+    _activeDistance = d;
+    billboardRenderer.setTargetDistance(d);
+  }
 
   // --- Sky ---
   ui.Image? _skyImage;
@@ -44,7 +53,7 @@ class RangeBackground {
   double _lastH = 0.0;
 
   RangeBackground({required this.camera}) {
-    theme = VenueTheme.createParkTheme(targetDistance: activeDistance);
+    theme = VenueTheme.createParkTheme(targetDistance: ArcheryK.distanceM);
     billboardRenderer = BillboardRenderer(camera: camera, theme: theme);
   }
 
