@@ -251,11 +251,85 @@ class TargetBoard {
       linePaint,
     );
 
+    _paintGloss(c, r);
+
     final ui.Picture picture = recorder.endRecording();
     picture.toImage(imgSize, imgSize).then((ui.Image img) {
       picture.dispose();
       _cachedFaceImage?.dispose();
       _cachedFaceImage = img;
     });
+  }
+
+  /// Glossy laminated finish (GamePigeon): light from the upper left.
+  /// Runs once, inside the cached face image, so it costs nothing per frame.
+  void _paintGloss(Canvas c, double r) {
+    final Offset center = Offset(r, r);
+    c.save();
+    c.clipPath(Path()..addOval(Rect.fromCircle(center: center, radius: r)));
+
+    // 1. Bevel on every ring edge: a thin light line just inside each
+    //    boundary on the lit side, a faint dark one on the shaded side.
+    final Paint bevelLight = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = r * 0.006
+      ..shader = ui.Gradient.linear(
+        Offset.zero,
+        Offset(r * 2, r * 2),
+        const [Color(0x66FFFFFF), Color(0x00FFFFFF)],
+        const [0.0, 0.6],
+      );
+    final Paint bevelDark = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = r * 0.006
+      ..shader = ui.Gradient.linear(
+        Offset.zero,
+        Offset(r * 2, r * 2),
+        const [Color(0x00000000), Color(0x40000000)],
+        const [0.4, 1.0],
+      );
+    for (int i = 0; i < 10; i++) {
+      final double ringR = r * (1.0 - i * 0.10);
+      c.drawCircle(center, ringR - r * 0.008, bevelLight);
+      c.drawCircle(center, ringR - r * 0.004, bevelDark);
+    }
+
+    // 2. Broad sheen: lighter top-left, slightly darker bottom-right.
+    c.drawCircle(
+      center,
+      r,
+      Paint()
+        ..shader = ui.Gradient.linear(
+          Offset.zero,
+          Offset(r * 2, r * 2),
+          const [Color(0x30FFFFFF), Color(0x00FFFFFF), Color(0x1E000000)],
+          const [0.0, 0.55, 1.0],
+        ),
+    );
+
+    // 3. Soft specular hotspot, like light on a laminated face.
+    final Offset hot = Offset(r * 0.62, r * 0.55);
+    c.drawCircle(
+      hot,
+      r * 0.62,
+      Paint()
+        ..shader = ui.Gradient.radial(
+          hot,
+          r * 0.62,
+          const [Color(0x47FFFFFF), Color(0x14FFFFFF), Color(0x00FFFFFF)],
+          const [0.0, 0.45, 1.0],
+        ),
+    );
+
+    // 4. Thin rim shadow so the face sits on the board.
+    c.drawCircle(
+      center,
+      r * 0.995,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = r * 0.012
+        ..color = const Color(0x33000000),
+    );
+    c.restore();
   }
 }
