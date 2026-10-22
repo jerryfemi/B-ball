@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../services/auth_service.dart';
 import '../../../services/firestore_match_service.dart';
@@ -175,6 +176,40 @@ class PauseOverlay extends HookWidget {
                                 ),
                               ),
                             ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10.0),
+
+                      // GameVerse lobby (archery, darts, …)
+                      SizedBox(
+                        width: double.infinity,
+                        height: 40.0,
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            HapticFeedback.lightImpact();
+                            GoRouter.maybeOf(context)?.go('/games');
+                          },
+                          icon: const Icon(
+                            Icons.grid_view_rounded,
+                            size: 15.0,
+                            color: Color(0xFF00FFCC),
+                          ),
+                          label: const Text(
+                            'GAMEVERSE LOBBY',
+                            style: TextStyle(
+                              color: Color(0xFF00FFCC),
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: Color(0x6600FFCC)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14.0),
+                            ),
+                            backgroundColor: const Color(0x1400FFCC),
                           ),
                         ),
                       ),
