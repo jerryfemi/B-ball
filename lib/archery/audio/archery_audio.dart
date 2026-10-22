@@ -7,9 +7,9 @@ import '../../game/audio/audio_engine.dart';
 /// switches as basketball, but archery's own soundtrack ([musicTrack]).
 /// This class only adds archery's timing rules.
 abstract final class ArcheryAudio {
-  /// Archery's own soundtrack (never basketball's). '' = no music yet; set it
-  /// to e.g. 'assets/music/short/<track>.mp3' once the track is added.
-  static const String musicTrack = '';
+  /// Archery's own soundtrack (never basketball's): a 60 s loop cut from
+  /// 0:30–1:30 of the original, 128 kbps MP3. '' would mean no music.
+  static const String musicTrack = 'assets/music/short/archery_plum_blossom.mp3';
 
   /// Starts the shared engine (if needed) and decodes archery's sounds.
   static void init() {
