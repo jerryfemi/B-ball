@@ -953,7 +953,15 @@ class BasketballGame extends Forge2DGame {
   }
 
   /// Initiates or resumes an online 1v1 match from a synced [CloudMatch].
+  /// Called instead of [startCloudMatch] for another game's match (archery,
+  /// darts): the screen navigates to `/match/:id`.
+  void Function(CloudMatch match)? onOtherGameMatch;
+
   void startCloudMatch(CloudMatch match, String myUid) {
+    if (!match.isBasketball) {
+      onOtherGameMatch?.call(match);
+      return;
+    }
     _resetNetGauges();
     _lastSeenLiveShooterScore = null;
     final session = MatchSession.fromCloudMatch(match, myUid);
