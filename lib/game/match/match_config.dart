@@ -35,6 +35,9 @@ class MatchConfig {
   /// Optional pre-created CloudMatch if room was generated upfront in dialog.
   final CloudMatch? precreatedMatch;
 
+  /// Game type identifier (defaults to 'basketball', supports 'archery', 'darts').
+  final String game;
+
   const MatchConfig({
     this.totalRounds = 2,
     this.roundDurationSeconds = 60,
@@ -46,6 +49,7 @@ class MatchConfig {
     this.player2Uid,
     this.opponentFriend,
     this.precreatedMatch,
+    this.game = 'basketball',
   });
 
   MatchConfig copyWith({
@@ -59,6 +63,7 @@ class MatchConfig {
     String? player2Uid,
     FriendProfile? opponentFriend,
     CloudMatch? precreatedMatch,
+    String? game,
   }) {
     return MatchConfig(
       totalRounds: totalRounds ?? this.totalRounds,
@@ -71,6 +76,7 @@ class MatchConfig {
       player2Uid: player2Uid ?? this.player2Uid,
       opponentFriend: opponentFriend ?? this.opponentFriend,
       precreatedMatch: precreatedMatch ?? this.precreatedMatch,
+      game: game ?? this.game,
     );
   }
 }
