@@ -1,48 +1,49 @@
-import 'archery_audio_native.dart'
-    if (dart.library.js_interop) 'archery_audio_web.dart' as impl;
+import 'dart:async';
 
-/// Dedicated Audio Engine for the Archery prototype.
-///
-/// Fully decoupled from basketball `Sfx` enums and audio classes.
-/// Features zero-allocation audio triggers and physical sound travel distance delay (D / 340s).
+import '../../game/audio/audio_engine.dart';
+
+/// Archery's sounds, played through the app's shared [AudioEngine]: same
+/// mixer and the same app-wide mute, volume and SOUND EFFECTS / MUSIC
+/// switches as basketball, but archery's own soundtrack ([musicTrack]).
+/// This class only adds archery's timing rules.
 abstract final class ArcheryAudio {
-  static final impl.ArcheryAudioImpl _backend = impl.createAudioImpl();
+  /// Archery's own soundtrack (never basketball's). '' = no music yet; set it
+  /// to e.g. 'assets/music/short/<track>.mp3' once the track is added.
+  static const String musicTrack = '';
 
+  /// Starts the shared engine (if needed) and decodes archery's sounds.
   static void init() {
-    _backend.init();
+    unawaited(AudioEngine.useGameSoundtrack(musicTrack));
+    unawaited(AudioEngine.init().then((_) => AudioEngine.loadArcherySfx()));
   }
 
-  static void unlock() {
-    _backend.unlock();
-  }
+  /// Call when archery closes: hands the music back to basketball's playlist.
+  static void leave() => unawaited(AudioEngine.useGameSoundtrack(null));
 
-  static void playDrawCreak() {
-    _backend.playDrawCreak();
-  }
+  /// Call from every pointer down/up: browsers only start audio (and the
+  /// music) inside a tap, and iPhones only on the release.
+  static void unlock() => AudioEngine.unlockAudio();
 
-  static void playFullDrawClick() {
-    _backend.playFullDrawClick();
-  }
+  static void playDrawCreak() => AudioEngine.playArrowDraw();
 
-  static void playReleaseTwang() {
-    _backend.playReleaseTwang();
-  }
+  static void playFullDrawClick() => AudioEngine.playArrowFullDraw();
 
+  static void playReleaseTwang() => AudioEngine.playArrowRelease();
+
+  /// Impact heard after the sound travels back from the target
+  /// (~340 m/s: ≈45 ms at 50 ft, ≈135 ms at 150 ft). [distance] 0 = instant.
   static void playImpact({
     required double distance,
     required bool isX,
     required bool hitBoss,
     required bool hitGround,
   }) {
-    _backend.playImpact(
-      distance: distance,
-      isX: isX,
-      hitBoss: hitBoss,
-      hitGround: hitGround,
-    );
-  }
-
-  static void dispose() {
-    _backend.dispose();
+    void fire() => AudioEngine.playArrowImpact(hitTarget: hitBoss, bell: isX);
+    final int delayMs = ((distance / 340.0) * 1000).round().clamp(0, 500);
+    if (delayMs == 0) {
+      fire();
+    } else {
+      Timer(Duration(milliseconds: delayMs), fire);
+    }
   }
 }
