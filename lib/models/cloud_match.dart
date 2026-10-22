@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../archery/state/archery_rules.dart';
 import '../game/physics/shot_difficulty.dart';
 import '../game/telemetry/shot_telemetry.dart';
 import 'player_descriptor.dart';
@@ -277,6 +278,10 @@ class CloudMatch {
   /// The game identifier for this match (e.g. 'basketball', 'archery', 'darts').
   final String game;
 
+  /// Server time (ms) when the active shooter started their live turn
+  /// (`turnStartedAt`), or null. Used to know when a claim may be allowed.
+  final int? turnStartedAtMs;
+
   const CloudMatch({
     required this.id,
     required this.joinCode,
@@ -303,6 +308,7 @@ class CloudMatch {
     this.lastChatText,
     this.forfeitedByUid,
     this.customWinnerUid,
+    this.turnStartedAtMs,
   });
 
   /// Whether the match has reached a final result that belongs in the
@@ -341,6 +347,13 @@ class CloudMatch {
     }
     if (status != MatchStatus.completed || player2 == null) {
       return MatchOutcome.inProgress;
+    }
+    if (isArchery) {
+      // Archery is decided on set points, not total score.
+      final w = ArcheryRules.winner(player1.roundScores, player2!.roundScores);
+      return w > 0
+          ? MatchOutcome.player1Won
+          : (w < 0 ? MatchOutcome.player2Won : MatchOutcome.tie);
     }
     if (player1.totalScore > player2!.totalScore) {
       return MatchOutcome.player1Won;
@@ -526,6 +539,9 @@ class CloudMatch {
         lastChatText: map['lastChatText'] as String?,
         forfeitedByUid: map['forfeitedBy'] as String?,
         customWinnerUid: map['winnerUid'] as String?,
+        turnStartedAtMs: map['turnStartedAt'] is Timestamp
+            ? (map['turnStartedAt'] as Timestamp).millisecondsSinceEpoch
+            : null,
       );
     } catch (e) {
       // Return safe fallback rather than crashing the inbox
