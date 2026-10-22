@@ -16,6 +16,8 @@ import 'components/stuck_arrow.dart';
 import 'components/target_board.dart';
 import 'components/wind_pill.dart';
 import 'input/draw_aim_controller.dart';
+import 'online/archery_live_event.dart';
+import 'online/archery_online_controller.dart';
 import 'physics/arrow_physics.dart';
 import 'physics/sight_solver.dart';
 import 'physics/target_scoring.dart';
@@ -28,8 +30,19 @@ import 'state/archery_match_state.dart';
 /// Owns the camera, physics and drawing only. Scores, sets and the match seed
 /// live in [ArcheryGameEvents] (the Riverpod notifier); the game reads the seed
 /// and arrow position from it and reports each shot back.
-class ArcheryGame extends FlameGame {
+class ArcheryGame extends FlameGame implements ArcheryOnlineGame {
   final ArcheryGameEvents events;
+
+  /// Set for a live online match; null in solo play against the bot.
+  final ArcheryOnlineController? online;
+
+  // Launch angles of your last arrow (sent to the opponent with the result).
+  double _lastYaw = 0.0;
+  double _lastPitch = 0.0;
+
+  /// The opponent's arrow currently flying on this phone (online).
+  ArcheryLiveEvent? _remoteArrow;
+  double _remoteDrawTime = -1.0;
 
   // --- Core Systems ---
   late final ArcheryCamera archeryCamera;
@@ -66,7 +79,7 @@ class ArcheryGame extends FlameGame {
 
   double targetDistance = ArcheryK.distanceM;
 
-  ArcheryGame({required this.events}) {
+  ArcheryGame({required this.events, this.online}) {
     archeryCamera = ArcheryCamera();
     cameraRig = CameraRig(camera: archeryCamera);
     controller = DrawAimController(camera: archeryCamera, cameraRig: cameraRig);
@@ -125,7 +138,8 @@ class ArcheryGame extends FlameGame {
 
     // Connect aim controller firing hook
     controller.onFireAt = (double crossX, double crossY) {
-      if (_setOver || arrowPhysics.inFlight) return;
+      if (_setOver || arrowPhysics.inFlight || !events.isMyTurn) return;
+      if (online != null && events.arrowIndex >= ArcheryMatchState.arrowsPerSet) return;
 
       ArcheryAudio.playReleaseTwang();
 
@@ -137,6 +151,8 @@ class ArcheryGame extends FlameGame {
       // 2. Solve launch yaw and pitch
       final double launchYaw = SightSolver.solveYaw(targetDistance, px);
       final double launchPitch = SightSolver.solvePitch(targetDistance, py);
+      _lastYaw = launchYaw;
+      _lastPitch = launchPitch;
 
       // 3. Launch arrow at full draw speed with per-arrow wind model
       arrowPhysics.launch(
@@ -155,7 +171,10 @@ class ArcheryGame extends FlameGame {
       cameraRig.addShake(3.5);
     };
 
-    controller.onHoldStarted = ArcheryAudio.playDrawCreak;
+    controller.onHoldStarted = () {
+      ArcheryAudio.playDrawCreak();
+      online?.onMyDraw();
+    };
 
     // Camera Rig phase transitions
     cameraRig.onPhaseChanged = (ShotPhase phase) {
@@ -169,7 +188,128 @@ class ArcheryGame extends FlameGame {
       events.windChanged(windModel.display);
     };
 
-    _startIntro();
+    final o = online;
+    if (o != null) {
+      // Online: the match document decides who shoots; no bot replay.
+      controller.inputEnabled = false;
+      o.attach(this);
+    } else {
+      _startIntro();
+    }
+  }
+
+  // ── Online play (driven by [ArcheryOnlineController]) ───────────────────
+
+  @override
+  bool get isBusy =>
+      arrowPhysics.inFlight ||
+      controller.isHolding ||
+      cameraRig.phase != ShotPhase.atLine;
+
+  @override
+  void beginOnlineTurn({
+    required int setIndex,
+    required bool mine,
+    required List<ArcheryLiveEvent> shooterArrows,
+  }) {
+    _remoteArrow = null;
+    _remoteDrawTime = -1.0;
+    _botArrows.clear();
+    stuckArrows.clear();
+    hitPopup.reset();
+    _applySetDistance();
+    // Arrows this archer already landed in this set: shown, not replayed.
+    for (final a in shooterArrows) {
+      if (!a.launched || !a.hitBoss) continue;
+      stuckArrows.add(
+        StuckArrow(
+          hitLocalX: a.hitX,
+          hitLocalY: a.hitY,
+          hitZ: targetDistance,
+          pitch: -0.015 - 0.0008 * targetDistance,
+          yaw: math.atan2(a.hitX, targetDistance),
+          penetrationDepth: 0.10,
+        )..timeSinceImpact = 1.0, // no quiver
+      );
+    }
+    if (controller.isHolding && !mine) controller.onPointerCancel();
+    controller.inputEnabled =
+        mine && shooterArrows.length < ArcheryMatchState.arrowsPerSet;
+    _setupCurrentArrow();
+    events.windChanged(windModel.display);
+    cameraRig.reset();
+  }
+
+  @override
+  void remoteDraw() {
+    final p = cameraRig.phase;
+    if (p == ShotPhase.atLine || p == ShotPhase.returning) {
+      cameraRig.startRaising();
+      _remoteDrawTime = 0.0;
+    }
+  }
+
+  @override
+  void playRemoteArrow(ArcheryLiveEvent e) {
+    _remoteDrawTime = -1.0;
+    _setupCurrentArrow(); // the opponent's wind for this arrow
+    events.windChanged(windModel.display);
+
+    if (!e.launched || arrowPhysics.inFlight) {
+      // Shot clock ran out (or an arrow is still flying): just the result.
+      final score = e.score(targetDistance);
+      hitPopup.trigger(
+        worldX: 0.0,
+        worldY: ArcheryK.targetCenterY,
+        worldZ: targetDistance,
+        score: score,
+      );
+      events.opponentShotScored(score);
+      if (cameraRig.phase == ShotPhase.raising) cameraRig.cancelAim();
+      _setupCurrentArrow();
+      events.windChanged(windModel.display);
+      return;
+    }
+
+    ArcheryAudio.playReleaseTwang();
+    arrowPhysics.launch(
+      startX: 0.0,
+      startY: ArcheryK.launchY,
+      startZ: ArcheryK.launchZ,
+      launchYaw: e.yaw,
+      launchPitch: e.pitch,
+      speed: ArcheryK.fullDrawSpeed,
+      targetDist: targetDistance,
+      windModel: windModel,
+      windScale: ArcheryK.windScaleFor(targetDistance),
+    );
+    _remoteArrow = e;
+    cameraRig.fireShot();
+  }
+
+  @override
+  void forceMiss() {
+    if (!events.isMyTurn || arrowPhysics.inFlight) return;
+    if (controller.isHolding) controller.onPointerCancel();
+    final score = TargetScoring.calculate(
+      localX: 0.0,
+      localY: 0.0,
+      hitBoss: false,
+      distance: targetDistance,
+    );
+    hitPopup.trigger(
+      worldX: 0.0,
+      worldY: ArcheryK.targetCenterY,
+      worldZ: targetDistance,
+      score: score,
+    );
+    events.shotScored(score);
+    online?.onMyArrow(launched: false, yaw: 0.0, pitch: 0.0, score: score);
+    if (events.arrowIndex >= ArcheryMatchState.arrowsPerSet) {
+      controller.inputEnabled = false;
+    }
+    _setupCurrentArrow();
+    events.windChanged(windModel.display);
   }
 
   /// Set start: the camera waits at the target while the opponent's three
@@ -283,8 +423,17 @@ class ArcheryGame extends FlameGame {
     // 1. Update Input & Crosshair
     controller.update(clampedDt);
 
-    // 1b. Set-start replay of the opponent's arrows
+    // 1b. Set-start replay of the bot's arrows (solo) / online clocks
     _updateIntro(clampedDt);
+    online?.update(clampedDt);
+    if (_remoteDrawTime >= 0.0) {
+      _remoteDrawTime += clampedDt;
+      // They pressed to aim but never shot: lower the camera again.
+      if (_remoteDrawTime > 12.0) {
+        _remoteDrawTime = -1.0;
+        if (cameraRig.phase == ShotPhase.raising) cameraRig.cancelAim();
+      }
+    }
 
     // 2. Update Camera Rig with arrow follow and phase transitions
     cameraRig.update(
@@ -304,50 +453,75 @@ class ArcheryGame extends FlameGame {
 
     // Impact detection
     if (wasInFlight && !arrowPhysics.inFlight) {
-      final ShotScore score = TargetScoring.calculate(
-        localX: arrowPhysics.hitLocalX,
-        localY: arrowPhysics.hitLocalY,
-        hitBoss: arrowPhysics.hitBoss,
-        distance: targetDistance,
-      );
+      // The opponent's arrow (online) lands where THEIR phone said it did:
+      // same physics and wind, but their result is the one that counts.
+      final ArcheryLiveEvent? remote = _remoteArrow;
+      _remoteArrow = null;
+      final bool hitBoss = remote?.hitBoss ?? arrowPhysics.hitBoss;
+      final double hitX = remote?.hitX ?? arrowPhysics.hitLocalX;
+      final double hitY = remote?.hitY ?? arrowPhysics.hitLocalY;
+      final ShotScore score = remote?.score(targetDistance) ??
+          TargetScoring.calculate(
+            localX: hitX,
+            localY: hitY,
+            hitBoss: hitBoss,
+            distance: targetDistance,
+          );
 
       // Distance-delayed impact audio
       ArcheryAudio.playImpact(
         distance: targetDistance,
         isX: score.ring >= 10,
-        hitBoss: arrowPhysics.hitBoss,
-        hitGround: arrowPhysics.hitGround,
+        hitBoss: hitBoss,
+        hitGround: !hitBoss,
       );
 
       // Hit Popup canvas 3D coordinates & event emission (Bug #6)
       hitPopup.trigger(
-        worldX: arrowPhysics.hitPoint.x,
-        worldY: arrowPhysics.hitPoint.y,
-        worldZ: arrowPhysics.hitPoint.z,
+        worldX: hitBoss ? hitX : arrowPhysics.hitPoint.x,
+        worldY: hitBoss ? ArcheryK.targetCenterY + hitY : arrowPhysics.hitPoint.y,
+        worldZ: hitBoss ? targetDistance : arrowPhysics.hitPoint.z,
         score: score,
       );
-      // Report the shot; the notifier scores it (and the set on the last arrow).
-      final bool isLastArrow = events.shotScored(score);
-      _setOver = isLastArrow;
 
-      if (arrowPhysics.hitBoss) {
+      bool isLastArrow = false;
+      if (remote != null) {
+        events.opponentShotScored(score);
+      } else {
+        // Report the shot; the notifier scores it (and, solo, the set).
+        isLastArrow = events.shotScored(score);
+        _setOver = isLastArrow;
+        online?.onMyArrow(
+          launched: true,
+          yaw: _lastYaw,
+          pitch: _lastPitch,
+          score: score,
+        );
+        // Online: your set is done after three arrows (no fourth draw).
+        if (online != null && events.arrowIndex >= ArcheryMatchState.arrowsPerSet) {
+          controller.inputEnabled = false;
+        }
+      }
+
+      if (hitBoss) {
         cameraRig.addShake(score.isX ? 7.0 : 4.5);
         stuckArrows.add(
           StuckArrow(
-            hitLocalX: arrowPhysics.hitLocalX,
-            hitLocalY: arrowPhysics.hitLocalY,
-            hitZ: arrowPhysics.targetDistance,
+            hitLocalX: hitX,
+            hitLocalY: hitY,
+            hitZ: targetDistance,
             pitch: arrowPhysics.pitch,
             yaw: arrowPhysics.yaw,
             penetrationDepth: arrowPhysics.penetrationDepth,
           ),
         );
-      } else if (arrowPhysics.hitGround) {
+      } else {
         cameraRig.addShake(1.5);
       }
 
-      // Trigger closeup inspection
-      cameraRig.onImpact(isLastArrowOfSet: isLastArrow);
+      // Close-up of the hit. Online, set results come from the server, so
+      // the camera always returns to the line.
+      cameraRig.onImpact(isLastArrowOfSet: online == null && isLastArrow);
     }
 
     // 6. Update Stuck Arrows
