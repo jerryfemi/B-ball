@@ -122,6 +122,12 @@ class ArcheryGame extends FlameGame implements ArcheryOnlineGame {
     final int seed = _arrowSeed;
     windModel = WindModel.fromSeed(seed);
     controller.initSwaySeed(seed);
+    // The trees sway in this arrow's wind.
+    background.billboardRenderer.setWind(
+      display: windModel.display,
+      angle: windModel.angle,
+      phase: windModel.phi1,
+    );
   }
 
   @override
@@ -446,6 +452,7 @@ class ArcheryGame extends FlameGame implements ArcheryOnlineGame {
 
     // 3. Update Bow Overlay slide progress
     bowOverlay.update(clampedDt, slide: cameraRig.bowSlideProgress);
+    background.billboardRenderer.update(clampedDt);
 
     // 4. Update Arrow Physics
     final bool wasInFlight = arrowPhysics.inFlight;
