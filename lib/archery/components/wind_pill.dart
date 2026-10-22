@@ -6,7 +6,7 @@ import '../camera/camera_rig.dart';
 import '../physics/wind_model.dart';
 
 /// GamePigeon-style wind gauge floating above the target board:
-/// a translucent black pill with bold white "WIND: 0.8" and a white ring
+/// a translucent black pill reading "Wind 7 mph" and a white ring
 /// holding a solid arrow that points the way the wind blows
 /// (up = away from you, right = to the right).
 ///
@@ -62,43 +62,41 @@ class WindPill {
   void _layout(WindModel wind, double ui) {
     _lastDisplay = wind.display;
     _lastUi = ui;
+    final TextStyle label = TextStyle(
+      color: const Color(0xE6FFFFFF),
+      fontSize: 11.0 * ui,
+      fontWeight: FontWeight.w600,
+    );
     _text = TextPainter(
       text: TextSpan(
         children: [
+          TextSpan(text: 'Wind ', style: label),
           TextSpan(
-            text: 'WIND: ',
+            text: '${wind.mph}',
             style: TextStyle(
               color: Colors.white,
-              fontSize: 14.0 * ui,
+              fontSize: 12.0 * ui,
               fontWeight: FontWeight.w800,
-              letterSpacing: 0.2,
-            ),
-          ),
-          TextSpan(
-            text: wind.display.toStringAsFixed(1),
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 15.0 * ui,
-              fontWeight: FontWeight.w900,
               fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
+          TextSpan(text: ' mph', style: label),
         ],
       ),
       textDirection: TextDirection.ltr,
     )..layout();
 
-    final double padL = 12.0 * ui;
-    final double padR = 6.0 * ui;
-    final double gap = 8.0 * ui;
-    _dialR = 11.0 * ui;
-    _pillH = math.max(_text!.height, _dialR * 2.0) + 8.0 * ui;
+    final double padL = 10.0 * ui;
+    final double padR = 5.0 * ui;
+    final double gap = 6.0 * ui;
+    _dialR = 8.5 * ui;
+    _pillH = math.max(_text!.height, _dialR * 2.0) + 6.0 * ui;
     final double w = padL + _text!.width + gap + _dialR * 2.0 + padR;
 
     _pill = RRect.fromLTRBR(-w / 2, -_pillH / 2, w / 2, _pillH / 2, Radius.circular(_pillH / 2));
     _textOffset = Offset(-w / 2 + padL, -_text!.height / 2);
     _dialCenter = Offset(w / 2 - padR - _dialR, 0.0);
-    _ringPaint.strokeWidth = 2.0 * ui;
+    _ringPaint.strokeWidth = 1.6 * ui;
   }
 
   void render(Canvas canvas, WindModel wind) {
@@ -121,7 +119,7 @@ class WindPill {
     }
 
     canvas.save();
-    canvas.translate(camera.sx, camera.sy - _pillH * 0.5 - 12.0 * ui);
+    canvas.translate(camera.sx, camera.sy - _pillH * 0.5 - 10.0 * ui);
 
     canvas.drawRRect(_pill, _bgPaint);
     _text!.paint(canvas, _textOffset);
