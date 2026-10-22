@@ -41,6 +41,9 @@ class MatchSetupDialog extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Archery has fixed rules (sets to 6 points, per-arrow shot clock), so
+    // only the opponent part of this dialog applies.
+    final bool isArchery = initialConfig.game == 'archery';
     final selectedRounds = useState(initialConfig.totalRounds);
     final selectedDuration = useState(initialConfig.roundDurationSeconds);
     final selectedDifficulty = useState(initialConfig.difficulty);
@@ -74,6 +77,7 @@ class MatchSetupDialog extends HookWidget {
             AuthService.instance.currentUser ??
             await AuthService.instance.initialize();
         final config = MatchConfig(
+          game: initialConfig.game,
           totalRounds: selectedRounds.value,
           roundDurationSeconds: selectedDuration.value,
           difficulty: selectedDifficulty.value,
@@ -131,9 +135,11 @@ class MatchSetupDialog extends HookWidget {
       if (match == null) return;
       HapticFeedback.lightImpact();
       final code = match.joinCode;
-      final text =
-          '🏀 Play me 1v1 on DunkVerse! Match code: $code\n'
-          'https://dunkverse.web.app/#/join?code=$code';
+      final text = isArchery
+          ? '🎯 Shoot archery with me on GameVerse! Match code: $code\n'
+              'https://dunkverse.web.app/match/$code'
+          : '🏀 Play me 1v1 on DunkVerse! Match code: $code\n'
+              'https://dunkverse.web.app/match/$code';
       try {
         await SharePlus.instance.share(ShareParams(text: text));
       } catch (_) {
@@ -161,6 +167,7 @@ class MatchSetupDialog extends HookWidget {
           opponentMode.value == 1 && selectedFriend.value != null;
 
       final config = MatchConfig(
+        game: initialConfig.game,
         totalRounds: selectedRounds.value,
         roundDurationSeconds: selectedDuration.value,
         difficulty: selectedDifficulty.value,
@@ -199,12 +206,12 @@ class MatchSetupDialog extends HookWidget {
     return AppModalDialog(
       maxWidth: 390.0,
       scrollable: true,
-      iconWidget: const Icon(
-        Icons.sports_basketball_rounded,
+      iconWidget: Icon(
+        isArchery ? Icons.track_changes_rounded : Icons.sports_basketball_rounded,
         color: AppColors.accentAmber,
         size: 22.0,
       ),
-      title: 'NEW 1V1 MATCH',
+      title: isArchery ? 'NEW ARCHERY MATCH' : 'NEW 1V1 MATCH',
       subtitle: 'Challenge a friend or share a match code',
       showCloseButton: true,
       child: Column(
@@ -337,6 +344,7 @@ class MatchSetupDialog extends HookWidget {
             ),
           const SizedBox(height: 18.0),
 
+          if (!isArchery) ...[
           // Option 1: Total Rounds
           const Text(
             'MATCH LENGTH',
@@ -467,6 +475,19 @@ class MatchSetupDialog extends HookWidget {
             },
           ),
           const SizedBox(height: 20.0),
+          ] else ...[
+            const Text(
+              'SETS OF 3 ARROWS · 50FT → 100FT → 150FT · FIRST TO 6 SET POINTS',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Color(0xFF94A3B8),
+                fontSize: 10.5,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.6,
+              ),
+            ),
+            const SizedBox(height: 16.0),
+          ],
 
           // Inline validation hint (replaces the old floating SnackBar)
           InlineFeedbackSwitcher(
