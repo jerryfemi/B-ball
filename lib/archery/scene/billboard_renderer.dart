@@ -118,15 +118,11 @@ class BillboardRenderer {
   /// Seconds for the trees to settle into a new wind (about 63% of the way).
   static const double _windEaseSeconds = 1.2;
 
-  /// Off for the rest of the session once the frame rate struggles.
-  /// Automatic quality: sway fades out while the device is struggling and
-  /// fades back in once it keeps up again. Only judged in release builds:
-  /// debug web builds are always slow and would switch it off for no reason.
+  /// Tree sway is always on: it's a handful of small meshes, cheap even on
+  /// budget phones, so it no longer switches itself off when the frame rate
+  /// dips. Left as a switch in case a settings toggle wants it later.
   bool swayEnabled = true;
   double _swayLevel = 1.0; // eased 0..1 version of [swayEnabled]
-  double _avgDt = 1.0 / 60.0;
-  double _slowFor = 0.0;
-  double _fastFor = 0.0;
 
   /// Wind for the current arrow (the same model that moves the arrow).
   void setWind({
@@ -156,24 +152,6 @@ class BillboardRenderer {
     _windStrength += (_targetStrength - _windStrength) * k;
     _windSide += (_targetSide - _windSide) * k;
 
-    if (kReleaseMode) {
-      _avgDt += (dt - _avgDt) * 0.05;
-      if (swayEnabled) {
-        // Below ~40 fps for 3 s: ease the sway off.
-        _slowFor = _avgDt > 1.0 / 40.0 ? _slowFor + dt : 0.0;
-        if (_slowFor > 3.0) {
-          swayEnabled = false;
-          _fastFor = 0.0;
-        }
-      } else {
-        // Back above ~50 fps for 5 s: bring it back.
-        _fastFor = _avgDt < 1.0 / 50.0 ? _fastFor + dt : 0.0;
-        if (_fastFor > 5.0) {
-          swayEnabled = true;
-          _slowFor = 0.0;
-        }
-      }
-    }
     final double target = swayEnabled ? 1.0 : 0.0;
     _swayLevel += (target - _swayLevel) * (1.0 - math.exp(-dt / 0.6));
     if ((_swayLevel - target).abs() < 0.001) _swayLevel = target;
