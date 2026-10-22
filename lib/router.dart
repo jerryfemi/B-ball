@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import 'archery/archery_game_screen.dart';
 import 'darts/darts_game_screen.dart';
+import 'game/audio/audio_engine.dart';
 import 'game/basketball_game.dart';
 import 'game/ui/game_hud_overlay.dart';
 import 'lobby/game_lobby_screen.dart';
@@ -84,10 +85,18 @@ class _BasketballScreenState extends State<BasketballScreen> {
   void initState() {
     super.initState();
     _game = BasketballGame();
+    // Basketball's playlist plays only while a basketball screen is open.
+    AudioEngine.claimSoundtrack(_game);
     // Archery/darts matches picked in basketball's inbox open their own game.
     _game.onOtherGameMatch = (m) {
       if (mounted) context.go('/match/${m.id}');
     };
+  }
+
+  @override
+  void dispose() {
+    AudioEngine.releaseSoundtrack(_game);
+    super.dispose();
   }
 
   @override
