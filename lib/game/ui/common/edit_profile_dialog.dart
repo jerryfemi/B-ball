@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../../services/auth_service.dart';
 import 'app_avatar.dart';
+import 'inline_feedback.dart';
 
 /// Standalone dialog for viewing and updating player display name and avatar.
 /// Used in the GameVerse lobby account chip and in MatchInboxSheet.
@@ -37,16 +38,26 @@ class EditProfileDialog extends StatefulWidget {
 class _EditProfileDialogState extends State<EditProfileDialog> {
   late final TextEditingController _nameCtrl;
   late String _selectedAvatar;
+  late final List<String> _avatarOptions;
   bool _isSaving = false;
+
+  /// Inline problems (no SnackBars): a save that failed, or an empty name.
+  String? _error;
+  bool _nameMissing = false;
 
   @override
   void initState() {
     super.initState();
     _nameCtrl = TextEditingController(text: widget.currentProfile.displayName);
-    final avatarOptions = AuthService.avatarImageOptions;
-    _selectedAvatar = widget.currentProfile.avatarEmoji.startsWith('assets/')
-        ? widget.currentProfile.avatarEmoji
-        : avatarOptions.first;
+    final current = widget.currentProfile.avatarEmoji;
+    // Keep a custom avatar (e.g. a Lagos Life character) selectable and
+    // selected, so saving a new name never silently replaces it.
+    final builtIn = AuthService.avatarImageOptions;
+    _avatarOptions = [
+      if (current.isNotEmpty && !builtIn.contains(current)) current,
+      ...builtIn,
+    ];
+    _selectedAvatar = current.isNotEmpty ? current : builtIn.first;
   }
 
   @override
@@ -57,9 +68,17 @@ class _EditProfileDialogState extends State<EditProfileDialog> {
 
   Future<void> _handleSave() async {
     final cleanName = _nameCtrl.text.trim();
-    if (cleanName.isEmpty || _isSaving) return;
+    if (_isSaving) return;
+    if (cleanName.isEmpty) {
+      setState(() => _nameMissing = true);
+      return;
+    }
 
-    setState(() => _isSaving = true);
+    setState(() {
+      _isSaving = true;
+      _error = null;
+      _nameMissing = false;
+    });
     try {
       await AuthService.instance.updateProfile(
         displayName: cleanName,
@@ -68,9 +87,10 @@ class _EditProfileDialogState extends State<EditProfileDialog> {
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update profile: $e')),
-        );
+        setState(() => _error = InlineErrorPanel.friendlyMessage(
+              e,
+              fallback: 'Couldn\'t save your profile. Please try again.',
+            ));
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -79,7 +99,7 @@ class _EditProfileDialogState extends State<EditProfileDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final avatarOptions = AuthService.avatarImageOptions;
+    final avatarOptions = _avatarOptions;
 
     return Dialog(
       backgroundColor: const Color(0xFF131826),
@@ -195,6 +215,34 @@ class _EditProfileDialogState extends State<EditProfileDialog> {
                 }).toList(),
               ),
               const SizedBox(height: 22),
+
+              // Problems show inside the card, never as a SnackBar.
+              InlineFeedbackSwitcher(
+                child: _error != null
+                    ? Padding(
+                        key: const ValueKey('save-error'),
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: InlineErrorPanel(
+                          title: 'PROFILE NOT SAVED',
+                          message: _error!,
+                          onRetry: _handleSave,
+                          onDismiss: () => setState(() => _error = null),
+                        ),
+                      )
+                    : _nameMissing
+                        ? Padding(
+                            key: const ValueKey('name-missing'),
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: InlineErrorPanel(
+                              icon: Icons.badge_rounded,
+                              accent: const Color(0xFFF59E0B),
+                              title: 'ENTER A NAME',
+                              message: 'Your display name can\'t be empty.',
+                              onDismiss: () => setState(() => _nameMissing = false),
+                            ),
+                          )
+                        : const SizedBox.shrink(key: ValueKey('no-feedback')),
+              ),
 
               ElevatedButton(
                 onPressed: _isSaving ? null : _handleSave,
