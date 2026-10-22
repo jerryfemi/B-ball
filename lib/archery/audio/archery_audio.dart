@@ -15,18 +15,16 @@ abstract final class ArcheryAudio {
   /// crossfaded end-to-start). Follows the AMBIENCE switch, not MUSIC.
   static const String ambienceTrack = 'assets/archery/ambience_birds.wav';
 
-  /// Starts the shared engine (if needed) and decodes archery's sounds.
-  static void init() {
-    unawaited(AudioEngine.useGameSoundtrack(musicTrack));
-    unawaited(AudioEngine.useGameAmbience(ambienceTrack));
+  /// Starts the shared engine (if needed), takes the soundtrack for
+  /// [owner] (the archery game) and decodes archery's sounds.
+  static void init(Object owner) {
+    AudioEngine.claimSoundtrack(owner, track: musicTrack, ambience: ambienceTrack);
     unawaited(AudioEngine.init().then((_) => AudioEngine.loadArcherySfx()));
   }
 
-  /// Call when archery closes: hands the music back to basketball's playlist.
-  static void leave() {
-    unawaited(AudioEngine.useGameSoundtrack(null));
-    unawaited(AudioEngine.useGameAmbience(null));
-  }
+  /// Call when archery closes: music and birdsong stop and are freed
+  /// (unless the next game already took over). Safe to call twice.
+  static void leave(Object owner) => AudioEngine.releaseSoundtrack(owner);
 
   /// Call from every pointer down/up: browsers only start audio (and the
   /// music) inside a tap, and iPhones only on the release.
