@@ -10,6 +10,9 @@ import '../physics/wind_model.dart';
 /// holding a solid arrow that points the way the wind blows
 /// (up = away from you, right = to the right).
 ///
+/// The arrow is alive: it sways and pulses with the same gusts that push the
+/// arrow in flight ([WindModel.getGust]), so what you see is what you get.
+///
 /// Geometry and text are rebuilt only when the wind value or UI scale change;
 /// each frame just re-projects the anchor and draws cached shapes.
 class WindPill {
@@ -17,6 +20,16 @@ class WindPill {
   final CameraRig cameraRig;
 
   WindPill({required this.camera, required this.cameraRig});
+
+  /// Caps the gauge on big screens (it scales with the screen otherwise).
+  static const double _maxUiScale = 1.25;
+
+  double _time = 0.0;
+
+  void update(double dt) {
+    _time += dt;
+    if (_time > 1000.0) _time -= 1000.0; // keep sin() arguments small
+  }
 
   final Paint _bgPaint = Paint()..color = const Color(0x8C000000);
   final Paint _ringPaint = Paint()
@@ -102,7 +115,7 @@ class WindPill {
     final double boardTopY = ArcheryK.targetCenterY + ArcheryK.boardHeight * 0.5;
     if (!camera.project(0.0, boardTopY, cameraRig.targetDistance)) return;
 
-    final double ui = camera.uiScale;
+    final double ui = math.min(camera.uiScale, _maxUiScale);
     if (_text == null || _lastDisplay != wind.display || _lastUi != ui) {
       _layout(wind, ui);
     }
@@ -115,9 +128,16 @@ class WindPill {
     canvas.drawCircle(_dialCenter, _dialR - _ringPaint.strokeWidth * 0.5, _ringPaint);
 
     // Arrow: angle 0 = blowing away from you (up on screen), π/2 = right.
+    // Calm air barely moves it; strong wind sways and surges more.
+    final double strength = (wind.display / ArcheryK.windMaxDisplay).clamp(0.0, 1.0);
+    final double gust = wind.getGust(_time) - 1.0; // about −0.15..+0.15
+    final double sway = (0.06 + 0.10 * strength) *
+        math.sin(_time * 2.6 + wind.phi1);
+    final double surge = gust * (0.5 + strength) * 0.6; // −0.13..+0.13
     canvas.translate(_dialCenter.dx, _dialCenter.dy);
-    canvas.rotate(wind.angle - math.pi * 0.5);
-    canvas.scale(_dialR * 1.15);
+    canvas.rotate(wind.angle - math.pi * 0.5 + sway);
+    canvas.translate(_dialR * surge, 0.0); // nudges along the wind
+    canvas.scale(_dialR * (1.15 + surge * 0.4));
     canvas.drawPath(_unitArrow, _arrowPaint);
     canvas.restore();
   }
