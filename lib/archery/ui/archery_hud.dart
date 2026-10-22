@@ -8,28 +8,39 @@ import '../camera/camera_rig.dart';
 import '../state/archery_match_notifier.dart';
 import '../state/archery_match_state.dart';
 import '../state/archery_players.dart';
+import 'live_pill.dart';
 import 'round_summary.dart';
+import 'turn_banner.dart';
 
-/// Flutter HUD over the Flame canvas: GamePigeon-style scoreboard and the
-/// set-end card. Each piece watches only the state slice it shows.
+/// Flutter HUD over the Flame canvas: GamePigeon-style scoreboard, the live
+/// status pill and turn banner (online), and the set-end card. Each piece
+/// watches only the state slice it shows.
 class ArcheryHud extends ConsumerWidget {
   final ArcheryGame game;
 
-  const ArcheryHud({super.key, required this.game});
+  /// Online: where "BACK TO LOBBY" goes after the match.
+  final VoidCallback? onExitToLobby;
+
+  const ArcheryHud({super.key, required this.game, this.onExitToLobby});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final ShotPhase phase = ref.watch(archeryMatchProvider.select((s) => s.phase));
-    final bool showScoreBar = phase == ShotPhase.atLine ||
+    final (phase, online, setOver) = ref.watch(
+      archeryMatchProvider.select((s) => (s.phase, s.online, s.setOver)),
+    );
+    final bool showScoreBar = online ||
+        phase == ShotPhase.atLine ||
         phase == ShotPhase.intro ||
         phase == ShotPhase.closeup ||
         phase == ShotPhase.returning ||
         phase == ShotPhase.setEnd;
+    final bool showSetEnd = online ? setOver : phase == ShotPhase.setEnd;
+    final double top = MediaQuery.paddingOf(context).top + 8.0;
 
     return Stack(
       children: [
         Positioned(
-          top: MediaQuery.paddingOf(context).top + 8.0,
+          top: top,
           left: 0.0,
           right: 0.0,
           child: IgnorePointer(
@@ -47,7 +58,16 @@ class ArcheryHud extends ConsumerWidget {
             ),
           ),
         ),
-        if (phase == ShotPhase.setEnd) _SetEnd(game: game),
+        if (online) ...[
+          Positioned(
+            top: top + 104.0,
+            left: 0.0,
+            right: 0.0,
+            child: Center(child: LivePill(game: game)),
+          ),
+          const Positioned.fill(child: IgnorePointer(child: TurnBanner())),
+        ],
+        if (showSetEnd) _SetEnd(game: game, onExitToLobby: onExitToLobby),
       ],
     );
   }
@@ -55,19 +75,42 @@ class ArcheryHud extends ConsumerWidget {
 
 class _SetEnd extends ConsumerWidget {
   final ArcheryGame game;
-  const _SetEnd({required this.game});
+  final VoidCallback? onExitToLobby;
+  const _SetEnd({required this.game, this.onExitToLobby});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(archeryMatchProvider);
+    final players = ref.watch(archeryPlayersProvider);
+    final online = game.online;
+
+    final String label;
+    final VoidCallback onContinue;
+    if (online == null) {
+      label = s.matchOver ? 'PLAY AGAIN' : 'NEXT SET';
+      onContinue = s.matchOver ? game.restartMatch : game.advanceNextSet;
+    } else {
+      label = s.matchOver ? 'BACK TO LOBBY' : 'NEXT SET';
+      onContinue = s.matchOver
+          ? (onExitToLobby ?? () {})
+          : online.continueAfterSet;
+    }
+
     return SetEndCard(
+      // A new card (and countdown) per set.
+      key: ValueKey('set-${s.setIndex}-${s.matchOver}'),
       setIndex: s.setIndex,
       userScores: s.setShots,
-      opponentTotal: s.botSetScore,
-      userSetPoints: s.userSets,
-      opponentSetPoints: s.botSets,
+      opponentScores: s.opponentShots,
+      userSetPoints: s.userPoints,
+      opponentSetPoints: s.opponentPoints,
       isMatchOver: s.matchOver,
-      onContinue: s.matchOver ? game.restartMatch : game.advanceNextSet,
+      winner: s.winner,
+      you: players.you,
+      opponent: players.opponent,
+      continueLabel: label,
+      onContinue: onContinue,
+      autoContinueSeconds: online != null ? 5 : null,
     );
   }
 }
@@ -77,6 +120,9 @@ class _SetEnd extends ConsumerWidget {
 ///   (you)  [ SET 2 · 100ft ]  (them)
 ///    You   [    18 - 26    ]   Bot
 ///   ▢▢▢                       ▢▢▢     ← one chip per arrow, ring-coloured
+///
+/// The coin on each avatar is that archer's set points (first to 6).
+/// Online, the archer whose set it is gets a glowing ring.
 class _Scoreboard extends ConsumerWidget {
   const _Scoreboard();
 
@@ -87,13 +133,21 @@ class _Scoreboard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final players = ref.watch(archeryPlayersProvider);
     // Records compare by value; the lists are replaced on every change.
-    final (setIndex, you, them, youSets, themSets) = ref.watch(
+    final (setIndex, you, them, youPts, themPts, online, shooter) = ref.watch(
       archeryMatchProvider.select(
-        (s) => (s.setIndex, s.setShots, s.botShots, s.userSets, s.botSets),
+        (s) => (
+          s.setIndex,
+          s.setShots,
+          s.opponentShots,
+          s.userPoints,
+          s.opponentPoints,
+          s.online,
+          s.shooter,
+        ),
       ),
     );
     final int youTotal = you.fold(0, (sum, s) => sum + s.points);
-    final int themTotal = them.fold(0, (sum, p) => sum + p);
+    final int themTotal = them.fold(0, (sum, s) => sum + s.points);
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -102,7 +156,8 @@ class _Scoreboard extends ConsumerWidget {
         _PlayerBadge(
           player: players.you,
           ring: _youRing,
-          sets: youSets,
+          sets: youPts,
+          active: online && shooter == ArcheryShooter.you,
           chips: [for (final s in you) _ChipData(s.ring, isX: s.isX)],
         ),
         const SizedBox(width: 8.0),
@@ -111,13 +166,16 @@ class _Scoreboard extends ConsumerWidget {
         _PlayerBadge(
           player: players.opponent,
           ring: _themRing,
-          sets: themSets,
-          chips: [for (final p in them) _ChipData(p)],
+          sets: themPts,
+          active: online && shooter == ArcheryShooter.opponent,
+          chips: [for (final s in them) _ChipData(s.ring, isX: s.isX)],
         ),
       ],
     );
   }
 }
+
+
 
 class _ScoreBox extends StatelessWidget {
   final int setIndex;
@@ -197,11 +255,15 @@ class _PlayerBadge extends StatelessWidget {
   final int sets;
   final List<_ChipData> chips;
 
+  /// Online: this archer is shooting now (glowing ring).
+  final bool active;
+
   const _PlayerBadge({
     required this.player,
     required this.ring,
     required this.sets,
     required this.chips,
+    this.active = false,
   });
 
   static const double avatarSize = 42.0;
@@ -228,13 +290,15 @@ class _PlayerBadge extends StatelessWidget {
                   size: avatarSize,
                   borderColor: ring,
                   borderWidth: 2.5,
+                  showGlow: active,
+                  glowColor: ring,
                 ),
               ),
               if (sets > 0)
                 Positioned(
                   right: -5.0,
                   bottom: -3.0,
-                  child: _SetCoin(count: sets),
+                  child: _SetCoinTracker(count: sets),
                 ),
             ],
           ),
@@ -337,10 +401,33 @@ class _ArrowChip extends StatelessWidget {
   }
 }
 
-/// Gold set coin. When the count goes up it pops in and a "+1" floats off it.
+/// Gold set-points coin. When it goes up it pops in and "+N" floats off it.
+/// Remembers the previous set points so the coin can say "+2" or "+1".
+class _SetCoinTracker extends StatefulWidget {
+  final int count;
+  const _SetCoinTracker({required this.count});
+
+  @override
+  State<_SetCoinTracker> createState() => _SetCoinTrackerState();
+}
+
+class _SetCoinTrackerState extends State<_SetCoinTracker> {
+  late int _gain = widget.count;
+
+  @override
+  void didUpdateWidget(_SetCoinTracker old) {
+    super.didUpdateWidget(old);
+    if (widget.count > old.count) _gain = widget.count - old.count;
+  }
+
+  @override
+  Widget build(BuildContext context) => _SetCoin(count: widget.count, gain: _gain);
+}
+
 class _SetCoin extends StatelessWidget {
   final int count;
-  const _SetCoin({required this.count});
+  final int gain;
+  const _SetCoin({required this.count, required this.gain});
 
   @override
   Widget build(BuildContext context) {
@@ -363,9 +450,9 @@ class _SetCoin extends StatelessWidget {
                 top: -14.0 - 22.0 * rise,
                 child: Opacity(
                   opacity: fade.clamp(0.0, 1.0),
-                  child: const Text(
-                    '+1',
-                    style: TextStyle(
+                  child: Text(
+                    '+$gain',
+                    style: const TextStyle(
                       color: Color(0xFFFDE68A),
                       fontSize: 16.0,
                       fontWeight: FontWeight.w900,
