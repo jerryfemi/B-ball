@@ -72,6 +72,9 @@ class MatchInboxSheet extends HookConsumerWidget {
         final config = await MatchSetupDialog.show(
           context,
           initialConfig: game.currentMatchConfig,
+          // Basketball or archery from the same inbox; archery matches are
+          // handed to /match/:id by game.startCloudMatch.
+          showGamePicker: true,
         );
         if (config != null && context.mounted) {
           final user = await AuthService.instance.ensureAuthenticated();
