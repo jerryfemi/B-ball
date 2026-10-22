@@ -19,8 +19,10 @@ import numpy as np
 from PIL import Image
 
 OUT = sys.argv[1]
-X_MIN, X_MAX = -0.10, 0.16     # refW, relative to the grip centre line
-Y_MIN, Y_MAX = -0.06, 1.06     # screen heights (0 = top of the screen)
+# Covers the screen with margin even when drawn at 0.75 scale (BowOverlay
+# scales the bow + arrow about the grip), so the limb never ends on screen.
+X_MIN, X_MAX = -0.10, 0.24     # refW, relative to the grip centre line
+Y_MIN, Y_MAX = -0.27, 1.23     # screen heights (0 = top of the screen)
 PX_PER_REFW = 1000
 PX_PER_H = 1700
 SS = 2
@@ -79,7 +81,7 @@ xc = 0.062 * up ** 2.1 - 0.004 * low
 
 # Half widths (refW)
 hw_wood = np.where(ys < GRIP_TOP,
-                   np.interp(ys, [Y_MIN, 0.0, 0.26, GRIP_TOP], [0.050, 0.052, 0.060, 0.064]),
+                   np.interp(ys, [Y_MIN, 0.0, 0.26, GRIP_TOP], [0.047, 0.052, 0.060, 0.064]),
                    np.interp(ys, [GRIP_BOT, 1.0, Y_MAX], [0.064, 0.062, 0.061]))
 hw_grip = 0.071
 
