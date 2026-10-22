@@ -1,7 +1,10 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+
 import '../archery_constants.dart';
 import '../camera/archery_camera.dart';
 import '../util/image_loader.dart';
@@ -38,8 +41,8 @@ class _LoadedBillboard {
     required this.paint,
     required this.sways,
     required this.phase,
-  })  : widthPx = image.width.toDouble(),
-        heightPx = image.height.toDouble();
+  }) : widthPx = image.width.toDouble(),
+       heightPx = image.height.toDouble();
 }
 
 /// Billboards (trees, hills) and their ground shadows.
@@ -70,25 +73,38 @@ class BillboardRenderer {
   bool _isLoaded = false;
   bool get isLoaded => _isLoaded;
 
-  BillboardRenderer({
-    required this.camera,
-    required this.theme,
-  });
+  BillboardRenderer({required this.camera, required this.theme});
 
   // ── Sway tuning ─────────────────────────────────────────────────────────
   /// Mesh resolution (columns × rows of quads).
   static const int _cols = 4;
   static const int _rows = 6;
 
-  /// Trees farther than this (m from the camera) stop swaying; it fades out
-  /// over the last [_swayFade] metres so nothing pops.
-  static const double _swayMaxDepth = 32.0;
-  static const double _swayFade = 10.0;
+  /// Trees sway by how big they are ON SCREEN (so a far tree seen through the
+  /// aiming zoom sways too, while tiny distant ones stay still): full sway
+  /// above [_swayFullPx] tall, fading to none at [_swayMinPx].
+  static const double _swayMinPx = 40.0;
+  static const double _swayFullPx = 110.0;
 
   static final Uint16List _indices = _buildIndices();
-  static final Float64List _identity = Float64List.fromList(
-    const <double>[1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
-  );
+  static final Float64List _identity = Float64List.fromList(const <double>[
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    1,
+  ]);
 
   double _time = 0.0;
 
@@ -103,12 +119,21 @@ class BillboardRenderer {
   static const double _windEaseSeconds = 1.2;
 
   /// Off for the rest of the session once the frame rate struggles.
+  /// Automatic quality: sway fades out while the device is struggling and
+  /// fades back in once it keeps up again. Only judged in release builds:
+  /// debug web builds are always slow and would switch it off for no reason.
   bool swayEnabled = true;
+  double _swayLevel = 1.0; // eased 0..1 version of [swayEnabled]
   double _avgDt = 1.0 / 60.0;
   double _slowFor = 0.0;
+  double _fastFor = 0.0;
 
   /// Wind for the current arrow (the same model that moves the arrow).
-  void setWind({required double display, required double angle, double phase = 0.0}) {
+  void setWind({
+    required double display,
+    required double angle,
+    double phase = 0.0,
+  }) {
     _targetStrength = (display / ArcheryK.windMaxDisplay).clamp(0.0, 1.0);
     _targetSide = math.sin(angle);
     if (!_windSet) {
@@ -131,18 +156,27 @@ class BillboardRenderer {
     _windStrength += (_targetStrength - _windStrength) * k;
     _windSide += (_targetSide - _windSide) * k;
 
-    if (!swayEnabled) return;
-    // Sustained slow frames (< ~40 fps for 3 s): stop swaying.
-    _avgDt += (dt - _avgDt) * 0.05;
-    if (_avgDt > 1.0 / 40.0) {
-      _slowFor += dt;
-      if (_slowFor > 3.0) {
-        swayEnabled = false;
-        debugPrint('[Archery] Tree sway off: frame rate too low on this device.');
+    if (kReleaseMode) {
+      _avgDt += (dt - _avgDt) * 0.05;
+      if (swayEnabled) {
+        // Below ~40 fps for 3 s: ease the sway off.
+        _slowFor = _avgDt > 1.0 / 40.0 ? _slowFor + dt : 0.0;
+        if (_slowFor > 3.0) {
+          swayEnabled = false;
+          _fastFor = 0.0;
+        }
+      } else {
+        // Back above ~50 fps for 5 s: bring it back.
+        _fastFor = _avgDt < 1.0 / 50.0 ? _fastFor + dt : 0.0;
+        if (_fastFor > 5.0) {
+          swayEnabled = true;
+          _slowFor = 0.0;
+        }
       }
-    } else {
-      _slowFor = 0.0;
     }
+    final double target = swayEnabled ? 1.0 : 0.0;
+    _swayLevel += (target - _swayLevel) * (1.0 - math.exp(-dt / 0.6));
+    if ((_swayLevel - target).abs() < 0.001) _swayLevel = target;
   }
 
   /// Loads all billboard images and precomputes distance haze color filters.
@@ -253,15 +287,31 @@ class BillboardRenderer {
       b.z = b.spec.z + (b.spec.followTarget ? shift : 0.0);
 
       // Distance haze: 1 - exp(-z / hazeDist)
-      final double hazeAmount =
-          ((1.0 - math.exp(-b.z / theme.hazeDist)) * 0.55).clamp(0.0, 1.0);
+      final double hazeAmount = ((1.0 - math.exp(-b.z / theme.hazeDist)) * 0.55)
+          .clamp(0.0, 1.0);
       if (hazeAmount > 0.02) {
         final double invF = 1.0 - hazeAmount;
         b.paint.colorFilter = ColorFilter.matrix(<double>[
-          invF, 0, 0, 0, hazeAmount * theme.haze.r * 255.0,
-          0, invF, 0, 0, hazeAmount * theme.haze.g * 255.0,
-          0, 0, invF, 0, hazeAmount * theme.haze.b * 255.0,
-          0, 0, 0, 1, 0,
+          invF,
+          0,
+          0,
+          0,
+          hazeAmount * theme.haze.r * 255.0,
+          0,
+          invF,
+          0,
+          0,
+          hazeAmount * theme.haze.g * 255.0,
+          0,
+          0,
+          invF,
+          0,
+          hazeAmount * theme.haze.b * 255.0,
+          0,
+          0,
+          0,
+          1,
+          0,
         ]);
       } else {
         b.paint.colorFilter = null;
@@ -289,10 +339,14 @@ class BillboardRenderer {
 
   // ── Sway model ──────────────────────────────────────────────────────────
 
-  /// How much this tree sways at [depth] (0 = still), fading out with distance.
-  double _swayWeight(_LoadedBillboard b, double depth) {
-    if (!swayEnabled || !b.sways) return 0.0;
-    return ((_swayMaxDepth - depth) / _swayFade).clamp(0.0, 1.0);
+  /// How much this tree sways (0 = still) given its height on screen.
+  double _swayWeight(_LoadedBillboard b, double heightPx) {
+    if (!b.sways || _swayLevel <= 0.0) return 0.0;
+    return ((heightPx - _swayMinPx) / (_swayFullPx - _swayMinPx)).clamp(
+          0.0,
+          1.0,
+        ) *
+        _swayLevel;
   }
 
   /// Crown offset as a fraction of tree height: steady lean with the wind
@@ -302,10 +356,13 @@ class BillboardRenderer {
     final double t = _time;
     final double lean = 0.022 * s * _windSide;
     final double gust =
-        1.0 + 0.35 * math.sin(t * 0.7 + b.phase * 0.5) * math.sin(t * 0.31 + b.phase);
-    final double sway = (0.006 + 0.020 * s) *
+        1.0 +
+        0.35 * math.sin(t * 0.7 + b.phase * 0.5) * math.sin(t * 0.31 + b.phase);
+    final double sway =
+        (0.012 + 0.018 * s) *
         gust *
-        (math.sin(t * 1.25 + b.phase) * 0.75 + math.sin(t * 2.1 + b.phase * 1.7) * 0.25);
+        (math.sin(t * 1.25 + b.phase) * 0.75 +
+            math.sin(t * 2.1 + b.phase * 1.7) * 0.25);
     return lean + sway;
   }
 
@@ -332,19 +389,23 @@ class BillboardRenderer {
       final double pxPerM = camera.pxPerMeterAt(depth);
       final double widthPx = pxPerM * b.spec.widthMeters * b.spec.shadowScale;
       // Flatten ellipse by camera angle
-      final double flatten = (eyeY / math.sqrt(eyeY * eyeY + depth * depth)).clamp(0.25, 0.75);
+      final double flatten = (eyeY / math.sqrt(eyeY * eyeY + depth * depth))
+          .clamp(0.25, 0.75);
       final double heightPx = widthPx * flatten * 0.45;
 
       // The crown's shadow follows the crown a little as it sways.
-      final double w = _swayWeight(b, depth);
       final double treeH = pxPerM * b.spec.widthMeters * b.heightPx / b.widthPx;
+      final double w = _swayWeight(b, treeH);
       final double shift = w > 0.0 ? _crownOffset(b) * treeH * 0.22 * w : 0.0;
 
       // Slight sun direction offset (sun top-left -> shadow slightly to bottom-right)
       final double drawX = camera.sx - widthPx * 0.42 + shift;
       final double drawY = camera.sy - heightPx * 0.5 + 2.0;
 
-      if (drawX + widthPx < 0 || drawX > screenW || drawY + heightPx < 0 || drawY > screenH) {
+      if (drawX + widthPx < 0 ||
+          drawX > screenW ||
+          drawY + heightPx < 0 ||
+          drawY > screenH) {
         continue;
       }
 
@@ -383,14 +444,16 @@ class BillboardRenderer {
 
       // Culling (with room for the swaying crown)
       final double margin = drawW * 0.1;
-      if (drawX + drawW + margin < 0 || drawX - margin > screenW ||
-          drawY + drawH < 0 || drawY > screenH) {
+      if (drawX + drawW + margin < 0 ||
+          drawX - margin > screenW ||
+          drawY + drawH < 0 ||
+          drawY > screenH) {
         continue;
       }
 
       // Swaying trees are always drawn as a mesh (never switching to a plain
       // image mid-sway, which made them hop when the sway crossed zero).
-      final double w = _swayWeight(b, depth);
+      final double w = _swayWeight(b, drawH);
       if (w > 0.0) {
         final double crown = _crownOffset(b) * drawH * w;
         _drawSwaying(canvas, b, drawX, drawY, drawW, drawH, crown, w);
@@ -426,7 +489,7 @@ class BillboardRenderer {
     final pos = b.positions!;
     final double t = _time;
     final double flutterPx =
-        (0.004 + 0.008 * _windStrength) * w * weight; // leaf rustle
+        (0.006 + 0.008 * _windStrength) * w * weight; // leaf rustle
     int k = 0;
     for (int r = 0; r <= _rows; r++) {
       final double v = r / _rows; // 0 top .. 1 base
@@ -438,7 +501,8 @@ class BillboardRenderer {
       final double dy = dx.abs() * 0.08 * bend; // bending shortens a little
       for (int c = 0; c <= _cols; c++) {
         final double u = c / _cols;
-        final double flutter = bend *
+        final double flutter =
+            bend *
             flutterPx *
             math.sin(t * 3.1 + b.phase * 2.3 + u * 4.0 + height * 5.0);
         pos[k++] = x0 + u * w + dx + flutter;
