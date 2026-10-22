@@ -53,6 +53,16 @@ abstract class AudioBackend {
   /// Stops the music and releases the track (nothing keeps downloading).
   void unloadMusic();
 
+  /// Ambience loop (e.g. archery's birdsong), independent of the music.
+  /// null stops it and frees the buffer.
+  Future<void> setAmbienceTrack(String? assetKey);
+
+  /// Plays or pauses the ambience. Remembered if it is still loading.
+  void setAmbiencePlaying(bool playing);
+
+  /// Ambience volume, 0..1 (already fully scaled).
+  void setAmbienceVolume(double volume);
+
   /// Call from inside a user tap: lets mobile browsers start audio.
   void unlock();
 
