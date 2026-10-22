@@ -3,12 +3,17 @@ import 'package:flutter/material.dart';
 import '../archery_constants.dart';
 import '../camera/archery_camera.dart';
 
-/// 80 cm World Archery regulation target on 1.0m square white board with wooden A-frame stand.
+/// 80 cm World Archery face on a 1.0 m square white board with a wooden
+/// A-frame stand.
 ///
-/// Performance:
-/// - Target face is procedurally rasterized once at 1024x1024 and cached as a [ui.Image].
-/// - Legs and cross-brace scale dynamically with pxPerM for realistic thickness.
-/// - 0 heap allocations per render frame.
+/// Sharpness: the rings are drawn as real circles every frame, at the size
+/// they appear on screen, so their edges stay crisp at any distance (an
+/// image shrunk from 1024 px blurs the thin ring lines). Only the soft gloss
+/// (sheen and highlight) is a cached picture, because it has no hard edges.
+///
+/// Cost: about 15 simple draws a frame. Everything is drawn in local units
+/// through canvas transforms, so no Rect, Offset or Paint is created per
+/// frame.
 class TargetBoard {
   final ArcheryCamera camera;
 
@@ -20,15 +25,10 @@ class TargetBoard {
 
   // --- Cached Paints ---
   final Paint _whiteBoardPaint = Paint()..color = const Color(0xFFF8FAFC);
-  final Paint _boardFramePaint = Paint()
-    ..color = const Color(0xFF5C3D22)
-    ..style = PaintingStyle.fill;
-  final Paint _screwPaint = Paint()
-    ..color = const Color(0xFF261D15)
-    ..style = PaintingStyle.fill;
+  final Paint _boardFramePaint = Paint()..color = const Color(0xFF5C3D22);
+  final Paint _screwPaint = Paint()..color = const Color(0xFF261D15);
   final Paint _screwHeadPaint = Paint()
     ..color = const Color(0xFF785538)
-    ..strokeWidth = 1.0
     ..style = PaintingStyle.stroke;
   final Paint _woodLegPaint = Paint()
     ..color = const Color(0xFF5C3D22)
@@ -41,17 +41,57 @@ class TargetBoard {
     ..color = const Color(0xFF3A2614)
     ..strokeCap = StrokeCap.square
     ..style = PaintingStyle.stroke;
-  final Paint _imagePaint = Paint()..filterQuality = FilterQuality.medium;
   // Ground contact shadow: three stacked ovals fake a soft edge without a blur.
   final Paint _shadowPaint = Paint()..color = const Color(0x1A000000);
 
-  // --- Target Face ui.Image Cache ---
-  ui.Image? _cachedFaceImage;
-  bool _hasRasterized = false;
+  // Face (unit space: the face radius is 1.0)
+  final Paint _ringFill = Paint()..style = PaintingStyle.fill;
+  final Paint _ringLine = Paint()..style = PaintingStyle.stroke;
+  final Paint _glossPaint = Paint()..filterQuality = FilterQuality.medium;
+
+  /// Reused for every straight line of the stand.
+  final Path _line = Path();
+
+  // Ring colours, outside in (each colour covers two scoring rings).
+  static const List<Color> _zoneColors = [
+    Color(0xFFF5F5F0), // 1–2 white
+    Color(0xFF1A1A1A), // 3–4 black
+    Color(0xFF2E7DD7), // 5–6 blue
+    Color(0xFFE0322B), // 7–8 red
+    Color(0xFFF7D000), // 9–10 gold
+  ];
+  static const Color _lineDark = Color(0x66000000);
+  static const Color _lineLight = Color(0x66FFFFFF);
+
+  static const Rect _unitSquare = Rect.fromLTRB(-1, -1, 1, 1);
+  static const Rect _boardOuter = Rect.fromLTRB(
+    -ArcheryK.boardWidth * 0.5,
+    -ArcheryK.boardHeight * 0.5,
+    ArcheryK.boardWidth * 0.5,
+    ArcheryK.boardHeight * 0.5,
+  );
+  static const Rect _boardInner = Rect.fromLTRB(
+    -ArcheryK.boardWidth * 0.5 + ArcheryK.boardFrame,
+    -ArcheryK.boardHeight * 0.5 + ArcheryK.boardFrame,
+    ArcheryK.boardWidth * 0.5 - ArcheryK.boardFrame,
+    ArcheryK.boardHeight * 0.5 - ArcheryK.boardFrame,
+  );
+  static const double _screwInset = ArcheryK.boardFrame * 0.5;
+  static const List<Offset> _screws = [
+    Offset(-ArcheryK.boardWidth * 0.5 + _screwInset, -ArcheryK.boardHeight * 0.5 + _screwInset),
+    Offset(ArcheryK.boardWidth * 0.5 - _screwInset, -ArcheryK.boardHeight * 0.5 + _screwInset),
+    Offset(-ArcheryK.boardWidth * 0.5 + _screwInset, ArcheryK.boardHeight * 0.5 - _screwInset),
+    Offset(ArcheryK.boardWidth * 0.5 - _screwInset, ArcheryK.boardHeight * 0.5 - _screwInset),
+  ];
+
+  // --- Cached gloss overlay ---
+  ui.Image? _gloss;
+  Rect _glossSrc = Rect.zero;
+  bool _glossStarted = false;
 
   void dispose() {
-    _cachedFaceImage?.dispose();
-    _cachedFaceImage = null;
+    _gloss?.dispose();
+    _gloss = null;
   }
 
   void render(Canvas canvas) {
@@ -63,22 +103,15 @@ class TargetBoard {
     final double pxPerM = camera.pxPerMeterAt(depth);
     if (pxPerM <= 0.5) return;
 
-    // Dynamically scale stand stroke widths with distance (§2 #9)
+    // Stand stroke widths scale with distance.
     _woodLegPaint.strokeWidth = pxPerM * 0.05;
     _woodCrossPaint.strokeWidth = pxPerM * 0.035;
     _woodStrutPaint.strokeWidth = pxPerM * 0.035;
 
-    // 2. Soft shadow where the stand meets the grass
     _renderGroundShadow(canvas);
-
-    // 3. Render Wooden A-Frame Stand behind the board
-    _renderStand(canvas, depth);
-
-    // 4. Render 1.0m x 1.0m White Board & Wooden Frame
-    _renderBoss(canvas, cx, cy, pxPerM);
-
-    // 5. Render 80cm WA Target Face (Cached)
-    _renderTargetFace(canvas, cx, cy, pxPerM);
+    _renderStand(canvas);
+    _renderBoard(canvas, cx, cy, pxPerM);
+    _renderFace(canvas, cx, cy, pxPerM * ArcheryK.faceRadius);
   }
 
   void _renderGroundShadow(Canvas canvas) {
@@ -97,251 +130,149 @@ class TargetBoard {
     // Outer, middle and inner ovals; overlaps darken toward the centre.
     for (int i = 0; i < 3; i++) {
       final double inset = i * 0.14;
-      canvas.drawOval(
-        Rect.fromLTRB(
-          left + w * inset,
-          top + h * inset,
-          right - w * inset,
-          bottom - h * inset * 0.6,
-        ),
-        _shadowPaint,
-      );
+      final double l = left + w * inset;
+      final double r = right - w * inset;
+      final double t = top + h * inset;
+      final double b = bottom - h * inset * 0.6;
+      canvas.save();
+      canvas.translate((l + r) * 0.5, (t + b) * 0.5);
+      canvas.scale((r - l) * 0.5, (b - t) * 0.5);
+      canvas.drawOval(_unitSquare, _shadowPaint);
+      canvas.restore();
     }
   }
 
-  void _renderStand(Canvas canvas, double depth) {
+  void _renderStand(Canvas canvas) {
     const double legTopY = ArcheryK.targetCenterY - ArcheryK.boardHeight * 0.4;
     const double halfLegX = ArcheryK.boardWidth * 0.38;
 
     // Rear support strut first (behind everything), thinner and darker so it
     // reads as depth instead of a third front leg.
-    _draw3DLeg(canvas, 0.0, legTopY, distance + 0.02, 0.0, 0.0, distance + 0.70,
-        paint: _woodStrutPaint);
-    // Left and right legs extending down to ground (Y = 0)
-    _draw3DLeg(canvas, -halfLegX, legTopY, distance, -halfLegX - 0.05, 0.0, distance - 0.05);
-    _draw3DLeg(canvas, halfLegX, legTopY, distance, halfLegX + 0.05, 0.0, distance - 0.05);
-
-    // Cross-brace between front legs at Y = 0.38m
-    if (camera.project(-halfLegX - 0.02, 0.38, distance - 0.03)) {
-      final double x1 = camera.sx;
-      final double y1 = camera.sy;
-      if (camera.project(halfLegX + 0.02, 0.38, distance - 0.03)) {
-        final double x2 = camera.sx;
-        final double y2 = camera.sy;
-        canvas.drawLine(Offset(x1, y1), Offset(x2, y2), _woodCrossPaint);
-      }
-    }
+    _drawLine3D(canvas, 0.0, legTopY, distance + 0.02, 0.0, 0.0, distance + 0.70, _woodStrutPaint);
+    // Left and right legs extending down to the ground.
+    _drawLine3D(canvas, -halfLegX, legTopY, distance, -halfLegX - 0.05, 0.0, distance - 0.05,
+        _woodLegPaint);
+    _drawLine3D(canvas, halfLegX, legTopY, distance, halfLegX + 0.05, 0.0, distance - 0.05,
+        _woodLegPaint);
+    // Cross-brace between the front legs.
+    _drawLine3D(canvas, -halfLegX - 0.02, 0.38, distance - 0.03, halfLegX + 0.02, 0.38,
+        distance - 0.03, _woodCrossPaint);
   }
 
-  void _draw3DLeg(
+  void _drawLine3D(
     Canvas canvas,
     double x1,
     double y1,
     double z1,
     double x2,
     double y2,
-    double z2, {
-    Paint? paint,
-  }) {
+    double z2,
+    Paint paint,
+  ) {
     if (!camera.project(x1, y1, z1)) return;
     final double sx1 = camera.sx;
     final double sy1 = camera.sy;
-
     if (!camera.project(x2, y2, z2)) return;
-    final double sx2 = camera.sx;
-    final double sy2 = camera.sy;
-
-    canvas.drawLine(Offset(sx1, sy1), Offset(sx2, sy2), paint ?? _woodLegPaint);
+    _line
+      ..reset()
+      ..moveTo(sx1, sy1)
+      ..lineTo(camera.sx, camera.sy);
+    canvas.drawPath(_line, paint);
   }
 
-  void _renderBoss(Canvas canvas, double cx, double cy, double pxPerM) {
-    final double halfW = pxPerM * (ArcheryK.boardWidth * 0.5);
-    final double halfH = pxPerM * (ArcheryK.boardHeight * 0.5);
-    final double framePx = pxPerM * ArcheryK.boardFrame;
+  /// White board, wooden frame and corner screws, drawn in metres around
+  /// the board centre.
+  void _renderBoard(Canvas canvas, double cx, double cy, double pxPerM) {
+    canvas.save();
+    canvas.translate(cx, cy);
+    canvas.scale(pxPerM);
+    canvas.drawRect(_boardOuter, _boardFramePaint);
+    canvas.drawRect(_boardInner, _whiteBoardPaint);
 
-    final Rect outerRect = Rect.fromCenter(
-      center: Offset(cx, cy),
-      width: halfW * 2.0,
-      height: halfH * 2.0,
-    );
-
-    // 1. Draw outer brown wooden frame
-    canvas.drawRect(outerRect, _boardFramePaint);
-
-    // 2. Draw inner square white board
-    final Rect innerRect = Rect.fromLTRB(
-      outerRect.left + framePx,
-      outerRect.top + framePx,
-      outerRect.right - framePx,
-      outerRect.bottom - framePx,
-    );
-    canvas.drawRect(innerRect, _whiteBoardPaint);
-
-    // 3. Draw dark screws in the 4 corners of the wooden frame
-    final double screwInset = framePx * 0.5;
-    final double screwRadius = (framePx * 0.30).clamp(1.5, 6.0);
-
-    final double xLeft = outerRect.left + screwInset;
-    final double xRight = outerRect.right - screwInset;
-    final double yTop = outerRect.top + screwInset;
-    final double yBottom = outerRect.bottom - screwInset;
-
-    _drawScrew(canvas, xLeft, yTop, screwRadius);
-    _drawScrew(canvas, xRight, yTop, screwRadius);
-    _drawScrew(canvas, xLeft, yBottom, screwRadius);
-    _drawScrew(canvas, xRight, yBottom, screwRadius);
+    final double screwR = (ArcheryK.boardFrame * pxPerM * 0.30).clamp(1.5, 6.0) / pxPerM;
+    _screwHeadPaint.strokeWidth = 1.0 / pxPerM;
+    for (final Offset s in _screws) {
+      canvas.drawCircle(s, screwR, _screwPaint);
+      _line
+        ..reset()
+        ..moveTo(s.dx - screwR * 0.6, s.dy)
+        ..lineTo(s.dx + screwR * 0.6, s.dy);
+      canvas.drawPath(_line, _screwHeadPaint);
+    }
+    canvas.restore();
   }
 
-  void _drawScrew(Canvas canvas, double x, double y, double radius) {
-    canvas.drawCircle(Offset(x, y), radius, _screwPaint);
-    canvas.drawLine(
-      Offset(x - radius * 0.6, y),
-      Offset(x + radius * 0.6, y),
-      _screwHeadPaint,
-    );
-  }
+  /// The face: five colour zones, the ring lines, the X ring and the centre
+  /// cross, in unit space (radius 1.0 = the face edge).
+  void _renderFace(Canvas canvas, double cx, double cy, double faceR) {
+    if (faceR < 2.0) return;
+    if (!_glossStarted) _buildGloss();
 
-  void _renderTargetFace(Canvas canvas, double cx, double cy, double pxPerM) {
-    final double faceRadiusPx = pxPerM * ArcheryK.faceRadius;
-    if (faceRadiusPx < 2.0) return;
+    canvas.save();
+    canvas.translate(cx, cy);
+    canvas.scale(faceR);
 
-    if (_cachedFaceImage == null && !_hasRasterized) {
-      _rasterizeFace();
+    for (int i = 0; i < 5; i++) {
+      _ringFill.color = _zoneColors[i];
+      canvas.drawCircle(Offset.zero, 1.0 - i * 0.2, _ringFill);
     }
 
-    if (_cachedFaceImage != null) {
-      final Rect dst = Rect.fromCenter(
-        center: Offset(cx, cy),
-        width: faceRadiusPx * 2.0,
-        height: faceRadiusPx * 2.0,
-      );
-      final Rect src = Rect.fromLTWH(
-        0,
-        0,
-        _cachedFaceImage!.width.toDouble(),
-        _cachedFaceImage!.height.toDouble(),
-      );
-      canvas.drawImageRect(_cachedFaceImage!, src, dst, _imagePaint);
+    // Ring lines only where they are at least about a pixel apart.
+    if (faceR >= 14.0) {
+      _ringLine.strokeWidth = (faceR * 0.006).clamp(0.6, 2.0) / faceR;
+      for (int i = 0; i < 10; i++) {
+        // Lines inside the black zone are light; the rest dark.
+        _ringLine.color = (i == 2 || i == 3) ? _lineLight : _lineDark;
+        canvas.drawCircle(Offset.zero, 1.0 - i * 0.1, _ringLine);
+      }
+      _ringLine.color = const Color(0x88000000);
+      canvas.drawCircle(
+          Offset.zero, ArcheryK.xRingRadius / ArcheryK.faceRadius, _ringLine);
+      if (faceR >= 40.0) {
+        const double c = 0.01 / ArcheryK.faceRadius;
+        _line
+          ..reset()
+          ..moveTo(-c, 0)
+          ..lineTo(c, 0)
+          ..moveTo(0, -c)
+          ..lineTo(0, c);
+        canvas.drawPath(_line, _ringLine);
+      }
     }
+
+    // Soft gloss over the top (no hard edges, so the cached picture is fine).
+    final ui.Image? gloss = _gloss;
+    if (gloss != null) {
+      canvas.drawImageRect(gloss, _glossSrc, _unitSquare, _glossPaint);
+    }
+    canvas.restore();
   }
 
-  /// Procedurally rasterizes the 10 World Archery rings once at 1024x1024 (Bug #10 fix).
-  void _rasterizeFace() {
-    _hasRasterized = true;
-    const int imgSize = 1024;
-    const double r = imgSize * 0.5;
-
-    final ui.PictureRecorder recorder = ui.PictureRecorder();
-    final Canvas c = Canvas(recorder, const Rect.fromLTWH(0, 0, 1024.0, 1024.0));
+  /// Glossy laminated finish (GamePigeon): light from the upper left. Drawn
+  /// once into a small picture; it is all soft gradients.
+  void _buildGloss() {
+    _glossStarted = true;
+    const int size = 256;
+    const double r = size * 0.5;
     const Offset center = Offset(r, r);
-
-    // Ring pair colors from outside to inside (10 rings, 10% radius each)
-    const List<Color> ringColors = [
-      Color(0xFFF5F5F0), // Ring 1
-      Color(0xFFF5F5F0), // Ring 2
-      Color(0xFF1A1A1A), // Ring 3
-      Color(0xFF1A1A1A), // Ring 4
-      Color(0xFF2E7DD7), // Ring 5
-      Color(0xFF2E7DD7), // Ring 6
-      Color(0xFFE0322B), // Ring 7
-      Color(0xFFE0322B), // Ring 8
-      Color(0xFFF7D000), // Ring 9
-      Color(0xFFF7D000), // Ring 10
-    ];
-
-    final Paint fillPaint = Paint()..style = PaintingStyle.fill;
-    final Paint linePaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = (r * 0.008).clamp(0.75, 2.0);
-
-    // Draw from outside in
-    for (int ringIndex = 0; ringIndex < 10; ringIndex++) {
-      final double ringRadius = r * (1.0 - ringIndex * 0.10);
-      fillPaint.color = ringColors[ringIndex];
-      c.drawCircle(center, ringRadius, fillPaint);
-
-      // Dividing lines
-      final bool isBlackZone = ringIndex == 2 || ringIndex == 3;
-      linePaint.color = isBlackZone ? const Color(0x66FFFFFF) : const Color(0x66000000);
-      c.drawCircle(center, ringRadius, linePaint);
-    }
-
-    // Inner X-ring
-    final double xRadius = r * (ArcheryK.xRingRadius / ArcheryK.faceRadius);
-    linePaint.color = const Color(0x88000000);
-    c.drawCircle(center, xRadius, linePaint);
-
-    // Central '+' crosshair
-    final double crossSize = r * (0.01 / ArcheryK.faceRadius);
-    c.drawLine(
-      Offset(r - crossSize, r),
-      Offset(r + crossSize, r),
-      linePaint,
-    );
-    c.drawLine(
-      Offset(r, r - crossSize),
-      Offset(r, r + crossSize),
-      linePaint,
-    );
-
-    _paintGloss(c, r);
-
-    final ui.Picture picture = recorder.endRecording();
-    picture.toImage(imgSize, imgSize).then((ui.Image img) {
-      picture.dispose();
-      _cachedFaceImage?.dispose();
-      _cachedFaceImage = img;
-    });
-  }
-
-  /// Glossy laminated finish (GamePigeon): light from the upper left.
-  /// Runs once, inside the cached face image, so it costs nothing per frame.
-  void _paintGloss(Canvas c, double r) {
-    final Offset center = Offset(r, r);
-    c.save();
+    final ui.PictureRecorder recorder = ui.PictureRecorder();
+    final Canvas c = Canvas(recorder, const Rect.fromLTWH(0, 0, 256.0, 256.0));
     c.clipPath(Path()..addOval(Rect.fromCircle(center: center, radius: r)));
 
-    // 1. Bevel on every ring edge: a thin light line just inside each
-    //    boundary on the lit side, a faint dark one on the shaded side.
-    final Paint bevelLight = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = r * 0.006
-      ..shader = ui.Gradient.linear(
-        Offset.zero,
-        Offset(r * 2, r * 2),
-        const [Color(0x66FFFFFF), Color(0x00FFFFFF)],
-        const [0.0, 0.6],
-      );
-    final Paint bevelDark = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = r * 0.006
-      ..shader = ui.Gradient.linear(
-        Offset.zero,
-        Offset(r * 2, r * 2),
-        const [Color(0x00000000), Color(0x40000000)],
-        const [0.4, 1.0],
-      );
-    for (int i = 0; i < 10; i++) {
-      final double ringR = r * (1.0 - i * 0.10);
-      c.drawCircle(center, ringR - r * 0.008, bevelLight);
-      c.drawCircle(center, ringR - r * 0.004, bevelDark);
-    }
-
-    // 2. Broad sheen: lighter top-left, slightly darker bottom-right.
+    // Broad sheen: lighter top-left, slightly darker bottom-right.
     c.drawCircle(
       center,
       r,
       Paint()
         ..shader = ui.Gradient.linear(
           Offset.zero,
-          Offset(r * 2, r * 2),
+          const Offset(r * 2, r * 2),
           const [Color(0x30FFFFFF), Color(0x00FFFFFF), Color(0x1E000000)],
           const [0.0, 0.55, 1.0],
         ),
     );
-
-    // 3. Soft specular hotspot, like light on a laminated face.
-    final Offset hot = Offset(r * 0.62, r * 0.55);
+    // Soft specular hotspot.
+    const Offset hot = Offset(r * 0.62, r * 0.55);
     c.drawCircle(
       hot,
       r * 0.62,
@@ -353,8 +284,7 @@ class TargetBoard {
           const [0.0, 0.45, 1.0],
         ),
     );
-
-    // 4. Thin rim shadow so the face sits on the board.
+    // Thin rim shadow so the face sits on the board.
     c.drawCircle(
       center,
       r * 0.995,
@@ -363,6 +293,13 @@ class TargetBoard {
         ..strokeWidth = r * 0.012
         ..color = const Color(0x33000000),
     );
-    c.restore();
+
+    final ui.Picture picture = recorder.endRecording();
+    picture.toImage(size, size).then((ui.Image img) {
+      picture.dispose();
+      _gloss?.dispose();
+      _gloss = img;
+      _glossSrc = Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble());
+    });
   }
 }
