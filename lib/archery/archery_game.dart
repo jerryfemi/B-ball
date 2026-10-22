@@ -136,8 +136,8 @@ class ArcheryGame extends FlameGame implements ArcheryOnlineGame {
 
     ArcheryAudio.init(this);
     _applySetDistance();
-    await background.load();
-    await bowOverlay.load();
+    // Range and bow load in parallel.
+    await Future.wait([background.load(), bowOverlay.load()]);
 
     // Broadcast initial wind outside widget build cycle
     events.windChanged(windModel.display);
