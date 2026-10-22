@@ -28,6 +28,10 @@ class ArcheryLiveEvent {
   final int ring;
   final bool isX;
 
+  /// The sender's device time (ms) when it was written; 0 if unknown.
+  /// Read back only (a new event stamps the current time in [toMap]).
+  final int createdAtMs;
+
   const ArcheryLiveEvent({
     required this.kind,
     required this.shooterUid,
@@ -41,6 +45,7 @@ class ArcheryLiveEvent {
     this.hitBoss = false,
     this.ring = 0,
     this.isX = false,
+    this.createdAtMs = 0,
   });
 
   bool get isArrow => kind == kindArrow;
@@ -97,6 +102,7 @@ class ArcheryLiveEvent {
       hitBoss: m['hitBoss'] as bool? ?? false,
       ring: (m['ring'] as num?)?.toInt() ?? 0,
       isX: m['isX'] as bool? ?? false,
+      createdAtMs: (m['createdAt'] as num?)?.toInt() ?? 0,
     );
   }
 }
