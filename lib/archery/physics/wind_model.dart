@@ -1,9 +1,13 @@
 import 'dart:math' as math;
 import '../archery_constants.dart';
 
-/// GamePigeon-style 2D wind model (0.0 to 2.0 intensity and 360° direction angle).
+/// Per-arrow wind, shown to the player in mph (the range is measured in
+/// feet, so the wind is too: imperial throughout).
+///
+/// Every direction matters: a crosswind pushes the arrow sideways, a
+/// tailwind carries it a little higher and a headwind drops it.
 class WindModel {
-  /// Displayed wind intensity with 1 decimal place (e.g. 0.8, 1.2, 2.0).
+  /// Wind speed in whole mph, 0 to [ArcheryK.windMaxMph].
   final double display;
 
   /// Wind angle in radians:
@@ -23,36 +27,52 @@ class WindModel {
     this.phi2 = 0.0,
   });
 
-  /// Creates a deterministic wind instance from a unique hash seed.
+  /// The same seed gives the same wind on every phone (online fairness).
+  ///
+  /// Calm air is rare (about 1 arrow in 12 gets 0–2 mph); the rest get
+  /// 3–12 mph, so reading the wind is part of every shot.
   factory WindModel.fromSeed(int seed) {
     final math.Random rng = math.Random(seed);
-    final double raw = rng.nextDouble() * ArcheryK.windMaxDisplay;
-    final double display = (raw * 10.0).round() / 10.0;
+    final double u = rng.nextDouble();
+    const double calmShare = 0.08;
+    final double mph = u < calmShare
+        ? (u / calmShare * 2.0).roundToDouble()
+        : (3.0 + (u - calmShare) / (1.0 - calmShare) * (ArcheryK.windMaxMph - 3.0))
+            .roundToDouble();
     final double angle = rng.nextDouble() * 2.0 * math.pi;
     final double phi1 = rng.nextDouble() * 2.0 * math.pi;
     final double phi2 = rng.nextDouble() * 2.0 * math.pi;
 
     return WindModel(
-      display: display,
+      display: mph.clamp(0.0, ArcheryK.windMaxMph),
       angle: angle,
       phi1: phi1,
       phi2: phi2,
     );
   }
 
-  /// Calculates dynamic gust oscillation factor at flight elapsed time [t].
+  /// Whole mph, for display.
+  int get mph => display.round();
+
+  /// Small gusts (about ±5%): enough to feel alive, small enough that a
+  /// careful aim correction still lands.
   double getGust(double t) {
-    return 1.0 + 0.10 * math.sin(2.1 * t + phi1) + 0.05 * math.sin(5.3 * t + phi2);
+    return 1.0 + 0.035 * math.sin(2.1 * t + phi1) + 0.015 * math.sin(5.3 * t + phi2);
   }
 
-  /// Lateral acceleration contribution on arrow (m/s²).
+  /// Sideways push on the arrow (m/s²).
   double getLateralAccel(double t) {
-    return display * math.sin(angle) * ArcheryK.windLateralAccelPerUnit * getGust(t);
+    return display * math.sin(angle) * ArcheryK.windLateralAccelPerMph * getGust(t);
   }
 
-  /// Along-track (tailwind/headwind) acceleration contribution on arrow (m/s²).
+  /// Up/down push (m/s²): tailwind lifts, headwind drops.
+  double getVerticalAccel(double t) {
+    return display * math.cos(angle) * ArcheryK.windVerticalAccelPerMph * getGust(t);
+  }
+
+  /// Along-track push (m/s²): a small change in arrow speed.
   double getAlongTrackAccel(double t) {
-    return display * math.cos(angle) * ArcheryK.windAlongAccelPerUnit * getGust(t);
+    return display * math.cos(angle) * ArcheryK.windAlongAccelPerMph * getGust(t);
   }
 
   bool get blowsRight => math.sin(angle) >= 0;
