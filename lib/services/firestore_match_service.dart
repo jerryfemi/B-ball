@@ -167,6 +167,7 @@ class FirestoreMatchService {
     final match = CloudMatch(
       id: joinCode,
       joinCode: joinCode,
+      game: config.game,
       status: MatchStatus.waitingForOpponent,
       createdAt: now,
       updatedAt: now,
