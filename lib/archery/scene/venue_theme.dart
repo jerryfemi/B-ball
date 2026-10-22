@@ -82,7 +82,7 @@ class VenueTheme {
 
   /// Which distant-hills strip to use. The original stays on disk; flip this
   /// to compare it with the regenerated one (assets/archery/park/hills_v2.webp).
-  static const bool useHillsV2 = true;
+  static const bool useHillsV2 = false;
 
   /// The standard daytime Park venue matching GamePigeon archery.
   static VenueTheme createParkTheme({
