@@ -11,14 +11,22 @@ abstract final class ArcheryAudio {
   /// 0:30–1:30 of the original, 128 kbps MP3. '' would mean no music.
   static const String musicTrack = 'assets/music/short/archery_plum_blossom.mp3';
 
+  /// Birdsong under the music: a seamless 28 s mono loop (from a recording,
+  /// crossfaded end-to-start). Follows the AMBIENCE switch, not MUSIC.
+  static const String ambienceTrack = 'assets/archery/ambience_birds.wav';
+
   /// Starts the shared engine (if needed) and decodes archery's sounds.
   static void init() {
     unawaited(AudioEngine.useGameSoundtrack(musicTrack));
+    unawaited(AudioEngine.useGameAmbience(ambienceTrack));
     unawaited(AudioEngine.init().then((_) => AudioEngine.loadArcherySfx()));
   }
 
   /// Call when archery closes: hands the music back to basketball's playlist.
-  static void leave() => unawaited(AudioEngine.useGameSoundtrack(null));
+  static void leave() {
+    unawaited(AudioEngine.useGameSoundtrack(null));
+    unawaited(AudioEngine.useGameAmbience(null));
+  }
 
   /// Call from every pointer down/up: browsers only start audio (and the
   /// music) inside a tap, and iPhones only on the release.
