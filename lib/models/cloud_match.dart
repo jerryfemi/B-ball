@@ -274,9 +274,13 @@ class CloudMatch {
   /// Custom winner UID explicitly stored on document (e.g. for forfeits).
   final String? customWinnerUid;
 
+  /// The game identifier for this match (e.g. 'basketball', 'archery', 'darts').
+  final String game;
+
   const CloudMatch({
     required this.id,
     required this.joinCode,
+    this.game = 'basketball',
     required this.status,
     required this.createdAt,
     required this.updatedAt,
@@ -383,6 +387,7 @@ class CloudMatch {
     List<CloudChatMessage>? chat,
     int? liveShooterScore,
     String? liveShooterUid,
+    String? game,
     String? lastChatSenderUid,
     int? lastChatTimestamp,
     String? lastChatText,
@@ -390,6 +395,7 @@ class CloudMatch {
     return CloudMatch(
       id: id ?? this.id,
       joinCode: joinCode ?? this.joinCode,
+      game: game ?? this.game,
       status: status ?? this.status,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -414,8 +420,37 @@ class CloudMatch {
     );
   }
 
+  bool get isBasketball => game == 'basketball';
+  bool get isArchery => game == 'archery';
+  bool get isDarts => game == 'darts';
+
+  static String gameTitle(String g) {
+    switch (g) {
+      case 'archery':
+        return 'Archery';
+      case 'darts':
+        return 'Darts';
+      case 'basketball':
+      default:
+        return 'Basketball';
+    }
+  }
+
+  static String gameEmoji(String g) {
+    switch (g) {
+      case 'archery':
+        return '🎯';
+      case 'darts':
+        return '🎯';
+      case 'basketball':
+      default:
+        return '🏀';
+    }
+  }
+
   Map<String, dynamic> toMap() => {
     'joinCode': joinCode,
+    'game': game,
     'status': status.key,
     'createdAt': createdAt,
     'updatedAt': updatedAt,
@@ -444,6 +479,9 @@ class CloudMatch {
       return CloudMatch(
         id: docId,
         joinCode: map['joinCode'] as String? ?? docId,
+        game: (map['game'] as String?)?.isNotEmpty == true
+            ? (map['game'] as String)
+            : 'basketball',
         status: MatchStatus.fromKey(map['status'] as String?),
         createdAt: (map['createdAt'] as num?)?.toInt() ?? 0,
         updatedAt: (map['updatedAt'] as num?)?.toInt() ?? 0,
