@@ -122,6 +122,7 @@ class ArrowPhysics3D {
     // 1. Wind lateral and along-track acceleration
     final double windLateral = (windModel?.getLateralAccel(timeSinceRelease) ?? 0.0) * windScale;
     final double windAlong = (windModel?.getAlongTrackAccel(timeSinceRelease) ?? 0.0) * windScale;
+    final double windVertical = (windModel?.getVerticalAccel(timeSinceRelease) ?? 0.0) * windScale;
 
     // 2. Relative velocity to air for quadratic drag
     final double vRelX = vel.x;
@@ -132,7 +133,7 @@ class ArrowPhysics3D {
     // 3. Acceleration: Gravity + Quadratic Drag + Wind
     final double dragFactor = ArcheryK.dragK * vRel;
     final double ax = -dragFactor * vRelX + windLateral;
-    final double ay = -dragFactor * vRelY - ArcheryK.gravity;
+    final double ay = -dragFactor * vRelY - ArcheryK.gravity + windVertical;
     final double az = -dragFactor * vRelZ + windAlong;
 
     // 4. Semi-implicit Euler integration (Velocity first, then Position)
