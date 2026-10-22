@@ -9,6 +9,7 @@ import 'widgets/active_matches_banner.dart';
 import 'widgets/featured_hero.dart';
 import 'widgets/game_card.dart';
 import 'widgets/lobby_header.dart';
+import 'widgets/made_by_footer.dart';
 
 /// The GameVerse lobby (`/games`): jersey wordmark and account chip, a
 /// banner that slides through the games (featured one first), your running
@@ -104,7 +105,10 @@ class GameLobbyScreen extends StatelessWidget {
                     },
                   ),
                 ),
-                const SliverToBoxAdapter(child: SizedBox(height: 48)),
+                const SliverPadding(
+                  padding: EdgeInsets.fromLTRB(20, 56, 20, 40),
+                  sliver: SliverToBoxAdapter(child: MadeByFooter()),
+                ),
               ],
             ),
           ),
