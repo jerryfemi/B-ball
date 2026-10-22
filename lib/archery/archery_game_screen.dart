@@ -9,6 +9,7 @@ import '../game/match/match_config.dart';
 import '../game/ui/match/match_lobby_dialog.dart';
 import '../game/ui/match/match_setup_dialog.dart';
 import '../models/cloud_match.dart';
+import '../models/friend_profile.dart';
 import '../models/player_descriptor.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_match_service.dart';
@@ -221,7 +222,7 @@ class ArcheryGameScreen extends HookConsumerWidget {
                           const SizedBox(height: 8.0),
                           ArcheryRoundButton(
                             icon: Icons.people_alt_rounded,
-                            tooltip: 'Challenge 1v1',
+                            tooltip: 'Play a friend',
                             onTap: () => ArcheryChallenge.start(context),
                           ),
                         ],
@@ -280,6 +281,46 @@ abstract final class ArcheryChallenge {
     );
     if (chosen == null || !context.mounted) return;
 
+    // "Join with a code": the match already exists, just open it.
+    final joined = chosen.joinedMatch;
+    if (joined != null) {
+      GoRouter.maybeOf(context)?.go('/match/${joined.id}');
+      return;
+    }
+
+    await _createAndEnter(context, chosen);
+  }
+
+  /// A new archery match against the same opponent, sent to them as a
+  /// challenge (they see it on their card, in the inbox and as a pill).
+  static Future<void> rematch(
+    BuildContext context, {
+    required CloudMatch finished,
+    required String myUid,
+  }) async {
+    final opp = finished.opponentPlayer(myUid);
+    if (opp == null || opp.uid.isEmpty) {
+      await start(context);
+      return;
+    }
+    final friend = FriendProfile(
+      uid: opp.uid,
+      displayName: opp.displayName,
+      avatarEmoji: opp.avatarEmoji,
+      addedAt: DateTime.now().millisecondsSinceEpoch,
+    );
+    await _createAndEnter(
+      context,
+      config.copyWith(
+        player2Name: opp.displayName,
+        player2Avatar: opp.avatarEmoji,
+        player2Uid: opp.uid,
+        opponentFriend: friend,
+      ),
+    );
+  }
+
+  static Future<void> _createAndEnter(BuildContext context, MatchConfig chosen) async {
     final user = await AuthService.instance.ensureAuthenticated();
     final profile = AuthService.instance.currentUser ??
         UserProfile(
@@ -289,7 +330,10 @@ abstract final class ArcheryChallenge {
         );
     final CloudMatch match = chosen.precreatedMatch ??
         await FirestoreMatchService.instance.createMatch(
-          config: chosen,
+          config: chosen.copyWith(
+            player1Name: profile.displayName,
+            player1Avatar: profile.avatarEmoji,
+          ),
           player1Profile: profile,
         );
     if (!context.mounted) return;
