@@ -363,9 +363,18 @@ class ArcheryOnlineController {
 
   // ── Your arrows ─────────────────────────────────────────────────────────
 
-  /// You pressed to aim.
+  /// Arrow index the last draw ping was sent for (one ping per arrow).
+  int _drawPingFor = -1;
+  int _drawPingRound = -1;
+
+  /// You pressed to aim. Only the first press per arrow is sent: pressing
+  /// and letting go again doesn't cost another write (and a read for the
+  /// opponent).
   void onMyDraw() {
     if (!_myTurn || _submitting) return;
+    if (_drawPingRound == _turnRound && _drawPingFor == _myArrows.length) return;
+    _drawPingRound = _turnRound;
+    _drawPingFor = _myArrows.length;
     _pendingBroadcast = service.broadcastArcheryEvent(
       matchId: matchId,
       event: ArcheryLiveEvent(
