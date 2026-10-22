@@ -142,7 +142,9 @@ class GameHudOverlay extends StatelessWidget {
                               fit: BoxFit.scaleDown,
                               alignment: Alignment.centerLeft,
                               child: Text(
-                                '⚔️ ${topChallenge.hostName} challenged you to 1v1!',
+                                topChallenge.isArchery
+                                    ? '🎯 ${topChallenge.hostName} challenged you to Archery!'
+                                    : '⚔️ ${topChallenge.hostName} challenged you to 1v1!',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
