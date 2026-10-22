@@ -162,14 +162,15 @@ class BillboardRenderer {
     _loadedImages.clear();
     _billboards.clear();
 
-    // 1. Load unique billboard images
-    for (final entry in theme.billboardImages.entries) {
-      try {
-        _loadedImages[entry.key] = await loadArcheryImage(entry.value);
-      } catch (e) {
-        debugPrint('Failed to load archery billboard image ${entry.value}: $e');
-      }
-    }
+    // 1. Load unique billboard images, all at once (not one after another)
+    await Future.wait([
+      for (final entry in theme.billboardImages.entries)
+        loadArcheryImage(entry.value).then((img) {
+          _loadedImages[entry.key] = img;
+        }).catchError((Object e) {
+          debugPrint('Failed to load archery billboard image ${entry.value}: $e');
+        }),
+    ]);
 
     // 2. Load or generate shadow blob
     try {
