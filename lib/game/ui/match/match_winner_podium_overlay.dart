@@ -289,8 +289,9 @@ class MatchWinnerPodiumOverlay extends HookConsumerWidget {
                         ),
                         const SizedBox(height: 8.0),
                       ]
-                      // Primary Action: INSTANT REMATCH (Host-only) or Waiting status (Guest)
-                      else if (session.isHost)
+                      // Primary Action: REMATCH. Either player can start it;
+                      // the other gets the invite banner above.
+                      else
                         InlineFeedbackSwitcher(
                           child: rematchError.value != null
                               ? InlineErrorPanel(
@@ -346,42 +347,6 @@ class MatchWinnerPodiumOverlay extends HookConsumerWidget {
                             ),
                           ),
                         ),
-                        )
-                      else
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(vertical: 14.0),
-                          decoration: BoxDecoration(
-                            color: const Color(0x1838BDF8),
-                            borderRadius: BorderRadius.circular(16.0),
-                            border: Border.all(
-                              color: const Color(0x3338BDF8),
-                              width: 1.0,
-                            ),
-                          ),
-                          child: const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              SizedBox(
-                                width: 14.0,
-                                height: 14.0,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2.0,
-                                  color: Color(0xFF38BDF8),
-                                ),
-                              ),
-                              SizedBox(width: 10.0),
-                              Text(
-                                'WAITING FOR HOST TO REMATCH',
-                                style: TextStyle(
-                                  color: Color(0xFF38BDF8),
-                                  fontSize: 13.0,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 0.8,
-                                ),
-                              ),
-                            ],
-                          ),
                         ),
                       const SizedBox(height: 8.0),
 
@@ -459,6 +424,7 @@ class MatchWinnerPodiumOverlay extends HookConsumerWidget {
                             final newConfig = await MatchSetupDialog.show(
                               context,
                               initialConfig: session.config,
+                              allowJoin: false,
                             );
                             if (newConfig != null) {
                               game.startPassAndPlayMatch(config: newConfig);
