@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'audio_backend.dart';
@@ -189,6 +190,7 @@ class AudioEngine {
   /// Never throws and never blocks the game: if audio can't start, the game
   /// simply runs silent and the next tap retries.
   static Future<void> init() async {
+    _ensureLifecycleObserver();
     if (_initialized) return;
     if (_isInitializing) return _initCompleter?.future;
     _isInitializing = true;
@@ -360,14 +362,32 @@ class AudioEngine {
     _backend.setMusicPlaying(_musicShouldPlay);
   }
 
+  static bool _observerAttached = false;
+
+  /// Attaches a global [WidgetsBindingObserver] so the engine automatically
+  /// pauses audio and music whenever the app, tab, or window is backgrounded,
+  /// hidden, or loses focus, and resumes upon returning.
+  static void _ensureLifecycleObserver() {
+    if (_observerAttached) return;
+    try {
+      final binding = WidgetsBinding.instance;
+      binding.addObserver(_AudioLifecycleObserver());
+      _observerAttached = true;
+    } catch (e) {
+      debugPrint('[AudioEngine] Could not attach lifecycle observer: $e');
+    }
+  }
+
   /// Call when app goes to background or browser tab is hidden.
   static void onAppBackground() {
+    if (_isBackgrounded) return;
     _isBackgrounded = true;
     _applyMusicState();
   }
 
   /// Call when app returns to foreground.
   static void onAppForeground() {
+    if (!_isBackgrounded) return;
     _isBackgrounded = false;
     // Mobile browsers may suspend audio while hidden: re-arm the unlock so
     // the next tap revives it if this resume attempt isn't allowed.
@@ -509,3 +529,21 @@ class AudioEngine {
     _audioUnlocked = false;
   }
 }
+
+class _AudioLifecycleObserver extends WidgetsBindingObserver {
+  _AudioLifecycleObserver();
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.detached:
+        AudioEngine.onAppBackground();
+      case AppLifecycleState.resumed:
+        AudioEngine.onAppForeground();
+    }
+  }
+}
+
