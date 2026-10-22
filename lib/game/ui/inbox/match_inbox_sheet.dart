@@ -104,6 +104,11 @@ class MatchInboxSheet extends HookConsumerWidget {
         }
       },
       onViewPodium: (match) {
+        if (!match.isBasketball) {
+          // Archery/darts show their own final card on their own screen.
+          game.onOtherGameMatch?.call(match);
+          return;
+        }
         final myUid = AuthService.instance.currentUser?.uid ?? '';
         final session = MatchSession.fromCloudMatch(match, myUid);
         session.phase = MatchTurnPhase.matchComplete;
