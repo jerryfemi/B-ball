@@ -31,9 +31,13 @@ class BowOverlay {
 
   // ── Bow image placement (must match make_bow_view.py) ───────────────────
   static const double _imgXMin = -0.10; // refW, from the grip centre line
-  static const double _imgXMax = 0.16;
-  static const double _imgYMin = -0.06; // screen heights, from the top
-  static const double _imgYMax = 1.06;
+  static const double _imgXMax = 0.24;
+  static const double _imgYMin = -0.27; // screen heights, from the top
+  static const double _imgYMax = 1.23;
+
+  /// Overall size of the bow + arrow, scaled evenly about the grip.
+  /// 1.0 = GamePigeon's measured size; 0.75 = 25% smaller.
+  static const double _scale = 0.75;
   static const double _gripFromTarget = 0.25; // refW
   static const double _anchorY = 0.60; // pivot for the slide-out (screen h)
 
@@ -194,12 +198,15 @@ class BowOverlay {
     // it doesn't swing while the camera dollies).
     if (cameraRig.phase == ShotPhase.atLine &&
         camera.project(0.0, ArcheryK.targetCenterY, cameraRig.targetDistance)) {
-      _shaftAngle = math.atan2(gy + tipY - camera.sy, gx + tipX - camera.sx);
+      _shaftAngle = math.atan2(
+        gy + tipY * _scale - camera.sy,
+        gx + tipX * _scale - camera.sx,
+      );
     }
 
     canvas.save();
     canvas.translate(gx + t * screenW * 0.35, gy + t * screenH * 0.45);
-    final double scale = 1.0 + t * 0.15;
+    final double scale = (1.0 + t * 0.15) * _scale;
     canvas.scale(scale, scale);
 
     // 1. Bow
