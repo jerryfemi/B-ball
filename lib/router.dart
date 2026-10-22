@@ -13,9 +13,8 @@ import 'routes/match_route_screen.dart';
 /// Central GameVerse GoRouter setup.
 ///
 /// Clean URLs without hashes (#) supported via [usePathUrlStrategy]:
-/// - `/`: Basketball game (stays default)
-/// - `/bball`: Basketball alias
-/// - `/games`: GameVerse Lobby
+/// - `/`: GameVerse lobby (where everyone lands)
+/// - `/hoops`: Basketball (`/bball` and `/games` are old aliases)
 /// - `/archery`: Standalone & 1v1 Archery Range
 /// - `/darts`: 501 / Cricket Darts preview
 /// - `/match/:id`: Auto-dispatching match loader
@@ -34,11 +33,15 @@ final GoRouter appRouter = GoRouter(
   routes: [
     GoRoute(
       path: '/',
+      builder: (context, state) => const GameLobbyScreen(),
+    ),
+    GoRoute(
+      path: '/hoops',
       builder: (context, state) => const BasketballScreen(),
     ),
     GoRoute(
       path: '/bball',
-      redirect: (context, state) => '/',
+      redirect: (context, state) => '/hoops',
     ),
     // dunkverse.web.app/join?code=ABC123 → the match (which joins you).
     GoRoute(
@@ -48,9 +51,10 @@ final GoRouter appRouter = GoRouter(
         return (code == null || code.isEmpty) ? '/' : '/match/${code.toUpperCase()}';
       },
     ),
+    // Older links and buttons still say /games: same lobby.
     GoRoute(
       path: '/games',
-      builder: (context, state) => const GameLobbyScreen(),
+      redirect: (context, state) => '/',
     ),
     GoRoute(
       path: '/archery',
