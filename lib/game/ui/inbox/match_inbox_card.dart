@@ -101,16 +101,37 @@ class MatchInboxCard extends StatelessWidget {
                         color: const Color(0xFF1E2638),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Text(
-                        isCompleted
-                            ? 'MATCH FINISHED'
-                            : 'ROUND ${match.currentRound} OF ${match.totalRounds} • ${match.roundDurationSeconds}S',
-                        style: const TextStyle(
-                          color: Color(0xFF94A3B8),
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.8,
-                        ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            match.isArchery
+                                ? Icons.track_changes_rounded
+                                : (match.isDarts
+                                    ? Icons.adjust_rounded
+                                    : Icons.sports_basketball_rounded),
+                            size: 13,
+                            color: match.isArchery
+                                ? const Color(0xFF10B981)
+                                : (match.isDarts
+                                    ? const Color(0xFFA855F7)
+                                    : const Color(0xFFFF8A00)),
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            isCompleted
+                                ? '${CloudMatch.gameTitle(match.game).toUpperCase()} • FINISHED'
+                                : (match.isArchery
+                                    ? 'ARCHERY • SET ${match.currentRound} OF ${match.totalRounds}'
+                                    : 'HOOPS • R${match.currentRound}/${match.totalRounds} • ${match.roundDurationSeconds}S'),
+                            style: const TextStyle(
+                              color: Color(0xFF94A3B8),
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     Row(

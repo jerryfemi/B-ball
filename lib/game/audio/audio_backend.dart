@@ -2,8 +2,22 @@ import 'audio_backend_native.dart'
     if (dart.library.js_interop) 'audio_backend_web.dart'
     as impl;
 
-/// The five pre-decoded collision / game sounds.
-enum Sfx { rim, backboard, swish, bounce, buzzer }
+/// Pre-decoded sound effects. The first five are basketball's; the arrow*
+/// ones are archery's and are only decoded when archery loads
+/// ([AudioEngine.loadArcherySfx]).
+enum Sfx {
+  rim,
+  backboard,
+  swish,
+  bounce,
+  buzzer,
+  arrowDraw,
+  arrowFullDraw,
+  arrowRelease,
+  arrowThunk,
+  arrowBell,
+  arrowThud,
+}
 
 /// Low-level sound output used by [AudioEngine].
 ///
@@ -38,6 +52,16 @@ abstract class AudioBackend {
 
   /// Stops the music and releases the track (nothing keeps downloading).
   void unloadMusic();
+
+  /// Ambience loop (e.g. archery's birdsong), independent of the music.
+  /// null stops it and frees the buffer.
+  Future<void> setAmbienceTrack(String? assetKey);
+
+  /// Plays or pauses the ambience. Remembered if it is still loading.
+  void setAmbiencePlaying(bool playing);
+
+  /// Ambience volume, 0..1 (already fully scaled).
+  void setAmbienceVolume(double volume);
 
   /// Call from inside a user tap: lets mobile browsers start audio.
   void unlock();

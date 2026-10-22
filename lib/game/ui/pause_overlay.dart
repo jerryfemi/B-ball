@@ -3,9 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:go_router/go_router.dart';
 
-import '../../../services/auth_service.dart';
-import '../../../services/firestore_match_service.dart';
+import '../../services/auth_service.dart';
+import '../../services/firestore_match_service.dart';
 import '../audio/audio_engine.dart';
 import '../basketball_game.dart';
 import '../match/match_session.dart';
@@ -175,6 +176,40 @@ class PauseOverlay extends HookWidget {
                                 ),
                               ),
                             ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10.0),
+
+                      // GameVerse lobby (archery, darts, …)
+                      SizedBox(
+                        width: double.infinity,
+                        height: 40.0,
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            HapticFeedback.lightImpact();
+                            GoRouter.maybeOf(context)?.go('/games');
+                          },
+                          icon: const Icon(
+                            Icons.grid_view_rounded,
+                            size: 15.0,
+                            color: Color(0xFF00FFCC),
+                          ),
+                          label: const Text(
+                            'GAMEVERSE LOBBY',
+                            style: TextStyle(
+                              color: Color(0xFF00FFCC),
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: Color(0x6600FFCC)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14.0),
+                            ),
+                            backgroundColor: const Color(0x1400FFCC),
                           ),
                         ),
                       ),
@@ -736,24 +771,44 @@ class PauseOverlay extends HookWidget {
             borderRadius: BorderRadius.circular(14.0),
             border: Border.all(color: const Color(0x4438BDF8), width: 1.0),
           ),
-          child: const Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                Icons.sports_basketball_rounded,
-                size: 15.0,
-                color: Color(0xFF38BDF8),
+              const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.sports_basketball_rounded,
+                    size: 15.0,
+                    color: Color(0xFF38BDF8),
+                  ),
+                  SizedBox(width: 8.0),
+                  Text(
+                    '1V1 MATCH IN PROGRESS',
+                    style: TextStyle(
+                      color: Color(0xFF38BDF8),
+                      fontSize: 12.0,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                ],
               ),
-              SizedBox(width: 8.0),
-              Text(
-                '1V1 MATCH IN PROGRESS',
-                style: TextStyle(
-                  color: Color(0xFF38BDF8),
-                  fontSize: 12.0,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.8,
+              // Online rounds run on real time: pausing or leaving for the
+              // lobby doesn't stop the clock.
+              if (session.isOnline &&
+                  session.phase == MatchTurnPhase.playingTurn) ...[
+                const SizedBox(height: 4.0),
+                const Text(
+                  'Live match: your clock keeps running',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Color(0xFFF59E0B),
+                    fontSize: 12.0,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),

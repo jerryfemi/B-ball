@@ -1,15 +1,14 @@
 import 'dart:async';
 
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flame/game.dart';
 import 'package:flame_forge2d/flame_forge2d.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import 'firebase_options.dart';
 import 'game/audio/audio_engine.dart';
-import 'game/basketball_game.dart';
-import 'game/ui/game_hud_overlay.dart';
+import 'router.dart';
 import 'services/auth_service.dart';
 import 'services/chat_read_receipt_service.dart';
 import 'services/update/update_service.dart';
@@ -17,6 +16,7 @@ import 'services/vatar/vatar_bridge.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  usePathUrlStrategy();
   unawaited(AudioEngine.init());
   unawaited(UpdateService.instance.initialize());
   unawaited(ChatReadReceiptService.instance.init());
@@ -63,7 +63,8 @@ class _BasketballAppState extends State<BasketballApp>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.hidden) {
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.inactive) {
       AudioEngine.onAppBackground();
     } else if (state == AppLifecycleState.resumed) {
       AudioEngine.onAppForeground();
@@ -77,19 +78,11 @@ class _BasketballAppState extends State<BasketballApp>
       onPointerDown: (_) => AudioEngine.unlockAudio(),
       onPointerUp: (_) => AudioEngine.unlockAudio(),
       behavior: HitTestBehavior.translucent,
-      child: MaterialApp(
+      child: MaterialApp.router(
         debugShowCheckedModeBanner: false,
-        title: 'DunkVerse',
+        title: 'GameVerse',
         theme: ThemeData.dark(),
-        home: Scaffold(
-          body: GameWidget<BasketballGame>(
-            game: BasketballGame(),
-            overlayBuilderMap: {
-              'HUD': (context, game) => GameHudOverlay(game: game),
-            },
-            initialActiveOverlays: const ['HUD'],
-          ),
-        ),
+        routerConfig: appRouter,
       ),
     );
   }

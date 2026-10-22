@@ -15,6 +15,7 @@ extension type _AudioContext._(JSObject _) implements JSObject {
   external double get currentTime;
   external JSObject get destination;
   external JSPromise<JSAny?> resume();
+  external JSPromise<JSAny?> suspend();
   external _GainNode createGain();
   external _BufferSource createBufferSource();
   external _AudioBuffer createBuffer(int channels, int length, num sampleRate);
@@ -76,10 +77,25 @@ class WebAudioBackend implements AudioBackend {
   double _musicStartedAt = 0.0; // ctx.currentTime when the source started
   double _musicOffset = 0.0; // position within the track at that moment
 
+  // ── Ambience loop (independent of music) ──
+  _GainNode? _ambGain;
+  String? _ambKey;
+  _AudioBuffer? _ambBuffer;
+  _BufferSource? _ambSource;
+  int _ambGen = 0;
+  bool _wantAmbPlaying = false;
+  double _ambVolume = 0.3;
+
+  /// False while the tab is hidden or the window lost focus (another app,
+  /// minimised). The whole audio context is suspended then: music, ambience
+  /// and effects all stop, and pick up where they were when you come back.
+  bool _pageActive = true;
+
   @override
   Future<void> init() async {
     if (_ctx != null) return;
     _applyAudioSession();
+    _watchPage();
     final ctxCtor = (globalContext['AudioContext'] ??
         globalContext['webkitAudioContext']) as JSFunction?;
     if (ctxCtor == null) {
@@ -88,6 +104,42 @@ class WebAudioBackend implements AudioBackend {
     final ctx = ctxCtor.callAsConstructor<_AudioContext>();
     _ctx = ctx;
     _sfxOut = ctx.destination;
+  }
+
+  /// Listens to the page itself (more reliable on the web than Flutter's
+  /// lifecycle events): tab hidden, window blurred, page hidden/shown.
+  void _watchPage() {
+    try {
+      final doc = globalContext['document'] as JSObject?;
+      if (doc == null) return;
+      void update() {
+        final vis = (doc['visibilityState'] as JSString?)?.toDart ?? 'visible';
+        final focused = (doc.callMethod<JSBoolean?>('hasFocus'.toJS))?.toDart ?? true;
+        _setPageActive(vis != 'hidden' && focused);
+      }
+
+      final JSFunction listener = ((JSAny? _) => update()).toJS;
+      doc.callMethod<JSAny?>('addEventListener'.toJS, 'visibilitychange'.toJS, listener);
+      for (final type in const ['blur', 'focus', 'pagehide', 'pageshow']) {
+        globalContext.callMethod<JSAny?>('addEventListener'.toJS, type.toJS, listener);
+      }
+    } catch (e) {
+      debugPrint('[WebAudio] Page visibility watch unavailable: $e');
+    }
+  }
+
+  void _setPageActive(bool active) {
+    if (_pageActive == active) return;
+    _pageActive = active;
+    final ctx = _ctx;
+    if (ctx == null) return;
+    try {
+      if (active) {
+        ctx.resume().toDart.catchError((Object _) => null);
+      } else {
+        ctx.suspend().toDart.catchError((Object _) => null);
+      }
+    } catch (_) {}
   }
 
   /// iPhones: 'ambient' = the game's sound MIXES with other apps (players can
@@ -247,7 +299,7 @@ class WebAudioBackend implements AudioBackend {
   @override
   void unlock() {
     final ctx = _ctx;
-    if (ctx == null) return;
+    if (ctx == null || !_pageActive) return;
     try {
       if (ctx.state != 'running') {
         ctx.resume().toDart.catchError((Object _) => null);
@@ -259,6 +311,81 @@ class WebAudioBackend implements AudioBackend {
       source.start();
     } catch (_) {}
     if (_wantMusicPlaying) _startMusicSource();
+    if (_wantAmbPlaying) _startAmbSource();
+  }
+
+  // ── Ambience ─────────────────────────────────────────────────────────────
+
+  @override
+  Future<void> setAmbienceTrack(String? assetKey) async {
+    final ctx = _ctx;
+    if (ctx == null || _ambKey == assetKey) return;
+    _ambKey = assetKey;
+    final gen = ++_ambGen;
+    _stopAmbSource();
+    _ambBuffer = null; // frees the old loop
+    if (assetKey == null) return;
+    try {
+      final data = await rootBundle.load(assetKey);
+      final bytes = Uint8List.fromList(
+        data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+      );
+      final buffer = await ctx.decodeAudioData(bytes.buffer.toJS).toDart;
+      if (gen != _ambGen) return;
+      _ambBuffer = buffer;
+      if (_wantAmbPlaying) _startAmbSource();
+    } catch (e) {
+      debugPrint('[WebAudio] Ambience load failed for $assetKey: $e');
+    }
+  }
+
+  void _startAmbSource() {
+    final ctx = _ctx;
+    final buffer = _ambBuffer;
+    if (ctx == null || buffer == null || _ambSource != null) return;
+    try {
+      var gain = _ambGain;
+      if (gain == null) {
+        gain = ctx.createGain();
+        gain.connect(ctx.destination);
+        _ambGain = gain;
+      }
+      gain.gain.value = _ambVolume;
+      final source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.loop = true;
+      source.connect(gain);
+      source.start();
+      _ambSource = source;
+    } catch (e) {
+      debugPrint('[WebAudio] Ambience start failed: $e');
+    }
+  }
+
+  void _stopAmbSource() {
+    final source = _ambSource;
+    if (source == null) return;
+    _ambSource = null;
+    try {
+      source.stop();
+    } catch (_) {}
+  }
+
+  @override
+  void setAmbiencePlaying(bool playing) {
+    _wantAmbPlaying = playing;
+    if (playing) {
+      _startAmbSource();
+    } else {
+      _stopAmbSource();
+    }
+  }
+
+  @override
+  void setAmbienceVolume(double volume) {
+    _ambVolume = volume;
+    final gain = _ambGain;
+    if (gain != null) gain.gain.value = volume;
   }
 
   @override
@@ -272,6 +399,10 @@ class WebAudioBackend implements AudioBackend {
   @override
   void dispose() {
     unloadMusic();
+    _stopAmbSource();
+    _ambBuffer = null;
+    _ambKey = null;
+    _ambGain = null;
     _buffers.clear();
     try {
       _ctx?.callMethod('close'.toJS);

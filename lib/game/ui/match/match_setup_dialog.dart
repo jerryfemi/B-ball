@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../archery/state/archery_rules.dart';
 import '../../../models/cloud_match.dart';
 import '../../../models/friend_profile.dart';
 import '../../../models/player_descriptor.dart';
@@ -24,15 +25,27 @@ import 'components/match_code_card.dart';
 class MatchSetupDialog extends HookWidget {
   final MatchConfig initialConfig;
 
-  const MatchSetupDialog({super.key, this.initialConfig = const MatchConfig()});
+  /// Shows a BASKETBALL / ARCHERY switch at the top (the shared match inbox).
+  /// Off when a game opens the dialog for itself.
+  final bool showGamePicker;
+
+  const MatchSetupDialog({
+    super.key,
+    this.initialConfig = const MatchConfig(),
+    this.showGamePicker = false,
+  });
 
   static Future<MatchConfig?> show(
     BuildContext context, {
     MatchConfig initialConfig = const MatchConfig(),
+    bool showGamePicker = false,
   }) {
     return AppModalDialog.show<MatchConfig>(
       context: context,
-      builder: (context) => MatchSetupDialog(initialConfig: initialConfig),
+      builder: (context) => MatchSetupDialog(
+        initialConfig: initialConfig,
+        showGamePicker: showGamePicker,
+      ),
     );
   }
 
@@ -41,6 +54,19 @@ class MatchSetupDialog extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Archery has fixed rules (sets to 6 points, per-arrow shot clock), so
+    // only the opponent part of this dialog applies.
+    final selectedGame = useState(initialConfig.game);
+    final bool isArchery = selectedGame.value == 'archery';
+
+    /// Archery has fixed rules; basketball uses the chosen options.
+    MatchConfig withGameRules(MatchConfig c) => selectedGame.value == 'archery'
+        ? c.copyWith(
+            game: 'archery',
+            totalRounds: ArcheryRules.maxSets,
+            roundDurationSeconds: ArcheryRules.onlineSetSeconds,
+          )
+        : c.copyWith(game: selectedGame.value);
     final selectedRounds = useState(initialConfig.totalRounds);
     final selectedDuration = useState(initialConfig.roundDurationSeconds);
     final selectedDifficulty = useState(initialConfig.difficulty);
@@ -73,7 +99,7 @@ class MatchSetupDialog extends HookWidget {
         final profile = knownProfile ??
             AuthService.instance.currentUser ??
             await AuthService.instance.initialize();
-        final config = MatchConfig(
+        final config = withGameRules(MatchConfig(
           totalRounds: selectedRounds.value,
           roundDurationSeconds: selectedDuration.value,
           difficulty: selectedDifficulty.value,
@@ -81,7 +107,7 @@ class MatchSetupDialog extends HookWidget {
           player1Avatar: profile.avatarEmoji,
           player2Name: 'Opponent',
           player2Avatar: '⏳',
-        );
+        ));
         final match = await FirestoreMatchService.instance.createMatch(
           config: config,
           player1Profile: profile,
@@ -131,9 +157,11 @@ class MatchSetupDialog extends HookWidget {
       if (match == null) return;
       HapticFeedback.lightImpact();
       final code = match.joinCode;
-      final text =
-          '🏀 Play me 1v1 on DunkVerse! Match code: $code\n'
-          'https://dunkverse.web.app/#/join?code=$code';
+      final text = match.isArchery
+          ? '🎯 Shoot archery with me on GameVerse! Match code: $code\n'
+              'https://dunkverse.web.app/match/$code'
+          : '🏀 Play me 1v1 on DunkVerse! Match code: $code\n'
+              'https://dunkverse.web.app/match/$code';
       try {
         await SharePlus.instance.share(ShareParams(text: text));
       } catch (_) {
@@ -160,7 +188,7 @@ class MatchSetupDialog extends HookWidget {
       final isFriendMode =
           opponentMode.value == 1 && selectedFriend.value != null;
 
-      final config = MatchConfig(
+      final config = withGameRules(MatchConfig(
         totalRounds: selectedRounds.value,
         roundDurationSeconds: selectedDuration.value,
         difficulty: selectedDifficulty.value,
@@ -173,7 +201,7 @@ class MatchSetupDialog extends HookWidget {
         player2Uid: isFriendMode ? selectedFriend.value?.uid : null,
         opponentFriend: isFriendMode ? selectedFriend.value : null,
         precreatedMatch: isFriendMode ? null : precreatedMatch.value,
-      );
+      ));
 
       Navigator.of(context).pop(config);
     }
@@ -199,12 +227,12 @@ class MatchSetupDialog extends HookWidget {
     return AppModalDialog(
       maxWidth: 390.0,
       scrollable: true,
-      iconWidget: const Icon(
-        Icons.sports_basketball_rounded,
+      iconWidget: Icon(
+        isArchery ? Icons.track_changes_rounded : Icons.sports_basketball_rounded,
         color: AppColors.accentAmber,
         size: 22.0,
       ),
-      title: 'NEW 1V1 MATCH',
+      title: isArchery ? 'NEW ARCHERY MATCH' : 'NEW 1V1 MATCH',
       subtitle: 'Challenge a friend or share a match code',
       showCloseButton: true,
       child: Column(
@@ -272,6 +300,31 @@ class MatchSetupDialog extends HookWidget {
           ),
           const SizedBox(height: 16.0),
 
+          // Which game (only in the shared match inbox). Locked once a
+          // code exists, since that room was made for one game.
+          if (showGamePicker) ...[
+            Row(
+              children: [
+                _buildGameTab(
+                  'basketball',
+                  'BASKETBALL',
+                  Icons.sports_basketball_rounded,
+                  selectedGame,
+                  locked: precreatedMatch.value != null,
+                ),
+                const SizedBox(width: 8.0),
+                _buildGameTab(
+                  'archery',
+                  'ARCHERY',
+                  Icons.track_changes_rounded,
+                  selectedGame,
+                  locked: precreatedMatch.value != null,
+                ),
+              ],
+            ),
+            const SizedBox(height: 14.0),
+          ],
+
           // Opponent Mode Selector
           const Text(
             'OPPONENT',
@@ -337,6 +390,7 @@ class MatchSetupDialog extends HookWidget {
             ),
           const SizedBox(height: 18.0),
 
+          if (!isArchery) ...[
           // Option 1: Total Rounds
           const Text(
             'MATCH LENGTH',
@@ -467,6 +521,19 @@ class MatchSetupDialog extends HookWidget {
             },
           ),
           const SizedBox(height: 20.0),
+          ] else ...[
+            const Text(
+              'SETS OF 3 ARROWS · 50FT → 100FT → 150FT · FIRST TO 6 SET POINTS',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Color(0xFF94A3B8),
+                fontSize: 10.5,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.6,
+              ),
+            ),
+            const SizedBox(height: 16.0),
+          ],
 
           // Inline validation hint (replaces the old floating SnackBar)
           InlineFeedbackSwitcher(
@@ -496,6 +563,60 @@ class MatchSetupDialog extends HookWidget {
             onPressed: onStartPressed,
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildGameTab(
+    String game,
+    String label,
+    IconData icon,
+    ValueNotifier<String> selected, {
+    required bool locked,
+  }) {
+    final isSelected = selected.value == game;
+    final Color accent = game == 'archery'
+        ? const Color(0xFF00FFCC)
+        : AppColors.accentAmber;
+    return Expanded(
+      child: Opacity(
+        opacity: locked && !isSelected ? 0.4 : 1.0,
+        child: InkWell(
+          onTap: locked
+              ? null
+              : () {
+                  HapticFeedback.selectionClick();
+                  selected.value = game;
+                },
+          borderRadius: BorderRadius.circular(12.0),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 9.0),
+            decoration: BoxDecoration(
+              color: isSelected ? accent.withValues(alpha: 0.14) : AppColors.surfaceTile,
+              borderRadius: BorderRadius.circular(12.0),
+              border: Border.all(
+                color: isSelected ? accent : AppColors.borderInput,
+                width: isSelected ? 1.5 : 1.0,
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 15.0, color: isSelected ? accent : AppColors.textMuted),
+                const SizedBox(width: 6.0),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: isSelected ? AppColors.textPrimary : AppColors.textMuted,
+                    fontSize: 11.0,
+                    fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
+                    letterSpacing: 0.6,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

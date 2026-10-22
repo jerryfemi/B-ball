@@ -284,11 +284,9 @@ class MatchSession {
     if (cloudMatch.isFinished) {
       initialPhase = MatchTurnPhase.matchComplete;
     } else if (isMyTurn) {
-      if (hasOpponentTelemetry) {
-        initialPhase = MatchTurnPhase.watchingOpponentReplay;
-      } else {
-        initialPhase = MatchTurnPhase.playingTurn;
-      }
+      // Online 1v1 is live: coming back to a match always lands where it is
+      // now (your turn), never on a replay of the opponent's round.
+      initialPhase = MatchTurnPhase.playingTurn;
     } else {
       if (isWaiting) {
         initialPhase = MatchTurnPhase.waitingForOpponentTurn;

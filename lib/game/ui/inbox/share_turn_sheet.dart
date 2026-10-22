@@ -45,7 +45,7 @@ class ShareTurnSheet extends HookWidget {
   Widget build(BuildContext context) {
     final copied = useState(false);
 
-    final matchUrl = 'https://dunkverse.web.app/#/join?code=$joinCode';
+    final matchUrl = 'https://dunkverse.web.app/match/$joinCode';
     final shareText =
         '🏀 I just scored $roundScore in DunkVerse Round $roundIndex! Can you beat it? Tap to shoot: $matchUrl';
 

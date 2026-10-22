@@ -155,6 +155,18 @@ class BasketballGame extends Forge2DGame {
   double _roundElapsedSeconds = 0.0;
   void Function(ScoreEvent event)? onScoreEvent;
 
+  /// Live online turn: device time (ms) the round clock started, or null.
+  /// The clock is wall-time from here, so it keeps running while the game is
+  /// paused, the tab is hidden, or the player is away in the lobby.
+  int? _liveTurnStartMs;
+
+  /// Ends a live turn whose clock runs out while the game is paused.
+  async.Timer? _liveExpiryTimer;
+
+  /// The live turn in progress, kept outside the game so leaving for the
+  /// lobby and coming back (same tab) continues it exactly.
+  static _LiveTurnMemory? _liveTurnMemory;
+
   // Shot telemetry & ghost duel playback
   final List<RecordedShot> _currentRoundShots = [];
   RoundTelemetry? lastRoundTelemetry;
@@ -268,12 +280,38 @@ class BasketballGame extends Forge2DGame {
     if (manual) _isManuallyPaused = true;
     isPausedNotifier.value = true;
     pauseEngine();
+    _armLiveExpiryTimer();
   }
 
   void resumeGame() {
     _isManuallyPaused = false;
     isPausedNotifier.value = false;
+    _liveExpiryTimer?.cancel();
+    _liveExpiryTimer = null;
     resumeEngine();
+  }
+
+  /// A live turn's clock keeps running while paused: end the round on time
+  /// even if the player never resumes.
+  void _armLiveExpiryTimer() {
+    _liveExpiryTimer?.cancel();
+    _liveExpiryTimer = null;
+    final start = _liveTurnStartMs;
+    if (start == null || !_isLiveTurn ||
+        gameStateNotifier.value != GameModeState.playing) {
+      return;
+    }
+    final int endsAt = start + currentRoundDurationSeconds * 1000;
+    final int waitMs = endsAt - DateTime.now().millisecondsSinceEpoch;
+    _liveExpiryTimer = async.Timer(Duration(milliseconds: waitMs < 0 ? 0 : waitMs), () {
+      _liveExpiryTimer = null;
+      if (_liveTurnStartMs == start &&
+          _isLiveTurn &&
+          gameStateNotifier.value == GameModeState.playing) {
+        timeRemainingNotifier.value = 0;
+        _onTimeExpired();
+      }
+    });
   }
 
   /// Toggles player's streak visual effects (Lightning at 3+, Flame at 6+)
@@ -310,8 +348,41 @@ class BasketballGame extends Forge2DGame {
   void recordShotAttempt() {
     if (gameStateNotifier.value == GameModeState.ready) {
       gameStateNotifier.value = GameModeState.playing;
+      if (_isLiveTurn) {
+        _liveTurnStartMs = DateTime.now().millisecondsSinceEpoch -
+            (_roundElapsedSeconds * 1000).round();
+      }
     }
     totalShots++;
+  }
+
+  /// This device is shooting its round in an online 1v1.
+  bool get _isLiveTurn {
+    final s = matchSessionNotifier.value;
+    return s != null &&
+        s.mode == MatchGameMode.onlineCloud1v1 &&
+        s.cloudMatchId != null &&
+        s.phase == MatchTurnPhase.playingTurn;
+  }
+
+  /// Saves the live turn so far (called on each shot and each make).
+  void _rememberLiveTurn() {
+    final s = matchSessionNotifier.value;
+    final start = _liveTurnStartMs;
+    if (!_isLiveTurn || s == null || start == null) return;
+    _liveTurnMemory = _LiveTurnMemory(
+      matchId: s.cloudMatchId!,
+      round: s.currentRoundNumber,
+      startMs: start,
+      score: score,
+      madeShots: madeShots,
+      totalShots: totalShots,
+      swishes: swishCount,
+      banks: bankCount,
+      streak: currentStreak,
+      bestStreak: bestStreakInRound,
+      shots: List.of(_currentRoundShots),
+    );
   }
 
   void recordShotTelemetry({
@@ -323,6 +394,10 @@ class BasketballGame extends Forge2DGame {
     required double vz,
     required double backspin,
   }) {
+    // How the previous shot ended rides along with this one, so the turn can
+    // be rebuilt if this player leaves and comes back.
+    final RecordedShot? previous =
+        _currentRoundShots.isEmpty ? null : _currentRoundShots.last;
     final shot = RecordedShot(
       timestampMs: (_roundElapsedSeconds * 1000).toInt(),
       startX: startX,
@@ -359,8 +434,17 @@ class BasketballGame extends Forge2DGame {
           shotIndex: _currentRoundShots.length,
           round: session.currentRoundNumber,
           netLevel: myNetLevelNotifier.value,
+          previousResult: previous == null
+              ? null
+              : {
+                  'm': previous.isMake,
+                  's': previous.isSwish,
+                  'b': previous.isBankShot,
+                  'p': previous.points,
+                },
         ),
       );
+      _rememberLiveTurn();
     }
   }
 
@@ -486,6 +570,7 @@ class BasketballGame extends Forge2DGame {
             shooterUid: myUid,
           ),
         );
+        _rememberLiveTurn();
       }
     }
 
@@ -517,7 +602,21 @@ class BasketballGame extends Forge2DGame {
       _updateLiveSpectatorStatus(dt);
     }
 
-    if (gameStateNotifier.value == GameModeState.playing &&
+    final int? liveStart = _liveTurnStartMs;
+    if (liveStart != null &&
+        gameStateNotifier.value == GameModeState.playing &&
+        _isLiveTurn) {
+      // Live online turn: wall-clock time, so the clock can't be stopped by
+      // pausing, hiding the tab or leaving.
+      _roundElapsedSeconds =
+          (DateTime.now().millisecondsSinceEpoch - liveStart) / 1000.0;
+      final int left = (currentRoundDurationSeconds - _roundElapsedSeconds)
+          .ceil()
+          .clamp(0, currentRoundDurationSeconds)
+          .toInt();
+      if (left != timeRemainingNotifier.value) timeRemainingNotifier.value = left;
+      if (left <= 0) _onTimeExpired();
+    } else if (gameStateNotifier.value == GameModeState.playing &&
         !isPaused &&
         timeRemainingNotifier.value > 0) {
       _roundElapsedSeconds += dt;
@@ -711,6 +810,10 @@ class BasketballGame extends Forge2DGame {
   }
 
   void _finishMatchTurn(MatchSession session) {
+    _liveTurnStartMs = null;
+    _liveExpiryTimer?.cancel();
+    _liveExpiryTimer = null;
+    if (_liveTurnMemory?.matchId == session.cloudMatchId) _liveTurnMemory = null;
     session.activePlayer.roundScores.add(score);
     if (lastRoundTelemetry != null) {
       session.activePlayer.roundTelemetries.add(lastRoundTelemetry!);
@@ -844,6 +947,7 @@ class BasketballGame extends Forge2DGame {
   }
 
   void restartRound({bool enableGhostReplay = false, bool resetToSolo = true}) {
+    _liveTurnStartMs = null;
     if (resetToSolo) {
       currentRoundDurationSeconds = roundDurationSeconds;
       matchSessionNotifier.value = null;
@@ -953,7 +1057,15 @@ class BasketballGame extends Forge2DGame {
   }
 
   /// Initiates or resumes an online 1v1 match from a synced [CloudMatch].
+  /// Called instead of [startCloudMatch] for another game's match (archery,
+  /// darts): the screen navigates to `/match/:id`.
+  void Function(CloudMatch match)? onOtherGameMatch;
+
   void startCloudMatch(CloudMatch match, String myUid) {
+    if (!match.isBasketball) {
+      onOtherGameMatch?.call(match);
+      return;
+    }
     _resetNetGauges();
     _lastSeenLiveShooterScore = null;
     final session = MatchSession.fromCloudMatch(match, myUid);
@@ -968,11 +1080,166 @@ class BasketballGame extends Forge2DGame {
 
     if (session.phase == MatchTurnPhase.watchingLiveOpponent) {
       startLiveSpectatorMode();
+      // Rejoining mid-round: show the opponent's round score so far.
+      final live = match.liveShooterScore;
+      if (live != null && match.liveShooterUid == session.player2.id) {
+        _lastSeenLiveShooterScore = live;
+        player2MatchScoreNotifier.value =
+            session.player2.scoreUpToRound(session.currentRoundIndex) + live;
+      }
     } else if (session.phase == MatchTurnPhase.watchingOpponentReplay) {
       startOpponentReplay();
+    } else if (_hasLiveTurnInProgress(match, myUid)) {
+      _clearCourtBalls();
+      unawaited(_resumeLiveTurn(match, myUid));
     } else {
       startMatchTurn();
     }
+  }
+
+  /// My round in this match was already under way (I left mid-round).
+  bool _hasLiveTurnInProgress(CloudMatch m, String myUid) {
+    if (!m.isMyTurn(myUid)) return false;
+    final mem = _liveTurnMemory;
+    if (mem != null && mem.matchId == m.id && mem.round == m.currentRound) {
+      return true;
+    }
+    return m.liveShooterUid == myUid && m.turnStartedAtMs != null;
+  }
+
+  void _clearCourtBalls() {
+    for (final b in world.children.whereType<Basketball>().toList()) {
+      b.removeFromParent();
+    }
+    for (final g in world.children.whereType<GhostBasketball>().toList()) {
+      g.removeFromParent();
+    }
+  }
+
+  /// Continues a round I left: same clock (it kept running), my made shots
+  /// and score kept. If the clock ran out meanwhile, the round is submitted
+  /// with what I had.
+  Future<void> _resumeLiveTurn(CloudMatch m, String myUid) async {
+    _LiveTurnMemory? mem = _liveTurnMemory;
+    if (mem == null || mem.matchId != m.id || mem.round != m.currentRound) {
+      mem = await _rebuildLiveTurn(m, myUid);
+    }
+    final session = matchSessionNotifier.value;
+    if (session == null || session.cloudMatchId != m.id) return; // moved on
+    startMatchTurn();
+    if (mem == null) return; // nothing was shot yet: a normal fresh round
+
+    score = mem.score;
+    madeShots = mem.madeShots;
+    totalShots = mem.totalShots;
+    swishCount = mem.swishes;
+    bankCount = mem.banks;
+    currentStreak = mem.streak;
+    bestStreakInRound = mem.bestStreak;
+    _currentRoundShots
+      ..clear()
+      ..addAll(mem.shots);
+    scoreNotifier.value = score;
+    streakNotifier.value = currentStreak;
+    player1MatchScoreNotifier.value =
+        session.player1.scoreUpToRound(session.currentRoundIndex) + score;
+
+    _liveTurnStartMs = mem.startMs;
+    _roundElapsedSeconds =
+        (DateTime.now().millisecondsSinceEpoch - mem.startMs) / 1000.0;
+    final int left = (currentRoundDurationSeconds - _roundElapsedSeconds)
+        .ceil()
+        .clamp(0, currentRoundDurationSeconds)
+        .toInt();
+    timeRemainingNotifier.value = left;
+    gameStateNotifier.value = GameModeState.playing;
+    _liveTurnMemory = mem;
+    if (left <= 0) _onTimeExpired();
+  }
+
+  /// Rebuilds a turn from the match's stored live shots (after a refresh or
+  /// on another device). Each shot carries how the one before it ended; the
+  /// last shot's result comes from the live score.
+  Future<_LiveTurnMemory?> _rebuildLiveTurn(CloudMatch m, String myUid) async {
+    final records = await FirestoreMatchService.instance.getLiveShotRecords(
+      m.id,
+      shooterUid: myUid,
+      round: m.currentRound,
+    );
+    if (records.isEmpty) {
+      final started = m.turnStartedAtMs;
+      if (started == null) return null;
+      return _LiveTurnMemory(
+        matchId: m.id,
+        round: m.currentRound,
+        startMs: started,
+        score: m.liveShooterScore ?? 0,
+        madeShots: 0,
+        totalShots: 0,
+        swishes: 0,
+        banks: 0,
+        streak: 0,
+        bestStreak: 0,
+        shots: const [],
+      );
+    }
+
+    final shots = <RecordedShot>[];
+    int known = 0;
+    for (int i = 0; i < records.length; i++) {
+      RecordedShot s = records[i].shot;
+      final pr = i + 1 < records.length ? records[i + 1].previousResult : null;
+      if (pr != null) {
+        s = s.copyWith(
+          isMake: pr['m'] as bool? ?? false,
+          isSwish: pr['s'] as bool? ?? false,
+          isBankShot: pr['b'] as bool? ?? false,
+          points: (pr['p'] as num?)?.toInt() ?? 0,
+        );
+        known += s.isMake ? s.points : 0;
+      }
+      shots.add(s);
+    }
+    // Last shot: made if the live score is above what the others add up to.
+    final int liveScore = m.liveShooterUid == myUid ? (m.liveShooterScore ?? known) : known;
+    final int lastPoints = liveScore - known;
+    if (lastPoints > 0) {
+      shots[shots.length - 1] = shots.last.copyWith(
+        isMake: true,
+        isSwish: lastPoints >= 3,
+        points: lastPoints,
+      );
+    }
+
+    int made = 0, swishes = 0, banks = 0, streak = 0, best = 0;
+    for (final s in shots) {
+      if (s.isMake) {
+        made++;
+        if (s.isSwish) swishes++;
+        if (s.isBankShot) banks++;
+        streak++;
+        if (streak > best) best = streak;
+      } else {
+        streak = 0;
+      }
+    }
+    // Round start on the shooter's own clock: send time minus round time.
+    final starts = [for (final r in records) r.sentAtMs - r.shot.timestampMs]..sort();
+    final int startMs = starts[starts.length ~/ 2];
+
+    return _LiveTurnMemory(
+      matchId: m.id,
+      round: m.currentRound,
+      startMs: startMs,
+      score: liveScore,
+      madeShots: made,
+      totalShots: shots.length,
+      swishes: swishes,
+      banks: banks,
+      streak: streak,
+      bestStreak: best,
+      shots: shots,
+    );
   }
 
   void _setupCloudMatchSync(CloudMatch match, String myUid) {
@@ -1400,6 +1667,9 @@ class BasketballGame extends Forge2DGame {
   }
 
   void exitToSoloMode() {
+    _liveTurnStartMs = null;
+    _liveExpiryTimer?.cancel();
+    _liveExpiryTimer = null;
     _resetNetGauges();
     _liveShotSubscription?.cancel();
     _liveShotSubscription = null;
@@ -1469,6 +1739,7 @@ class BasketballGame extends Forge2DGame {
   }
 
   void _prepareTurn() {
+    _liveTurnStartMs = null;
     score = 0;
     currentStreak = 0;
     totalShots = 0;
@@ -1807,8 +2078,11 @@ class BasketballGame extends Forge2DGame {
   void onRemove() {
     _liveShotSubscription?.cancel();
     _liveMatchSubscription?.cancel();
+    _liveExpiryTimer?.cancel();
     liveTransitionNotifier.dispose();
-    AudioEngine.dispose();
+    // The audio engine is app-wide (archery and the lobby use it too), so
+    // it is never disposed here; basketball only gives up its music.
+    AudioEngine.releaseSoundtrack(this);
     scoreNotifier.dispose();
     streakNotifier.dispose();
     streakFxEnabledNotifier.dispose();
@@ -1832,4 +2106,36 @@ class BasketballGame extends Forge2DGame {
     opponentNetLevelNotifier.dispose();
     super.onRemove();
   }
+}
+
+/// A live online turn in progress, kept across leaving and re-entering the
+/// basketball screen (see [BasketballGame._resumeLiveTurn]).
+class _LiveTurnMemory {
+  final String matchId;
+  final int round;
+
+  /// Device time (ms) the round clock started.
+  final int startMs;
+  final int score;
+  final int madeShots;
+  final int totalShots;
+  final int swishes;
+  final int banks;
+  final int streak;
+  final int bestStreak;
+  final List<RecordedShot> shots;
+
+  const _LiveTurnMemory({
+    required this.matchId,
+    required this.round,
+    required this.startMs,
+    required this.score,
+    required this.madeShots,
+    required this.totalShots,
+    required this.swishes,
+    required this.banks,
+    required this.streak,
+    required this.bestStreak,
+    required this.shots,
+  });
 }

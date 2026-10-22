@@ -36,6 +36,9 @@ class MatchInvite {
   final MatchInviteStatus status;
   final int createdAt;
 
+  /// Which game the challenge is for ('basketball', 'archery', …).
+  final String game;
+
   const MatchInvite({
     required this.matchId,
     required this.hostUid,
@@ -49,7 +52,10 @@ class MatchInvite {
     this.difficulty = 'medium',
     this.status = MatchInviteStatus.pending,
     required this.createdAt,
+    this.game = 'basketball',
   });
+
+  bool get isArchery => game == 'archery';
 
   bool get isPending => status == MatchInviteStatus.pending;
   bool get isAccepted => status == MatchInviteStatus.accepted;
@@ -69,6 +75,7 @@ class MatchInvite {
     String? difficulty,
     MatchInviteStatus? status,
     int? createdAt,
+    String? game,
   }) {
     return MatchInvite(
       matchId: matchId ?? this.matchId,
@@ -83,6 +90,7 @@ class MatchInvite {
       difficulty: difficulty ?? this.difficulty,
       status: status ?? this.status,
       createdAt: createdAt ?? this.createdAt,
+      game: game ?? this.game,
     );
   }
 
@@ -99,6 +107,7 @@ class MatchInvite {
     'difficulty': difficulty,
     'status': status.key,
     'createdAt': createdAt,
+    'game': game,
   };
 
   factory MatchInvite.fromMap(Map<String, dynamic> map, [String? id]) =>
@@ -119,6 +128,9 @@ class MatchInvite {
         difficulty: map['difficulty'] as String? ?? 'medium',
         status: MatchInviteStatus.fromKey(map['status'] as String?),
         createdAt: (map['createdAt'] as num?)?.toInt() ?? 0,
+        game: (map['game'] as String?)?.isNotEmpty == true
+            ? map['game'] as String
+            : 'basketball',
       );
 
   factory MatchInvite.fromFirestore(

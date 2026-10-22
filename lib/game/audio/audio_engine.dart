@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'audio_backend.dart';
@@ -49,9 +50,9 @@ class AudioEngine {
   static set sfxVolume(double value) =>
       sfxVolumeNotifier.value = value.clamp(0.0, 1.0);
 
-  /// Volume scale for background music (0.0 to 1.0). Default 68%.
+  /// Volume scale for background music (0.0 to 1.0). Default 20%.
   static final ValueNotifier<double> musicVolumeNotifier =
-      ValueNotifier<double>(0.68);
+      ValueNotifier<double>(0.20);
   static double get musicVolume => musicVolumeNotifier.value;
   static set musicVolume(double value) {
     musicVolumeNotifier.value = value.clamp(0.0, 1.0);
@@ -70,6 +71,23 @@ class AudioEngine {
   );
   static bool get sfxEnabled => sfxEnabledNotifier.value;
 
+  /// AMBIENCE on/off (persisted): a game's background soundscape, e.g.
+  /// archery's birdsong. Separate from music so it can stay on without it.
+  static final ValueNotifier<bool> ambienceEnabledNotifier = ValueNotifier<bool>(
+    true,
+  );
+  static bool get ambienceEnabled => ambienceEnabledNotifier.value;
+
+  /// Ambience volume (0.0 to 1.0). Default 60%.
+  static final ValueNotifier<double> ambienceVolumeNotifier =
+      ValueNotifier<double>(0.60);
+  static double get ambienceVolume => ambienceVolumeNotifier.value;
+  static set ambienceVolume(double value) {
+    ambienceVolumeNotifier.value = value.clamp(0.0, 1.0);
+    _applyAmbienceState();
+  }
+
+  static const String _prefKeyAmbienceEnabled = 'ambience_enabled';
   static const String _prefKeyMusicTrack = 'selected_music_track_index';
   static const String _prefKeyMusicEnabled = 'music_enabled';
   static const String _prefKeySfxEnabled = 'sfx_enabled';
@@ -78,6 +96,40 @@ class AudioEngine {
   static void toggleMute() {
     isMutedNotifier.value = !isMutedNotifier.value;
     _applyMusicState();
+    _applyAmbienceState();
+  }
+
+  /// Turns the ambience on or off and remembers the choice.
+  static Future<void> setAmbienceEnabled(bool enabled) async {
+    if (ambienceEnabledNotifier.value == enabled) return;
+    ambienceEnabledNotifier.value = enabled;
+    _applyAmbienceState();
+    await _savePref(_prefKeyAmbienceEnabled, enabled);
+  }
+
+  /// The ambience loop of the game on screen (null = none). Archery sets its
+  /// birdsong on open and clears it on close.
+  static String? _ambienceTrack;
+
+  static Future<void> useGameAmbience(String? assetPath) async {
+    if (_ambienceTrack == assetPath) return;
+    _ambienceTrack = assetPath;
+    if (!_initialized) return; // loaded by init()
+    await _backend.setAmbienceTrack(assetPath);
+    _applyAmbienceState();
+  }
+
+  static bool get _ambienceShouldPlay =>
+      _ambienceTrack != null &&
+      ambienceEnabled &&
+      !isMuted &&
+      !_isBackgrounded &&
+      ambienceVolume > 0.001;
+
+  static void _applyAmbienceState() {
+    if (!_initialized) return;
+    _backend.setAmbienceVolume((ambienceVolume * 0.5).clamp(0.0, 1.0));
+    _backend.setAmbiencePlaying(_ambienceShouldPlay);
   }
 
   /// Turns the soundtrack on or off and remembers the choice.
@@ -97,7 +149,10 @@ class AudioEngine {
   static Future<void> setSfxEnabled(bool enabled) async {
     if (sfxEnabledNotifier.value == enabled) return;
     sfxEnabledNotifier.value = enabled;
-    if (enabled && _initialized) unawaited(_loadSfx());
+    if (enabled && _initialized) {
+      unawaited(_loadSfx());
+      if (_archerySfxWanted) unawaited(loadArcherySfx());
+    }
     await _savePref(_prefKeySfxEnabled, enabled);
   }
 
@@ -114,6 +169,8 @@ class AudioEngine {
   static bool _isInitializing = false;
   static Completer<void>? _initCompleter;
   static bool _sfxLoaded = false;
+  static bool _archerySfxWanted = false;
+  static bool _archerySfxLoaded = false;
 
   // ── Monotonic stopwatch (zero-allocation rate-limiting) ──
   static final Stopwatch _clock = Stopwatch();
@@ -127,6 +184,15 @@ class AudioEngine {
     Sfx.swish: 'assets/audio/swish.wav',
     Sfx.bounce: 'assets/audio/bounce.wav',
     Sfx.buzzer: 'assets/audio/buzzer.wav',
+  };
+
+  static const Map<Sfx, String> _archerySfxAssets = {
+    Sfx.arrowDraw: 'assets/archery/sfx_draw.wav',
+    Sfx.arrowFullDraw: 'assets/archery/sfx_click.wav',
+    Sfx.arrowRelease: 'assets/archery/sfx_release.wav',
+    Sfx.arrowThunk: 'assets/archery/sfx_thunk.wav',
+    Sfx.arrowBell: 'assets/archery/sfx_ding.wav',
+    Sfx.arrowThud: 'assets/archery/sfx_thud.wav',
   };
 
   // ── Available Background Music Tracks ──
@@ -175,6 +241,7 @@ class AudioEngine {
   /// Never throws and never blocks the game: if audio can't start, the game
   /// simply runs silent and the next tap retries.
   static Future<void> init() async {
+    _ensureLifecycleObserver();
     if (_initialized) return;
     if (_isInitializing) return _initCompleter?.future;
     _isInitializing = true;
@@ -190,6 +257,13 @@ class AudioEngine {
       // Ready for taps right away; effects finish decoding in the background.
       _initialized = true;
       if (sfxEnabled) unawaited(_loadSfx());
+      if (sfxEnabled && _archerySfxWanted) unawaited(loadArcherySfx());
+      final ambience = _ambienceTrack;
+      if (ambience != null) {
+        unawaited(_backend
+            .setAmbienceTrack(ambience)
+            .then((_) => _applyAmbienceState()));
+      }
       debugPrint('[AudioEngine] Audio ready.');
     } catch (e) {
       debugPrint('[AudioEngine] Audio unavailable: $e');
@@ -208,6 +282,8 @@ class AudioEngine {
       }
       musicEnabledNotifier.value = prefs.getBool(_prefKeyMusicEnabled) ?? true;
       sfxEnabledNotifier.value = prefs.getBool(_prefKeySfxEnabled) ?? true;
+      ambienceEnabledNotifier.value =
+          prefs.getBool(_prefKeyAmbienceEnabled) ?? true;
     } catch (e) {
       debugPrint('[AudioEngine] Preference read error: $e');
     }
@@ -221,6 +297,20 @@ class AudioEngine {
     } catch (e) {
       _sfxLoaded = false;
       debugPrint('[AudioEngine] Sound effects failed to load: $e');
+    }
+  }
+
+  /// Decodes archery's sounds (only when archery is opened, so basketball
+  /// players never pay for them). Safe to call repeatedly.
+  static Future<void> loadArcherySfx() async {
+    _archerySfxWanted = true;
+    if (_archerySfxLoaded || !_initialized || !sfxEnabled) return;
+    _archerySfxLoaded = true;
+    try {
+      await _backend.loadSfx(_archerySfxAssets);
+    } catch (e) {
+      _archerySfxLoaded = false;
+      debugPrint('[AudioEngine] Archery sounds failed to load: $e');
     }
   }
 
@@ -240,6 +330,7 @@ class AudioEngine {
     // (iOS ignores the touch-down and only allows it on the release).
     _backend.unlock();
     if (!_musicStarted) _startMusic();
+    _applyAmbienceState();
     _audioUnlocked = _backend.isUnlocked;
   }
 
@@ -259,7 +350,8 @@ class AudioEngine {
           }),
     );
 
-    if (_musicStarted) {
+    // Another game's soundtrack is playing: just remember the choice.
+    if (_musicStarted && _gameTrack == null) {
       await _backend.setMusicTrack(availableTracks[index].assetPath);
       _applyMusicState();
     }
@@ -267,17 +359,75 @@ class AudioEngine {
 
   /// Starts the selected track (only after the first tap, and only if MUSIC
   /// is on — otherwise nothing is downloaded).
-  static void _startMusic() {
-    if (availableTracks.isEmpty || !musicEnabled || !_initialized) return;
-    _musicStarted = true;
+  // ─────────────────────────── Per-game soundtrack ───────────────────────────
+
+  /// null = basketball's playlist (above). Otherwise the asset this game
+  /// plays instead; '' = no music. Starts silent: only a game that claims
+  /// the soundtrack ([claimSoundtrack]) plays anything, so the lobby and
+  /// screens without music stay quiet.
+  static String? _gameTrack = '';
+
+  /// The game that currently owns the soundtrack (see [claimSoundtrack]).
+  static Object? _soundtrackOwner;
+
+  /// A game takes over the soundtrack while it's open. [track] null =
+  /// basketball's playlist, otherwise that asset; [ambience] a background
+  /// loop (archery's birdsong) or null.
+  static void claimSoundtrack(Object owner, {String? track, String? ambience}) {
+    _soundtrackOwner = owner;
+    unawaited(useGameSoundtrack(track));
+    unawaited(useGameAmbience(ambience));
+  }
+
+  /// The game is closing: silence, and the decoded track is freed. Ignored
+  /// if another game has already claimed the soundtrack (the next screen
+  /// opens before the old one is disposed). Safe to call more than once.
+  static void releaseSoundtrack(Object owner) {
+    if (!identical(_soundtrackOwner, owner)) return;
+    _soundtrackOwner = null;
+    unawaited(useGameSoundtrack(''));
+    unawaited(useGameAmbience(null));
+  }
+
+  /// Switches the soundtrack when a game opens. Basketball passes null;
+  /// archery passes its own track (or '' for silence). Settings (MUSIC on/off,
+  /// volume, mute) stay app-wide.
+  static Future<void> useGameSoundtrack(String? assetPath) async {
+    if (_gameTrack == assetPath) return;
+    _gameTrack = assetPath;
+    if (!_musicStarted) {
+      // Audio already unlocked by an earlier tap: start now. Otherwise the
+      // first tap starts it.
+      if (assetPath != '' && _audioUnlocked) _startMusic();
+      return;
+    }
+    if (assetPath == '') {
+      _musicStarted = false;
+      _backend.unloadMusic();
+      return;
+    }
+    await _backend.setMusicTrack(_currentTrackPath);
+    _applyMusicState();
+  }
+
+  static String get _currentTrackPath {
+    final override = _gameTrack;
+    if (override != null) return override;
     final index = currentTrackIndexNotifier.value.clamp(
       0,
       availableTracks.length - 1,
     );
+    return availableTracks[index].assetPath;
+  }
+
+  static void _startMusic() {
+    if (availableTracks.isEmpty || !musicEnabled || !_initialized) return;
+    if (_gameTrack == '') return; // this game has no soundtrack
+    _musicStarted = true;
     // Order matters on web: set the source and request playback in the same
     // synchronous tap.
     _backend.setMusicVolume(_effectiveMusicVolume);
-    final load = _backend.setMusicTrack(availableTracks[index].assetPath);
+    final load = _backend.setMusicTrack(_currentTrackPath);
     _backend.setMusicPlaying(_musicShouldPlay);
     unawaited(load.then((_) => _applyMusicState()));
   }
@@ -301,18 +451,38 @@ class AudioEngine {
     _backend.setMusicPlaying(_musicShouldPlay);
   }
 
+  static bool _observerAttached = false;
+
+  /// Attaches a global [WidgetsBindingObserver] so the engine automatically
+  /// pauses audio and music whenever the app, tab, or window is backgrounded,
+  /// hidden, or loses focus, and resumes upon returning.
+  static void _ensureLifecycleObserver() {
+    if (_observerAttached) return;
+    try {
+      final binding = WidgetsBinding.instance;
+      binding.addObserver(_AudioLifecycleObserver());
+      _observerAttached = true;
+    } catch (e) {
+      debugPrint('[AudioEngine] Could not attach lifecycle observer: $e');
+    }
+  }
+
   /// Call when app goes to background or browser tab is hidden.
   static void onAppBackground() {
+    if (_isBackgrounded) return;
     _isBackgrounded = true;
     _applyMusicState();
+    _applyAmbienceState();
   }
 
   /// Call when app returns to foreground.
   static void onAppForeground() {
+    if (!_isBackgrounded) return;
     _isBackgrounded = false;
     // Mobile browsers may suspend audio while hidden: re-arm the unlock so
     // the next tap revives it if this resume attempt isn't allowed.
     _applyMusicState();
+    _applyAmbienceState();
     if (_initialized) {
       _backend.unlock();
       _audioUnlocked = _backend.isUnlocked;
@@ -380,6 +550,39 @@ class AudioEngine {
     _safeHaptic(HapticFeedback.vibrate);
   }
 
+  // ─────────────────────────── Archery ───────────────────────────
+
+  /// Bow creak as the player starts drawing.
+  static void playArrowDraw() {
+    if (!_canPlaySfx) return;
+    _safePlay(Sfx.arrowDraw, 0.55);
+  }
+
+  /// Soft click when the bow reaches full draw (aiming view).
+  static void playArrowFullDraw() {
+    if (!_canPlaySfx) return;
+    _safePlay(Sfx.arrowFullDraw, 0.5);
+  }
+
+  /// String twang + whoosh on release, with a light tap.
+  static void playArrowRelease() {
+    if (!_canPlaySfx) return;
+    _safePlay(Sfx.arrowRelease, 0.9);
+    _safeHaptic(HapticFeedback.lightImpact);
+  }
+
+  /// Arrow landing: thunk into the target (plus a bell for a 10), or a thud
+  /// in the grass. The caller handles the sound-travel delay.
+  static void playArrowImpact({required bool hitTarget, bool bell = false}) {
+    if (!_canPlaySfx) return;
+    if (hitTarget) {
+      _safePlay(Sfx.arrowThunk, 0.95);
+      if (bell) _safePlay(Sfx.arrowBell, 0.55);
+    } else {
+      _safePlay(Sfx.arrowThud, 0.7);
+    }
+  }
+
   static void _safePlay(Sfx sfx, double volume) {
     final effectiveVolume = (volume * masterVolume * sfxVolume).clamp(
       0.0,
@@ -406,6 +609,7 @@ class AudioEngine {
     _backend.dispose();
     _musicStarted = false;
     _sfxLoaded = false;
+    _archerySfxLoaded = false;
     _clock
       ..stop()
       ..reset();
@@ -416,3 +620,21 @@ class AudioEngine {
     _audioUnlocked = false;
   }
 }
+
+class _AudioLifecycleObserver extends WidgetsBindingObserver {
+  _AudioLifecycleObserver();
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.detached:
+        AudioEngine.onAppBackground();
+      case AppLifecycleState.resumed:
+        AudioEngine.onAppForeground();
+    }
+  }
+}
+
