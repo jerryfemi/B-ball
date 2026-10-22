@@ -5,18 +5,14 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import '../../../models/cloud_match.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/firestore_match_service.dart';
-import '../common/app_button.dart';
-import '../common/app_modal_dialog.dart';
+import '../common/clean_ui.dart';
 
 /// Modal dialog for entering a 6-character arcade code to join a remote match.
 class JoinMatchDialog extends HookWidget {
   const JoinMatchDialog({super.key});
 
   static Future<CloudMatch?> show(BuildContext context) {
-    return AppModalDialog.show<CloudMatch>(
-      context: context,
-      builder: (ctx) => const JoinMatchDialog(),
-    );
+    return CleanUi.show<CloudMatch>(context, (ctx) => const JoinMatchDialog());
   }
 
   @override
@@ -79,11 +75,9 @@ class JoinMatchDialog extends HookWidget {
       }
     }
 
-    return AppModalDialog(
-      icon: '🎯',
-      title: 'JOIN MATCH',
-      subtitle: 'Enter 6-digit game code',
-      showCloseButton: true,
+    return CleanDialog(
+      title: 'JOIN A MATCH',
+      subtitle: 'Enter the 6-character code your friend sent you',
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -112,11 +106,15 @@ class JoinMatchDialog extends HookWidget {
               fillColor: const Color(0xFF1E2638),
               contentPadding: const EdgeInsets.symmetric(vertical: 16),
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: const BorderSide(color: Color(0xFF334155)),
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
               ),
               focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(12),
                 borderSide: const BorderSide(color: Color(0xFF00FFCC), width: 1.8),
               ),
             ),
@@ -136,13 +134,14 @@ class JoinMatchDialog extends HookWidget {
             ),
           ],
 
-          const SizedBox(height: 22),
+          const SizedBox(height: 18),
 
-          // Submit button
-          AppPrimaryButton(
-            label: 'JOIN ROOM',
-            isLoading: isLoading.value,
-            onPressed: handleJoin,
+          CleanButton(
+            label: 'JOIN MATCH',
+            icon: Icons.login_rounded,
+            primary: true,
+            loading: isLoading.value,
+            onTap: handleJoin,
           ),
         ],
       ),
