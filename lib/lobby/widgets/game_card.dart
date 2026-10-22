@@ -1,170 +1,132 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../game_catalog.dart';
+import '../lobby_style.dart';
+import 'pressable.dart';
 
-/// Lobby game card: gradient panel, category and badge, short description,
-/// feature line and a play button. The whole card is one tap target.
+/// A game in the "All games" shelf: gameplay picture on top, the name and
+/// one line below it, and a round play button (or "Coming soon").
+/// [highlighted] draws an accent ring (the game in the banner).
 class GameCard extends StatelessWidget {
   final LobbyGame game;
   final VoidCallback onTap;
+  final bool highlighted;
 
-  const GameCard({super.key, required this.game, required this.onTap});
+  const GameCard({
+    super.key,
+    required this.game,
+    required this.onTap,
+    this.highlighted = false,
+  });
 
-  void _open() {
-    HapticFeedback.lightImpact();
-    onTap();
-  }
+  /// Height of the caption under the picture (title + two lines).
+  static const double captionHeight = 96;
+
+  /// Greys out games that aren't playable yet.
+  static const ColorFilter _dim = ColorFilter.matrix(<double>[
+    0.45, 0.35, 0.05, 0, -14, //
+    0.15, 0.65, 0.05, 0, -14,
+    0.15, 0.35, 0.35, 0, -14,
+    0, 0, 0, 1, 0,
+  ]);
 
   @override
   Widget build(BuildContext context) {
     final g = game;
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: g.gradientColors,
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: g.accentColor.withValues(alpha: 0.3), width: 1.2),
-        boxShadow: [
-          BoxShadow(
-            color: g.accentColor.withValues(alpha: 0.12),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
+    Widget picture = Image.asset(
+      g.image,
+      fit: BoxFit.cover,
+      alignment: g.imageAlignment,
+      filterQuality: FilterQuality.medium,
+      gaplessPlayback: true,
+    );
+    if (!g.available) picture = ColorFiltered(colorFilter: _dim, child: picture);
+
+    return Pressable(
+      semanticLabel: g.available ? 'Play ${g.title}' : '${g.title}, coming soon',
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Ring sits 3 px outside the picture; same padding either way so
+          // every tile lines up.
+          Container(
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(21),
+              border: Border.all(
+                color: highlighted ? g.accent : Colors.transparent,
+                width: 2,
+              ),
+            ),
+            child: AspectRatio(
+              aspectRatio: 16 / 10,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    ColoredBox(color: LobbyStyle.surface, child: picture),
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0x14FFFFFF)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          SizedBox(
+            height: captionHeight,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(5, 12, 5, 0),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          g.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: LobbyStyle.text(size: 24, weight: 800, width: 115, letterSpacing: -0.24),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          g.tagline,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: LobbyStyle.text(size: 14, color: LobbyStyle.muted, height: 1.4),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  if (g.available)
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(color: g.accent, shape: BoxShape.circle),
+                      child: const Icon(Icons.play_arrow_rounded, size: 22, color: LobbyStyle.ink),
+                    )
+                  else
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        'Coming soon',
+                        style: LobbyStyle.text(size: 13, weight: 500, color: LobbyStyle.muted),
+                      ),
+                    ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: _open,
-          borderRadius: BorderRadius.circular(20),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _Header(game: g),
-                const SizedBox(height: 12),
-                Expanded(
-                  child: Text(
-                    g.description,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color(0xFF94A3B8),
-                      fontSize: 12,
-                      height: 1.4,
-                    ),
-                  ),
-                ),
-                Text(
-                  g.features,
-                  style: const TextStyle(
-                    color: Color(0xFF64748B),
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _open,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: g.accentColor,
-                      foregroundColor: const Color(0xFF060913),
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: Text(
-                      g.buttonLabel,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 12,
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Icon tile, category over title, and the badge on the right.
-class _Header extends StatelessWidget {
-  final LobbyGame game;
-  const _Header({required this.game});
-
-  @override
-  Widget build(BuildContext context) {
-    final g = game;
-    return Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: g.accentColor.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(g.icon, color: g.accentColor, size: 20),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                g.category,
-                style: TextStyle(
-                  color: g.accentColor,
-                  fontSize: 9,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1.0,
-                ),
-              ),
-              Text(
-                g.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0.2,
-                ),
-              ),
-            ],
-          ),
-        ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-          decoration: BoxDecoration(
-            color: g.badgeColor.withValues(alpha: 0.2),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: g.badgeColor.withValues(alpha: 0.6), width: 1),
-          ),
-          child: Text(
-            g.badge,
-            style: TextStyle(
-              color: g.badgeColor,
-              fontSize: 9,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0.6,
-            ),
-          ),
-        ),
-      ],
     );
   }
 }
