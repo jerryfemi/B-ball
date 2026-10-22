@@ -1,275 +1,304 @@
-import 'package:flutter/material.dart';
-import '../physics/target_scoring.dart';
+import 'dart:async';
 
-/// Large dark translucent Set End Card displayed over the target (Build Plan v2 §8.4 & §9).
+import 'package:flutter/material.dart';
+
+import '../../game/ui/common/app_avatar.dart';
+import '../physics/target_scoring.dart';
+import '../state/archery_players.dart';
+import '../state/archery_rules.dart';
+
+/// Set result card (and, on the last set, the match result).
 ///
-/// Features:
-/// - Displays "SET n  29 - 25" with avatars.
-/// - Set points won indicators (gold coins under avatars).
-/// - Clean continue / next set action button.
-class SetEndCard extends StatelessWidget {
+/// Set scoring: the higher set total earns 2 set points, a tie 1 each,
+/// first to [ArcheryRules.pointsToWin]. Online, it moves on by itself after
+/// [autoContinueSeconds] so neither archer is kept waiting.
+class SetEndCard extends StatefulWidget {
   final int setIndex; // 0-indexed
   final List<ShotScore> userScores;
-  final int opponentTotal;
+  final List<ShotScore> opponentScores;
   final int userSetPoints;
   final int opponentSetPoints;
   final bool isMatchOver;
+
+  /// +1 you won the match, −1 they did, 0 draw (when [isMatchOver]).
+  final int? winner;
+  final ArcheryPlayer you;
+  final ArcheryPlayer opponent;
+  final String continueLabel;
   final VoidCallback onContinue;
+  final int? autoContinueSeconds;
 
   const SetEndCard({
     super.key,
     required this.setIndex,
     required this.userScores,
-    required this.opponentTotal,
+    required this.opponentScores,
     required this.userSetPoints,
     required this.opponentSetPoints,
     required this.isMatchOver,
+    required this.winner,
+    required this.you,
+    required this.opponent,
+    required this.continueLabel,
     required this.onContinue,
+    this.autoContinueSeconds,
   });
 
   @override
-  Widget build(BuildContext context) {
-    final int userTotal = userScores.fold(0, (sum, s) => sum + s.points);
+  State<SetEndCard> createState() => _SetEndCardState();
+}
 
-    final bool userWon = userTotal > opponentTotal;
-    final bool isTie = userTotal == opponentTotal;
+class _SetEndCardState extends State<SetEndCard> {
+  Timer? _timer;
+  int _left = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    final s = widget.autoContinueSeconds;
+    if (s != null && !widget.isMatchOver) {
+      _left = s;
+      _timer = Timer.periodic(const Duration(seconds: 1), (t) {
+        if (!mounted) return;
+        setState(() => _left--);
+        if (_left <= 0) {
+          t.cancel();
+          widget.onContinue();
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  static const Color _you = Color(0xFF00FFCC);
+  static const Color _them = Color(0xFFA78BFA);
+
+  @override
+  Widget build(BuildContext context) {
+    final w = widget;
+    final int youTotal = w.userScores.fold(0, (s, a) => s + a.points);
+    final int themTotal = w.opponentScores.fold(0, (s, a) => s + a.points);
+    final bool setWon = youTotal > themTotal;
+    final bool setTie = youTotal == themTotal;
+
+    final String setLine = setTie
+        ? 'TIE · +${ArcheryRules.pointsForSetTie} EACH'
+        : (setWon
+            ? 'YOU +${ArcheryRules.pointsForSetWin} SET POINTS'
+            : '${w.opponent.name.toUpperCase()} +${ArcheryRules.pointsForSetWin} SET POINTS');
 
     return Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420.0),
+        constraints: const BoxConstraints(maxWidth: 400.0),
         child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 12.0),
-          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 22.0),
+          margin: const EdgeInsets.symmetric(horizontal: 14.0),
+          padding: const EdgeInsets.fromLTRB(20.0, 20.0, 20.0, 18.0),
           decoration: BoxDecoration(
-          color: const Color(0xFF0F172A).withValues(alpha: 0.94),
-          borderRadius: BorderRadius.circular(24.0),
-          border: Border.all(color: const Color(0xFF1E283D), width: 1.5),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0xCC000000),
-              blurRadius: 36.0,
-              offset: Offset(0, 10),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (isMatchOver) ...[
-              _MatchWinner(
-                userWon: userSetPoints > opponentSetPoints,
-                draw: userSetPoints == opponentSetPoints,
+            color: const Color(0xF00F172A),
+            borderRadius: BorderRadius.circular(22.0),
+            border: Border.all(color: const Color(0xFF1E2638), width: 1.5),
+            boxShadow: const [
+              BoxShadow(color: Color(0xCC000000), blurRadius: 32.0, offset: Offset(0, 10)),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (w.isMatchOver) ...[
+                _MatchWinner(winner: w.winner ?? 0, opponentName: w.opponent.name),
+                const SizedBox(height: 12.0),
+              ],
+              _Badge(
+                text: w.isMatchOver
+                    ? 'FINAL · SET ${w.setIndex + 1}'
+                    : 'SET ${w.setIndex + 1} COMPLETE',
               ),
               const SizedBox(height: 14.0),
-            ],
-            // Top Badge
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 4.0),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1E283D),
-                borderRadius: BorderRadius.circular(20.0),
+              Row(
+                children: [
+                  Expanded(child: _Side(player: w.you, ring: _you, scores: w.userScores)),
+                  Column(
+                    children: [
+                      Text(
+                        '$youTotal - $themTotal',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 30.0,
+                          fontWeight: FontWeight.w900,
+                          fontFeatures: [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                      const SizedBox(height: 2.0),
+                      Text(
+                        setLine,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: setTie
+                              ? const Color(0xFFF59E0B)
+                              : (setWon ? _you : const Color(0xFFEF4444)),
+                          fontSize: 10.0,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Expanded(child: _Side(player: w.opponent, ring: _them, scores: w.opponentScores)),
+                ],
               ),
-              child: Text(
-                isMatchOver ? 'MATCH FINISHED' : 'SET ${setIndex + 1} COMPLETE',
+              const SizedBox(height: 14.0),
+              Text(
+                'SET POINTS  ${w.userSetPoints} - ${w.opponentSetPoints}'
+                '${w.isMatchOver ? '' : '  ·  FIRST TO ${ArcheryRules.pointsToWin}'}',
                 style: const TextStyle(
-                  color: Color(0xFF38BDF8),
+                  color: Color(0xFF94A3B8),
                   fontSize: 11.0,
                   fontWeight: FontWeight.w800,
-                  letterSpacing: 1.2,
+                  letterSpacing: 0.8,
                 ),
               ),
-            ),
-            const SizedBox(height: 16.0),
-
-            // Avatars & Score Row
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                // User Column
-                Column(
-                  children: [
-                    Container(
-                      width: 52.0,
-                      height: 52.0,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF10B981).withValues(alpha: 0.2),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: const Color(0xFF10B981), width: 2.0),
-                      ),
-                      alignment: Alignment.center,
-                      child: const Text(
-                        'YOU',
-                        style: TextStyle(
-                          color: Color(0xFF10B981),
-                          fontSize: 13.0,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 6.0),
-                    // Gold Coin Set Points
-                    _buildCoinRow(userSetPoints, const Color(0xFF10B981)),
-                  ],
-                ),
-
-                // Center Score Display
-                Column(
-                  children: [
-                    Text(
-                      '$userTotal - $opponentTotal',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 34.0,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.0,
-                      ),
-                    ),
-                    const SizedBox(height: 4.0),
-                    Text(
-                      userWon
-                          ? '+1 SET POINT'
-                          : (isTie ? 'TIE (+1 EACH)' : 'OPPONENT SET POINT'),
-                      style: TextStyle(
-                        color: userWon
-                            ? const Color(0xFF10B981)
-                            : (isTie ? const Color(0xFFF59E0B) : const Color(0xFFEF4444)),
-                        fontSize: 11.0,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                  ],
-                ),
-
-                // Opponent Column
-                Column(
-                  children: [
-                    Container(
-                      width: 52.0,
-                      height: 52.0,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: const Color(0xFF8B5CF6), width: 2.0),
-                      ),
-                      alignment: Alignment.center,
-                      child: const Text(
-                        'BOT',
-                        style: TextStyle(
-                          color: Color(0xFF8B5CF6),
-                          fontSize: 13.0,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 6.0),
-                    _buildCoinRow(opponentSetPoints, const Color(0xFF8B5CF6)),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 20.0),
-
-            // 3 Arrows Breakdown
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(3, (idx) {
-                final score = idx < userScores.length ? userScores[idx] : null;
-                final String label = score?.displayLabel ?? '-';
-                final Color ringColor = score != null
-                    ? Color(score.colorValue)
-                    : const Color(0xFF475569);
-
-                return Container(
-                  width: 44.0,
-                  height: 44.0,
-                  margin: const EdgeInsets.symmetric(horizontal: 6.0),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0A0E1A),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: ringColor, width: 2.0),
+              const SizedBox(height: 16.0),
+              SizedBox(
+                width: double.infinity,
+                height: 46.0,
+                child: ElevatedButton(
+                  onPressed: () {
+                    _timer?.cancel();
+                    w.onContinue();
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _you,
+                    foregroundColor: const Color(0xFF0A0E1A),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14.0)),
                   ),
-                  alignment: Alignment.center,
                   child: Text(
-                    label,
-                    style: TextStyle(
-                      color: ringColor,
-                      fontSize: 16.0,
+                    _timer != null && _left > 0 ? '${w.continueLabel}  ·  $_left' : w.continueLabel,
+                    style: const TextStyle(
+                      fontSize: 14.0,
                       fontWeight: FontWeight.w900,
+                      letterSpacing: 1.0,
                     ),
-                  ),
-                );
-              }),
-            ),
-            const SizedBox(height: 24.0),
-
-            // Action Button
-            SizedBox(
-              width: double.infinity,
-              height: 48.0,
-              child: ElevatedButton(
-                onPressed: onContinue,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF00FFCC),
-                  foregroundColor: const Color(0xFF0A0E1A),
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14.0),
-                  ),
-                ),
-                child: Text(
-                  isMatchOver ? 'PLAY AGAIN' : 'NEXT SET',
-                  style: const TextStyle(
-                    fontSize: 14.0,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.0,
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
-    ),
-  );
-}
-
-  Widget _buildCoinRow(int count, Color color) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: List.generate(3, (i) {
-        final bool earned = i < count;
-        return Container(
-          width: 10.0,
-          height: 10.0,
-          margin: const EdgeInsets.symmetric(horizontal: 2.0),
-          decoration: BoxDecoration(
-            color: earned ? const Color(0xFFF59E0B) : const Color(0xFF1E283D),
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: earned ? const Color(0xFFFBBF24) : const Color(0xFF334155),
-              width: 1.0,
-            ),
-          ),
-        );
-      }),
     );
   }
 }
 
-
-/// Big trophy headline on the final card.
-class _MatchWinner extends StatelessWidget {
-  final bool userWon;
-  final bool draw;
-  const _MatchWinner({required this.userWon, required this.draw});
+class _Badge extends StatelessWidget {
+  final String text;
+  const _Badge({required this.text});
 
   @override
   Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E2638),
+        borderRadius: BorderRadius.circular(20.0),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: Color(0xFF38BDF8),
+          fontSize: 10.5,
+          fontWeight: FontWeight.w900,
+          letterSpacing: 1.1,
+        ),
+      ),
+    );
+  }
+}
+
+/// Avatar, name and the three arrows of one archer.
+class _Side extends StatelessWidget {
+  final ArcheryPlayer player;
+  final Color ring;
+  final List<ShotScore> scores;
+
+  const _Side({required this.player, required this.ring, required this.scores});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        AppAvatar(avatar: player.avatar, size: 46.0, borderColor: ring, borderWidth: 2.5),
+        const SizedBox(height: 4.0),
+        Text(
+          player.name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 11.5,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 6.0),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (int i = 0; i < ArcheryRules.arrowsPerSet; i++)
+              _ArrowDot(score: i < scores.length ? scores[i] : null),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _ArrowDot extends StatelessWidget {
+  final ShotScore? score;
+  const _ArrowDot({required this.score});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = score;
+    final Color c = s != null ? Color(s.colorValue) : const Color(0xFF475569);
+    return Container(
+      width: 24.0,
+      height: 24.0,
+      margin: const EdgeInsets.symmetric(horizontal: 2.0),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: const Color(0xFF0A0E1A),
+        shape: BoxShape.circle,
+        border: Border.all(color: c, width: 1.6),
+      ),
+      child: Text(
+        s?.displayLabel ?? '-',
+        style: TextStyle(color: c, fontSize: 10.5, fontWeight: FontWeight.w900),
+      ),
+    );
+  }
+}
+
+/// Big trophy headline on the final card.
+class _MatchWinner extends StatelessWidget {
+  final int winner; // +1 you, −1 them, 0 draw
+  final String opponentName;
+  const _MatchWinner({required this.winner, required this.opponentName});
+
+  @override
+  Widget build(BuildContext context) {
+    final bool draw = winner == 0;
+    final bool userWon = winner > 0;
     final Color color = draw
         ? const Color(0xFF94A3B8)
         : (userWon ? const Color(0xFFF59E0B) : const Color(0xFFEF4444));
-    final String text = draw ? 'DRAW' : (userWon ? 'YOU WIN!' : 'BOT WINS');
+    final String text = draw
+        ? 'DRAW'
+        : (userWon ? 'YOU WIN!' : '${opponentName.toUpperCase()} WINS');
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.0, end: 1.0),
       duration: const Duration(milliseconds: 700),
@@ -281,15 +310,16 @@ class _MatchWinner extends StatelessWidget {
           Icon(
             userWon ? Icons.emoji_events_rounded : Icons.sports_score_rounded,
             color: color,
-            size: 46.0,
+            size: 44.0,
             shadows: [Shadow(color: color.withValues(alpha: 0.6), blurRadius: 18.0)],
           ),
           const SizedBox(height: 4.0),
           Text(
             text,
+            textAlign: TextAlign.center,
             style: TextStyle(
               color: color,
-              fontSize: 30.0,
+              fontSize: 28.0,
               fontWeight: FontWeight.w900,
               letterSpacing: 1.0,
               shadows: [Shadow(color: color.withValues(alpha: 0.5), blurRadius: 14.0)],
