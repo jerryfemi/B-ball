@@ -134,7 +134,7 @@ class ArcheryGame extends FlameGame implements ArcheryOnlineGame {
   Future<void> onLoad() async {
     await super.onLoad();
 
-    ArcheryAudio.init();
+    ArcheryAudio.init(this);
     _applySetDistance();
     await background.load();
     await bowOverlay.load();
@@ -373,7 +373,7 @@ class ArcheryGame extends FlameGame implements ArcheryOnlineGame {
 
   @override
   void onRemove() {
-    ArcheryAudio.leave();
+    ArcheryAudio.leave(this);
     super.onRemove();
   }
 
