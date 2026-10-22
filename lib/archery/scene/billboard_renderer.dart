@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import '../archery_constants.dart';
@@ -17,15 +18,41 @@ class _LoadedBillboard {
   /// Effective world Z (spec.z, shifted back for followTarget objects).
   double z = 0.0;
 
+  // ── Wind sway (trees only) ──
+  final bool sways;
+
+  /// Per-tree timing so the trees don't move in lockstep.
+  final double phase;
+
+  /// Same look as [paint], but sampling the image through a shader so the
+  /// tree can be drawn as a bending mesh.
+  Paint? meshPaint;
+
+  /// Reused vertex positions / fixed texture coordinates of the mesh.
+  Float32List? positions;
+  Float32List? texCoords;
+
   _LoadedBillboard({
     required this.spec,
     required this.image,
     required this.paint,
+    required this.sways,
+    required this.phase,
   })  : widthPx = image.width.toDouble(),
         heightPx = image.height.toDouble();
 }
 
-/// High-performance zero-allocation billboard and contact-shadow renderer.
+/// Billboards (trees, hills) and their ground shadows.
+///
+/// Trees near the camera sway in the match's wind: each is drawn as a small
+/// mesh whose points move with their height, so the trunk stays planted and
+/// the crown bends (a slow lean + sway, plus a faster leaf flutter, each tree
+/// on its own timing). Stronger wind = more movement, leaning the way it
+/// blows. Their ground shadows shift with the crowns.
+///
+/// Far trees and the hills stay still (real distant trees barely move, and it
+/// saves work). If the device can't hold the frame rate, swaying switches
+/// itself off for the session.
 class BillboardRenderer {
   final ArcheryCamera camera;
   final VenueTheme theme;
@@ -47,6 +74,76 @@ class BillboardRenderer {
     required this.camera,
     required this.theme,
   });
+
+  // ── Sway tuning ─────────────────────────────────────────────────────────
+  /// Mesh resolution (columns × rows of quads).
+  static const int _cols = 4;
+  static const int _rows = 6;
+
+  /// Trees farther than this (m from the camera) stop swaying; it fades out
+  /// over the last [_swayFade] metres so nothing pops.
+  static const double _swayMaxDepth = 32.0;
+  static const double _swayFade = 10.0;
+
+  static final Uint16List _indices = _buildIndices();
+  static final Float64List _identity = Float64List.fromList(
+    const <double>[1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+  );
+
+  double _time = 0.0;
+
+  // Wind the trees are currently showing; eases toward the arrow's wind so a
+  // new arrow never makes the trees snap.
+  double _windStrength = 0.0; // 0..1
+  double _windSide = 0.0; // −1..1: −1 blowing left, +1 right
+  double _targetStrength = 0.0;
+  double _targetSide = 0.0;
+
+  /// Seconds for the trees to settle into a new wind (about 63% of the way).
+  static const double _windEaseSeconds = 1.2;
+
+  /// Off for the rest of the session once the frame rate struggles.
+  bool swayEnabled = true;
+  double _avgDt = 1.0 / 60.0;
+  double _slowFor = 0.0;
+
+  /// Wind for the current arrow (the same model that moves the arrow).
+  void setWind({required double display, required double angle, double phase = 0.0}) {
+    _targetStrength = (display / ArcheryK.windMaxDisplay).clamp(0.0, 1.0);
+    _targetSide = math.sin(angle);
+    if (!_windSet) {
+      // First wind of the session: start there instead of easing in from 0.
+      _windSet = true;
+      _windStrength = _targetStrength;
+      _windSide = _targetSide;
+    }
+  }
+
+  bool _windSet = false;
+
+  /// [dt] should be the game's clamped frame time.
+  void update(double dt) {
+    // Never wrapped: sin() of a large time is fine, and wrapping would make
+    // every tree jump (the sway frequencies don't share a common period).
+    _time += dt;
+
+    final double k = 1.0 - math.exp(-dt / _windEaseSeconds);
+    _windStrength += (_targetStrength - _windStrength) * k;
+    _windSide += (_targetSide - _windSide) * k;
+
+    if (!swayEnabled) return;
+    // Sustained slow frames (< ~40 fps for 3 s): stop swaying.
+    _avgDt += (dt - _avgDt) * 0.05;
+    if (_avgDt > 1.0 / 40.0) {
+      _slowFor += dt;
+      if (_slowFor > 3.0) {
+        swayEnabled = false;
+        debugPrint('[Archery] Tree sway off: frame rate too low on this device.');
+      }
+    } else {
+      _slowFor = 0.0;
+    }
+  }
 
   /// Loads all billboard images and precomputes distance haze color filters.
   Future<void> load() async {
@@ -71,7 +168,9 @@ class BillboardRenderer {
     }
 
     // 3. Prepare billboards (haze filters + back-to-front order)
-    for (final spec in theme.billboards) {
+    final Map<String, ui.ImageShader> shaders = {};
+    for (int i = 0; i < theme.billboards.length; i++) {
+      final spec = theme.billboards[i];
       final img = _loadedImages[spec.imageKey];
       if (img == null) continue;
 
@@ -79,15 +178,67 @@ class BillboardRenderer {
         ..isAntiAlias = true
         ..filterQuality = FilterQuality.low;
 
-      _billboards.add(_LoadedBillboard(
+      final bool sways = spec.imageKey.startsWith('tree');
+      final b = _LoadedBillboard(
         spec: spec,
         image: img,
         paint: paint,
-      ));
+        sways: sways,
+        phase: (i * 2.399963) % (2.0 * math.pi), // golden-angle spread
+      );
+
+      if (sways) {
+        final shader = shaders[spec.imageKey] ??= ui.ImageShader(
+          img,
+          TileMode.clamp,
+          TileMode.clamp,
+          _identity,
+          filterQuality: FilterQuality.low,
+        );
+        b.meshPaint = Paint()
+          ..isAntiAlias = true
+          ..shader = shader;
+        b.positions = Float32List((_cols + 1) * (_rows + 1) * 2);
+        b.texCoords = _buildTexCoords(b.widthPx, b.heightPx, flip: spec.flipX);
+      }
+      _billboards.add(b);
     }
 
     _isLoaded = true;
     setTargetDistance(_targetDistance);
+  }
+
+  static Float32List _buildTexCoords(double w, double h, {required bool flip}) {
+    final t = Float32List((_cols + 1) * (_rows + 1) * 2);
+    int k = 0;
+    for (int r = 0; r <= _rows; r++) {
+      for (int c = 0; c <= _cols; c++) {
+        final double u = c / _cols;
+        t[k++] = (flip ? 1.0 - u : u) * w;
+        t[k++] = (r / _rows) * h;
+      }
+    }
+    return t;
+  }
+
+  static Uint16List _buildIndices() {
+    final idx = Uint16List(_cols * _rows * 6);
+    int k = 0;
+    for (int r = 0; r < _rows; r++) {
+      for (int c = 0; c < _cols; c++) {
+        final int a = r * (_cols + 1) + c;
+        final int b = a + 1;
+        final int d = a + (_cols + 1);
+        final int e = d + 1;
+        idx[k++] = a;
+        idx[k++] = b;
+        idx[k++] = d;
+        idx[k++] = b;
+        idx[k++] = e;
+        idx[k++] = d;
+      }
+    }
+    return idx;
   }
 
   double _targetDistance = ArcheryK.distanceM;
@@ -115,6 +266,7 @@ class BillboardRenderer {
       } else {
         b.paint.colorFilter = null;
       }
+      b.meshPaint?.colorFilter = b.paint.colorFilter;
     }
     _billboards.sort((a, b) => b.z.compareTo(a.z));
   }
@@ -133,6 +285,28 @@ class BillboardRenderer {
 
     canvas.drawOval(rect, paint);
     return recorder.endRecording().toImageSync(64, 64);
+  }
+
+  // ── Sway model ──────────────────────────────────────────────────────────
+
+  /// How much this tree sways at [depth] (0 = still), fading out with distance.
+  double _swayWeight(_LoadedBillboard b, double depth) {
+    if (!swayEnabled || !b.sways) return 0.0;
+    return ((_swayMaxDepth - depth) / _swayFade).clamp(0.0, 1.0);
+  }
+
+  /// Crown offset as a fraction of tree height: steady lean with the wind
+  /// plus a gusting sway. Leaves move even in calm air.
+  double _crownOffset(_LoadedBillboard b) {
+    final double s = _windStrength;
+    final double t = _time;
+    final double lean = 0.022 * s * _windSide;
+    final double gust =
+        1.0 + 0.35 * math.sin(t * 0.7 + b.phase * 0.5) * math.sin(t * 0.31 + b.phase);
+    final double sway = (0.006 + 0.020 * s) *
+        gust *
+        (math.sin(t * 1.25 + b.phase) * 0.75 + math.sin(t * 2.1 + b.phase * 1.7) * 0.25);
+    return lean + sway;
   }
 
   /// Renders soft ground contact shadows for all visible trees.
@@ -161,21 +335,29 @@ class BillboardRenderer {
       final double flatten = (eyeY / math.sqrt(eyeY * eyeY + depth * depth)).clamp(0.25, 0.75);
       final double heightPx = widthPx * flatten * 0.45;
 
+      // The crown's shadow follows the crown a little as it sways.
+      final double w = _swayWeight(b, depth);
+      final double treeH = pxPerM * b.spec.widthMeters * b.heightPx / b.widthPx;
+      final double shift = w > 0.0 ? _crownOffset(b) * treeH * 0.22 * w : 0.0;
+
       // Slight sun direction offset (sun top-left -> shadow slightly to bottom-right)
-      final double drawX = camera.sx - widthPx * 0.42;
+      final double drawX = camera.sx - widthPx * 0.42 + shift;
       final double drawY = camera.sy - heightPx * 0.5 + 2.0;
 
       if (drawX + widthPx < 0 || drawX > screenW || drawY + heightPx < 0 || drawY > screenH) {
         continue;
       }
 
-      final Rect dst = Rect.fromLTWH(drawX, drawY, widthPx, heightPx);
-      final Rect src = Rect.fromLTWH(0, 0, shadowImgW, shadowImgH);
-      canvas.drawImageRect(shadow, src, dst, _shadowPaint);
+      // Transform instead of building Rects every frame.
+      canvas.save();
+      canvas.translate(drawX, drawY);
+      canvas.scale(widthPx / shadowImgW, heightPx / shadowImgH);
+      canvas.drawImage(shadow, Offset.zero, _shadowPaint);
+      canvas.restore();
     }
   }
 
-  /// Renders all billboards sorted back-to-front with zero runtime allocation.
+  /// Renders all billboards sorted back-to-front.
   void renderBillboards(Canvas canvas) {
     if (!_isLoaded) return;
 
@@ -193,28 +375,84 @@ class BillboardRenderer {
 
       final double pxPerM = camera.pxPerMeterAt(depth);
       final double drawW = pxPerM * spec.widthMeters;
-      final double scaleY = drawW / b.widthPx;
-      final double drawH = b.heightPx * scaleY;
+      final double scale = drawW / b.widthPx;
+      final double drawH = b.heightPx * scale;
 
       final double drawX = camera.sx - drawW * 0.5;
       final double drawY = camera.sy - drawH;
 
-      // Culling
-      if (drawX + drawW < 0 || drawX > screenW || drawY + drawH < 0 || drawY > screenH) {
+      // Culling (with room for the swaying crown)
+      final double margin = drawW * 0.1;
+      if (drawX + drawW + margin < 0 || drawX - margin > screenW ||
+          drawY + drawH < 0 || drawY > screenH) {
         continue;
       }
 
+      // Swaying trees are always drawn as a mesh (never switching to a plain
+      // image mid-sway, which made them hop when the sway crossed zero).
+      final double w = _swayWeight(b, depth);
+      if (w > 0.0) {
+        final double crown = _crownOffset(b) * drawH * w;
+        _drawSwaying(canvas, b, drawX, drawY, drawW, drawH, crown, w);
+        continue;
+      }
+
+      // Still: a plain image draw (transform, no per-frame Rects).
+      canvas.save();
       if (spec.flipX) {
-        canvas.save();
         canvas.translate(drawX + drawW, drawY);
-        canvas.scale(-scaleY, scaleY);
-        canvas.drawImage(b.image, Offset.zero, b.paint);
-        canvas.restore();
+        canvas.scale(-scale, scale);
       } else {
-        final Rect src = Rect.fromLTWH(0, 0, b.widthPx, b.heightPx);
-        final Rect dst = Rect.fromLTWH(drawX, drawY, drawW, drawH);
-        canvas.drawImageRect(b.image, src, dst, b.paint);
+        canvas.translate(drawX, drawY);
+        canvas.scale(scale, scale);
+      }
+      canvas.drawImage(b.image, Offset.zero, b.paint);
+      canvas.restore();
+    }
+  }
+
+  /// Draws a tree as a bending mesh: points move by their height (trunk base
+  /// fixed, crown most), with a faster leaf flutter across the crown.
+  void _drawSwaying(
+    Canvas canvas,
+    _LoadedBillboard b,
+    double x0,
+    double y0,
+    double w,
+    double h,
+    double crownPx,
+    double weight,
+  ) {
+    final pos = b.positions!;
+    final double t = _time;
+    final double flutterPx =
+        (0.004 + 0.008 * _windStrength) * w * weight; // leaf rustle
+    int k = 0;
+    for (int r = 0; r <= _rows; r++) {
+      final double v = r / _rows; // 0 top .. 1 base
+      final double height = 1.0 - v; // 0 base .. 1 top
+      // Trunk (lower ~20%) stays put; above it the bend grows smoothly.
+      final double hb = height <= 0.2 ? 0.0 : (height - 0.2) / 0.8;
+      final double bend = hb * math.sqrt(hb); // hb^1.5
+      final double dx = crownPx * bend;
+      final double dy = dx.abs() * 0.08 * bend; // bending shortens a little
+      for (int c = 0; c <= _cols; c++) {
+        final double u = c / _cols;
+        final double flutter = bend *
+            flutterPx *
+            math.sin(t * 3.1 + b.phase * 2.3 + u * 4.0 + height * 5.0);
+        pos[k++] = x0 + u * w + dx + flutter;
+        pos[k++] = y0 + v * h + dy + flutter * 0.4;
       }
     }
+
+    // One small native object per swaying tree per frame (the points change).
+    final vertices = ui.Vertices.raw(
+      ui.VertexMode.triangles,
+      pos,
+      textureCoordinates: b.texCoords,
+      indices: _indices,
+    );
+    canvas.drawVertices(vertices, BlendMode.srcOver, b.meshPaint!);
   }
 }
