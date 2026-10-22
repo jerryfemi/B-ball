@@ -36,11 +36,16 @@ extension type _GainNode._(JSObject _) implements _AudioNode {
 
 extension type _AudioBuffer._(JSObject _) implements JSObject {
   external double get duration;
+  external double get sampleRate;
+  external int get length;
+  external JSFloat32Array getChannelData(int channel);
 }
 
 extension type _BufferSource._(JSObject _) implements _AudioNode {
   external set buffer(_AudioBuffer b);
   external set loop(bool v);
+  external set loopStart(num seconds);
+  external set loopEnd(num seconds);
   external void start([num when, num offset]);
   external void stop();
 }
@@ -83,6 +88,12 @@ class WebAudioBackend implements AudioBackend {
   _AudioBuffer? _ambBuffer;
   _BufferSource? _ambSource;
   int _ambGen = 0;
+
+  /// Loop points inside the decoded ambience (seconds). Compressed audio
+  /// (MP3/AAC) adds a few milliseconds of silence at each end; looping
+  /// between the first and last real sample keeps the loop seamless.
+  double _ambLoopStart = 0.0;
+  double _ambLoopEnd = 0.0;
   bool _wantAmbPlaying = false;
   double _ambVolume = 0.3;
 
@@ -333,9 +344,39 @@ class WebAudioBackend implements AudioBackend {
       final buffer = await ctx.decodeAudioData(bytes.buffer.toJS).toDart;
       if (gen != _ambGen) return;
       _ambBuffer = buffer;
+      _findAmbLoopPoints(buffer);
       if (_wantAmbPlaying) _startAmbSource();
     } catch (e) {
       debugPrint('[WebAudio] Ambience load failed for $assetKey: $e');
+    }
+  }
+
+  /// Finds the first and last audible sample (looking at most 0.25 s in from
+  /// each end) and loops between them. Runs once per decoded file.
+  void _findAmbLoopPoints(_AudioBuffer buffer) {
+    _ambLoopStart = 0.0;
+    _ambLoopEnd = 0.0;
+    try {
+      final Float32List data = buffer.getChannelData(0).toDart;
+      final int n = data.length;
+      final double rate = buffer.sampleRate;
+      if (n == 0 || rate <= 0) return;
+      final int scan = (rate * 0.25).round().clamp(0, n ~/ 2);
+      const double floor = 1e-4;
+      int first = 0;
+      while (first < scan && data[first].abs() < floor) {
+        first++;
+      }
+      int last = n - 1;
+      while (last > n - 1 - scan && data[last].abs() < floor) {
+        last--;
+      }
+      if (last > first) {
+        _ambLoopStart = first / rate;
+        _ambLoopEnd = (last + 1) / rate;
+      }
+    } catch (_) {
+      // Loop the whole buffer.
     }
   }
 
@@ -354,8 +395,12 @@ class WebAudioBackend implements AudioBackend {
       final source = ctx.createBufferSource();
       source.buffer = buffer;
       source.loop = true;
+      if (_ambLoopEnd > _ambLoopStart) {
+        source.loopStart = _ambLoopStart;
+        source.loopEnd = _ambLoopEnd;
+      }
       source.connect(gain);
-      source.start();
+      source.start(0, _ambLoopStart);
       _ambSource = source;
     } catch (e) {
       debugPrint('[WebAudio] Ambience start failed: $e');
