@@ -148,8 +148,21 @@ service cloud.firestore {
           (!(myKey() in changedKeys()) || (
             request.resource.data[myKey()].uid == request.auth.uid &&
             request.resource.data[myKey()].roundScores.size() ==
-              resource.data[myKey()].roundScores.size() + 1
+              resource.data[myKey()].roundScores.size() + 1 &&
+            isPlausibleArcherySet()
           ));
+      }
+
+      // Archery: a set is 3 arrows of at most 10 points each.
+      function isPlausibleArcherySet() {
+        return resource.data.get('game', 'basketball') != 'archery' || (
+          request.resource.data[myKey()].roundScores[
+            resource.data[myKey()].roundScores.size()] is int &&
+          request.resource.data[myKey()].roundScores[
+            resource.data[myKey()].roundScores.size()] >= 0 &&
+          request.resource.data[myKey()].roundScores[
+            resource.data[myKey()].roundScores.size()] <= 30
+        );
       }
 
       // Lightweight chat-metadata mirror for inbox badges (messages live in the subcollection).
@@ -262,9 +275,28 @@ service cloud.firestore {
 
       // Real-time live shot streaming subcollection
       match /live_shots/{shotId} {
+        // Archery events: only your own, only on your turn, only for the
+        // current set, arrows 0-2, scores 0-10. An arrow's id is fixed per
+        // (archer, set, arrow), and nothing can be edited or deleted, so a
+        // landed arrow can never be rewritten.
+        function isValidArcheryEvent() {
+          let m = get(/databases/$(database)/documents/matches/$(matchId)).data;
+          let e = request.resource.data;
+          return request.auth.uid in m.playerIds &&
+            m.activeTurnPlayerUid == request.auth.uid &&
+            e.round == m.currentRound &&
+            e.arrowIndex is int && e.arrowIndex >= 0 && e.arrowIndex < 3 &&
+            (e.kind == 'draw' ||
+              (e.kind == 'arrow' &&
+                e.ring is int && e.ring >= 0 && e.ring <= 10 &&
+                shotId == 'a_' + request.auth.uid + '_' + string(e.round) + '_' + string(e.arrowIndex)));
+        }
+
         allow read: if isAuthenticated();
         allow create: if isAuthenticated() &&
-          request.resource.data.shooterUid == request.auth.uid;
+          request.resource.data.shooterUid == request.auth.uid &&
+          (request.resource.data.get('game', 'basketball') != 'archery' ||
+            isValidArcheryEvent());
         allow update, delete: if false;
       }
 
