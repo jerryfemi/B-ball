@@ -12,8 +12,10 @@ abstract final class ArcheryAudio {
   static const String musicTrack = 'assets/music/short/archery_plum_blossom.mp3';
 
   /// Birdsong under the music: a seamless 28 s mono loop (from a recording,
-  /// crossfaded end-to-start). Follows the AMBIENCE switch, not MUSIC.
-  static const String ambienceTrack = 'assets/archery/ambience_birds.wav';
+  /// crossfaded end-to-start), 64 kbps MP3 (~0.23 MB instead of the 1.37 MB
+  /// WAV). The web player trims the MP3's edge padding so the loop stays
+  /// seamless. Follows the AMBIENCE switch, not MUSIC.
+  static const String ambienceTrack = 'assets/archery/ambience_birds.mp3';
 
   /// Starts the shared engine (if needed), takes the soundtrack for
   /// [owner] (the archery game) and decodes archery's sounds.
