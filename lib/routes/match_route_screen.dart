@@ -4,6 +4,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../archery/archery_game_screen.dart';
 import '../darts/darts_game_screen.dart';
+import '../game/audio/audio_engine.dart';
 import '../game/basketball_game.dart';
 import '../game/ui/common/inline_feedback.dart';
 import '../game/ui/game_hud_overlay.dart';
@@ -208,6 +209,8 @@ class _BasketballMatchHarnessState extends State<_BasketballMatchHarness> {
   void initState() {
     super.initState();
     _game = BasketballGame();
+    // Basketball's playlist plays only while a basketball screen is open.
+    AudioEngine.claimSoundtrack(_game);
     _game.onOtherGameMatch = (m) {
       if (mounted) context.go('/match/${m.id}');
     };
@@ -216,6 +219,12 @@ class _BasketballMatchHarnessState extends State<_BasketballMatchHarness> {
       final myUid = AuthService.instance.currentUser?.uid ?? '';
       _game.startCloudMatch(widget.match, myUid);
     });
+  }
+
+  @override
+  void dispose() {
+    AudioEngine.releaseSoundtrack(_game);
+    super.dispose();
   }
 
   @override
