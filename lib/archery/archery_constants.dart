@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 /// Single Source of Truth (SSOT) for all tunable archery parameters (Build Plan v2).
 ///
 /// Follows GamePigeon-style archery conventions:
@@ -5,7 +7,7 @@
 /// - 80 cm World Archery regulation face on square white board
 /// - Dolly-only camera (no rotation) with horizon lens shift
 /// - Thumb-roll crosshair with steady ring, timer arc, and deterministic sway
-/// - Per-arrow 2D wind with wind pill
+/// - Per-arrow wind in mph with wind pill
 /// - Sets of 3 arrows format
 abstract final class ArcheryK {
   // --- Distance & World Geometry ---
@@ -134,14 +136,25 @@ abstract final class ArcheryK {
   static const double swayFatigue = 0.0035;
   static const double fatigueStart = 3.5;
 
-  // --- Wind (GamePigeon 0.0 - 2.0 format) ---
-  static const double windMaxDisplay = 2.0;
-  static const double windLateralAccelPerUnit = 1.9; // m/s² per 1.0 displayed wind
-  static const double windAlongAccelPerUnit = 0.6;   // m/s² per 1.0 displayed wind
+  // --- Wind (mph) ---
+  /// Strongest wind shown (mph).
+  static const double windMaxMph = 12.0;
+
+  /// Same value under its old name (tree sway and the gauge scale by it).
+  static const double windMaxDisplay = windMaxMph;
+
+  /// Push per mph at 50 ft (m/s²). Calibrated so a full 12 mph crosswind
+  /// moves an unaimed arrow about 5 rings at 50 ft, 7 at 100 ft and 9 at
+  /// 150 ft (the edge of the face).
+  static const double windLateralAccelPerMph = 0.55;
+
+  /// Tailwind lifts / headwind drops: about a third of the crosswind effect.
+  static const double windVerticalAccelPerMph = 0.18;
+  static const double windAlongAccelPerMph = 0.05;
 
   /// Wind is calibrated at 50 ft. Drift grows with flight time², so without
-  /// scaling a 150 ft arrow would drift ~9× more and leave the board. Scaling
-  /// the push by 50ft/D makes drift grow ~linearly with distance instead
-  /// (≈1.5 rings per 1.0 wind at 50 ft, ≈4 rings at 150 ft).
-  static double windScaleFor(double distance) => distanceM / distance;
+  /// scaling a 150 ft arrow would drift ~9× more. (50ft/D)^1.45 keeps the
+  /// growth to about 5 → 7 → 9 rings across the three distances.
+  static double windScaleFor(double distance) =>
+      math.pow(distanceM / distance, 1.45).toDouble();
 }
