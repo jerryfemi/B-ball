@@ -29,9 +29,9 @@ class HeroCarousel extends HookWidget {
     this.onChallenge,
   });
 
-  static const Duration _featuredDwell = Duration(seconds: 9);
-  static const Duration _dwell = Duration(seconds: 6);
-  static const Duration _afterTouch = Duration(seconds: 12);
+  static const Duration _featuredDwell = Duration(seconds: 6);
+  static const Duration _dwell = Duration(milliseconds: 4500);
+  static const Duration _afterTouch = Duration(seconds: 9);
   static const Duration _slide = Duration(milliseconds: 650);
 
   /// The page view is "endless": it starts far from page 0 and wraps by
