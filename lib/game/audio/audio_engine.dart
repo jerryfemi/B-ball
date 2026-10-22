@@ -50,9 +50,9 @@ class AudioEngine {
   static set sfxVolume(double value) =>
       sfxVolumeNotifier.value = value.clamp(0.0, 1.0);
 
-  /// Volume scale for background music (0.0 to 1.0). Default 68%.
+  /// Volume scale for background music (0.0 to 1.0). Default 20%.
   static final ValueNotifier<double> musicVolumeNotifier =
-      ValueNotifier<double>(0.68);
+      ValueNotifier<double>(0.20);
   static double get musicVolume => musicVolumeNotifier.value;
   static set musicVolume(double value) {
     musicVolumeNotifier.value = value.clamp(0.0, 1.0);
@@ -71,6 +71,23 @@ class AudioEngine {
   );
   static bool get sfxEnabled => sfxEnabledNotifier.value;
 
+  /// AMBIENCE on/off (persisted): a game's background soundscape, e.g.
+  /// archery's birdsong. Separate from music so it can stay on without it.
+  static final ValueNotifier<bool> ambienceEnabledNotifier = ValueNotifier<bool>(
+    true,
+  );
+  static bool get ambienceEnabled => ambienceEnabledNotifier.value;
+
+  /// Ambience volume (0.0 to 1.0). Default 60%.
+  static final ValueNotifier<double> ambienceVolumeNotifier =
+      ValueNotifier<double>(0.60);
+  static double get ambienceVolume => ambienceVolumeNotifier.value;
+  static set ambienceVolume(double value) {
+    ambienceVolumeNotifier.value = value.clamp(0.0, 1.0);
+    _applyAmbienceState();
+  }
+
+  static const String _prefKeyAmbienceEnabled = 'ambience_enabled';
   static const String _prefKeyMusicTrack = 'selected_music_track_index';
   static const String _prefKeyMusicEnabled = 'music_enabled';
   static const String _prefKeySfxEnabled = 'sfx_enabled';
@@ -79,6 +96,40 @@ class AudioEngine {
   static void toggleMute() {
     isMutedNotifier.value = !isMutedNotifier.value;
     _applyMusicState();
+    _applyAmbienceState();
+  }
+
+  /// Turns the ambience on or off and remembers the choice.
+  static Future<void> setAmbienceEnabled(bool enabled) async {
+    if (ambienceEnabledNotifier.value == enabled) return;
+    ambienceEnabledNotifier.value = enabled;
+    _applyAmbienceState();
+    await _savePref(_prefKeyAmbienceEnabled, enabled);
+  }
+
+  /// The ambience loop of the game on screen (null = none). Archery sets its
+  /// birdsong on open and clears it on close.
+  static String? _ambienceTrack;
+
+  static Future<void> useGameAmbience(String? assetPath) async {
+    if (_ambienceTrack == assetPath) return;
+    _ambienceTrack = assetPath;
+    if (!_initialized) return; // loaded by init()
+    await _backend.setAmbienceTrack(assetPath);
+    _applyAmbienceState();
+  }
+
+  static bool get _ambienceShouldPlay =>
+      _ambienceTrack != null &&
+      ambienceEnabled &&
+      !isMuted &&
+      !_isBackgrounded &&
+      ambienceVolume > 0.001;
+
+  static void _applyAmbienceState() {
+    if (!_initialized) return;
+    _backend.setAmbienceVolume((ambienceVolume * 0.5).clamp(0.0, 1.0));
+    _backend.setAmbiencePlaying(_ambienceShouldPlay);
   }
 
   /// Turns the soundtrack on or off and remembers the choice.
@@ -207,6 +258,12 @@ class AudioEngine {
       _initialized = true;
       if (sfxEnabled) unawaited(_loadSfx());
       if (sfxEnabled && _archerySfxWanted) unawaited(loadArcherySfx());
+      final ambience = _ambienceTrack;
+      if (ambience != null) {
+        unawaited(_backend
+            .setAmbienceTrack(ambience)
+            .then((_) => _applyAmbienceState()));
+      }
       debugPrint('[AudioEngine] Audio ready.');
     } catch (e) {
       debugPrint('[AudioEngine] Audio unavailable: $e');
@@ -225,6 +282,8 @@ class AudioEngine {
       }
       musicEnabledNotifier.value = prefs.getBool(_prefKeyMusicEnabled) ?? true;
       sfxEnabledNotifier.value = prefs.getBool(_prefKeySfxEnabled) ?? true;
+      ambienceEnabledNotifier.value =
+          prefs.getBool(_prefKeyAmbienceEnabled) ?? true;
     } catch (e) {
       debugPrint('[AudioEngine] Preference read error: $e');
     }
@@ -271,6 +330,7 @@ class AudioEngine {
     // (iOS ignores the touch-down and only allows it on the release).
     _backend.unlock();
     if (!_musicStarted) _startMusic();
+    _applyAmbienceState();
     _audioUnlocked = _backend.isUnlocked;
   }
 
@@ -383,6 +443,7 @@ class AudioEngine {
     if (_isBackgrounded) return;
     _isBackgrounded = true;
     _applyMusicState();
+    _applyAmbienceState();
   }
 
   /// Call when app returns to foreground.
@@ -392,6 +453,7 @@ class AudioEngine {
     // Mobile browsers may suspend audio while hidden: re-arm the unlock so
     // the next tap revives it if this resume attempt isn't allowed.
     _applyMusicState();
+    _applyAmbienceState();
     if (_initialized) {
       _backend.unlock();
       _audioUnlocked = _backend.isUnlocked;
