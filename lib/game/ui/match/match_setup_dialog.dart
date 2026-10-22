@@ -12,42 +12,54 @@ import '../../../services/firestore_match_service.dart';
 import '../../../services/update/update_platform.dart';
 import '../../match/match_config.dart';
 import '../../physics/shot_difficulty.dart';
-import '../common/app_avatar.dart';
-import '../common/app_button.dart';
 import '../common/app_colors.dart';
-import '../common/app_modal_dialog.dart';
+import '../common/clean_ui.dart';
 import '../common/difficulty_stepped_slider.dart';
 import '../common/inline_feedback.dart';
+import '../inbox/join_match_dialog.dart';
 import 'components/friend_selector_ribbon.dart';
-import 'components/match_code_card.dart';
 
-/// Streamlined Arcade 1v1 Challenge Creator modal in muted luxury obsidian palette.
+/// "Play a friend": create a 1v1 match (share a code or challenge a friend)
+/// or join one with a code. Same clean look as the archery pause menu, for
+/// both games.
+///
+/// Returns the chosen [MatchConfig]; if the player joined a match instead,
+/// [MatchConfig.joinedMatch] is set and the caller just opens it.
 class MatchSetupDialog extends HookWidget {
   final MatchConfig initialConfig;
 
-  /// Shows a BASKETBALL / ARCHERY switch at the top (the shared match inbox).
+  /// Shows a HOOPS / ARCHERY switch at the top (the shared match inbox).
   /// Off when a game opens the dialog for itself.
   final bool showGamePicker;
+
+  /// Offers "Join with a code" (off where joining makes no sense, e.g. the
+  /// pass-and-play settings).
+  final bool allowJoin;
 
   const MatchSetupDialog({
     super.key,
     this.initialConfig = const MatchConfig(),
     this.showGamePicker = false,
+    this.allowJoin = true,
   });
 
   static Future<MatchConfig?> show(
     BuildContext context, {
     MatchConfig initialConfig = const MatchConfig(),
     bool showGamePicker = false,
+    bool allowJoin = true,
   }) {
-    return AppModalDialog.show<MatchConfig>(
-      context: context,
-      builder: (context) => MatchSetupDialog(
+    return CleanUi.show<MatchConfig>(
+      context,
+      (context) => MatchSetupDialog(
         initialConfig: initialConfig,
         showGamePicker: showGamePicker,
+        allowJoin: allowJoin,
       ),
     );
   }
+
+  static const Color _hoops = Color(0xFFF59E0B);
 
   static const List<int> _roundOptions = [2, 3, 4];
   static const List<int> _durationOptions = [30, 60];
@@ -206,158 +218,71 @@ class MatchSetupDialog extends HookWidget {
       Navigator.of(context).pop(config);
     }
 
-    String getStartButtonLabel() {
-      if (opponentMode.value == 1) {
-        if (selectedFriend.value != null) {
-          return 'CHALLENGE ${selectedFriend.value!.displayName.toUpperCase()} ➔';
-        }
-        return 'SELECT A FRIEND TO CHALLENGE';
+    Future<void> joinWithCode() async {
+      final joined = await JoinMatchDialog.show(context);
+      if (joined != null && context.mounted) {
+        Navigator.of(context).pop(MatchConfig(game: joined.game, joinedMatch: joined));
       }
-      if (precreatedMatch.value != null) {
-        return 'ENTER MATCH LOBBY ➔';
+    }
+
+    // Share-a-code mode: the primary button first gets the code, then opens
+    // the waiting room. Friend mode: it sends the challenge.
+    final bool codeMode = opponentMode.value == 0;
+    final bool hasCode = precreatedMatch.value != null;
+    String primaryLabel() {
+      if (!codeMode) {
+        final f = selectedFriend.value;
+        return f == null ? 'PICK A FRIEND' : 'CHALLENGE ${f.displayName.toUpperCase()}';
       }
-      return 'CREATE 1V1 MATCH';
+      return hasCode ? 'ENTER MATCH LOBBY' : 'GET MATCH CODE';
+    }
+
+    void onPrimary() {
+      if (codeMode && !hasCode) {
+        generateUpfrontCode(AuthService.instance.currentUser);
+        return;
+      }
+      onStartPressed();
     }
 
     final profile = AuthService.instance.currentUser;
-    final myName = profile?.displayName ?? 'Player';
-    final myAvatar =
-        profile?.avatarEmoji ?? PlayerDescriptor.defaultAvatar;
+    final Color gameAccent = isArchery ? CleanUi.accent : _hoops;
 
-    return AppModalDialog(
-      maxWidth: 390.0,
-      scrollable: true,
-      iconWidget: Icon(
-        isArchery ? Icons.track_changes_rounded : Icons.sports_basketball_rounded,
-        color: AppColors.accentAmber,
-        size: 22.0,
-      ),
-      title: isArchery ? 'NEW ARCHERY MATCH' : 'NEW 1V1 MATCH',
-      subtitle: 'Challenge a friend or share a match code',
-      showCloseButton: true,
+    return CleanDialog(
+      title: 'PLAY A FRIEND',
+      subtitle: isArchery
+          ? 'Archery 1v1: sets of 3 arrows, first to 6 set points'
+          : 'Hoops 1v1: take turns, highest total wins',
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Player identity capsule
-          Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 14.0,
-              vertical: 10.0,
-            ),
-            decoration: BoxDecoration(
-              color: AppColors.surfaceTile,
-              borderRadius: BorderRadius.circular(14.0),
-              border: Border.all(color: AppColors.borderInput),
-            ),
-            child: Row(
-              children: [
-                AppAvatar(
-                  avatar: myAvatar,
-                  size: 34.0,
-                  borderColor: AppColors.accentElectricSky,
-                  borderWidth: 1.5,
-                ),
-                const SizedBox(width: 10.0),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'CREATING AS',
-                        style: TextStyle(
-                          color: AppColors.textSubtle,
-                          fontSize: 10.0,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.0,
-                        ),
-                      ),
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          myName,
-                          style: const TextStyle(
-                            color: AppColors.textPrimary,
-                            fontSize: 14.0,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Text(
-                  'HOST',
-                  style: TextStyle(
-                    color: AppColors.accentElectricSky,
-                    fontSize: 11.0,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16.0),
-
-          // Which game (only in the shared match inbox). Locked once a
-          // code exists, since that room was made for one game.
+          // Which game (shared inbox only). Locked once a code exists,
+          // since that room was made for one game.
           if (showGamePicker) ...[
-            Row(
-              children: [
-                _buildGameTab(
-                  'basketball',
-                  'BASKETBALL',
-                  Icons.sports_basketball_rounded,
-                  selectedGame,
-                  locked: precreatedMatch.value != null,
-                ),
-                const SizedBox(width: 8.0),
-                _buildGameTab(
-                  'archery',
-                  'ARCHERY',
-                  Icons.track_changes_rounded,
-                  selectedGame,
-                  locked: precreatedMatch.value != null,
-                ),
+            CleanSegmented<String>(
+              segments: const [
+                CleanSegment('basketball', 'HOOPS', icon: Icons.sports_basketball_rounded),
+                CleanSegment('archery', 'ARCHERY', icon: Icons.track_changes_rounded),
               ],
+              selected: selectedGame.value,
+              accent: gameAccent,
+              onChanged: hasCode ? null : (g) => selectedGame.value = g,
             ),
-            const SizedBox(height: 14.0),
+            const SizedBox(height: 10.0),
           ],
 
-          // Opponent Mode Selector
-          const Text(
-            'OPPONENT',
-            style: TextStyle(
-              color: AppColors.textMuted,
-              fontSize: 11.0,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.0,
-            ),
-          ),
-          const SizedBox(height: 8.0),
-          Row(
-            children: [
-              _buildOpponentTab(
-                0,
-                'OPEN CODE',
-                Icons.qr_code_rounded,
-                opponentMode,
-              ),
-              const SizedBox(width: 8.0),
-              _buildOpponentTab(
-                1,
-                'CHALLENGE FRIEND',
-                Icons.people_alt_rounded,
-                opponentMode,
-              ),
+          CleanSegmented<int>(
+            segments: const [
+              CleanSegment(0, 'SHARE A CODE', icon: Icons.tag_rounded),
+              CleanSegment(1, 'A FRIEND', icon: Icons.people_alt_rounded),
             ],
+            selected: opponentMode.value,
+            onChanged: (m) => opponentMode.value = m,
           ),
-          const SizedBox(height: 10.0),
+          const SizedBox(height: 14.0),
 
-          // Opponent Details / Options
-          if (opponentMode.value == 0)
-            // The code card itself morphs into an inline error state with RETRY.
+          if (codeMode)
             InlineFeedbackSwitcher(
               child: codeError.value != null
                   ? InlineErrorPanel(
@@ -367,16 +292,24 @@ class MatchSetupDialog extends HookWidget {
                       onRetry: () => generateUpfrontCode(profile),
                       onDismiss: () => codeError.value = null,
                     )
-                  : MatchCodeCard(
-                      key: const ValueKey('code-card'),
-                      precreatedMatch: precreatedMatch.value,
-                      isGeneratingCode: isGeneratingCode.value,
-                      codeCopied: codeCopied.value,
-                      profile: profile,
-                      onGenerateCode: () => generateUpfrontCode(profile),
-                      onCopyCode: copyCode,
-                      onShareCode: shareCode,
-                    ),
+                  : hasCode
+                      ? _CodeReveal(
+                          key: const ValueKey('code'),
+                          code: precreatedMatch.value!.joinCode,
+                          copied: codeCopied.value,
+                          onCopy: copyCode,
+                          onShare: shareCode,
+                        )
+                      : const Padding(
+                          key: ValueKey('code-help'),
+                          padding: EdgeInsets.only(bottom: 4.0),
+                          child: Text(
+                            'Get a 6-character code and send it to anyone. '
+                            'They enter it with "Join with a code".',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: CleanUi.muted, fontSize: 12.5, height: 1.4),
+                          ),
+                        ),
             )
           else
             FriendSelectorRibbon(
@@ -388,158 +321,45 @@ class MatchSetupDialog extends HookWidget {
               },
               onUseOpenCode: () => opponentMode.value = 0,
             ),
-          const SizedBox(height: 18.0),
+          const SizedBox(height: 16.0),
 
           if (!isArchery) ...[
-          // Option 1: Total Rounds
-          const Text(
-            'MATCH LENGTH',
-            style: TextStyle(
-              color: Color(0xFF94A3B8),
-              fontSize: 11.0,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.0,
-            ),
-          ),
-          const SizedBox(height: 8.0),
-          Row(
-            children: _roundOptions.map((rounds) {
-              final isSelected = selectedRounds.value == rounds;
-              return Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4.0),
-                  child: InkWell(
-                    onTap: () {
-                      HapticFeedback.selectionClick();
-                      selectedRounds.value = rounds;
-                    },
-                    borderRadius: BorderRadius.circular(12.0),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 10.0),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? const Color(0xFF2563EB)
-                            : const Color(0xFF1E2638),
-                        borderRadius: BorderRadius.circular(12.0),
-                        border: Border.all(
-                          color: isSelected
-                              ? const Color(0xFF60A5FA)
-                              : const Color(0xFF334155),
-                          width: isSelected ? 1.5 : 1.0,
-                        ),
-                      ),
-                      child: Center(
-                        child: Text(
-                          '$rounds Rounds',
-                          style: TextStyle(
-                            color: isSelected
-                                ? Colors.white
-                                : const Color(0xFFCBD5E1),
-                            fontSize: 12.0,
-                            fontWeight: isSelected
-                                ? FontWeight.w900
-                                : FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 16.0),
-
-          // Option 2: Shot Clock
-          const Text(
-            'ROUND SHOT CLOCK',
-            style: TextStyle(
-              color: Color(0xFF94A3B8),
-              fontSize: 11.0,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.0,
-            ),
-          ),
-          const SizedBox(height: 8.0),
-          Row(
-            children: _durationOptions.map((dur) {
-              final isSelected = selectedDuration.value == dur;
-              return Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4.0),
-                  child: InkWell(
-                    onTap: () {
-                      HapticFeedback.selectionClick();
-                      selectedDuration.value = dur;
-                    },
-                    borderRadius: BorderRadius.circular(12.0),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 10.0),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? const Color(0xFF1E293B)
-                            : const Color(0xFF1E2638),
-                        borderRadius: BorderRadius.circular(12.0),
-                        border: Border.all(
-                          color: isSelected
-                              ? const Color(0xFF38BDF8)
-                              : const Color(0xFF334155),
-                          width: isSelected ? 1.5 : 1.0,
-                        ),
-                      ),
-                      child: Center(
-                        child: Text(
-                          dur == 30 ? '30s Blitz ⚡' : '60s Standard ⏱',
-                          style: TextStyle(
-                            color: isSelected
-                                ? const Color(0xFF38BDF8)
-                                : const Color(0xFFCBD5E1),
-                            fontSize: 12.0,
-                            fontWeight: isSelected
-                                ? FontWeight.w900
-                                : FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 16.0),
-
-          // Option 3: Shot Difficulty
-          ValueListenableBuilder<ShotDifficulty>(
-            valueListenable: selectedDifficulty,
-            builder: (context, diff, _) {
-              return DifficultySteppedSlider(
-                value: diff,
-                onChanged: (newDiff) => selectedDifficulty.value = newDiff,
-                title: 'DIFFICULTY PRESET',
-              );
-            },
-          ),
-          const SizedBox(height: 20.0),
-          ] else ...[
-            const Text(
-              'SETS OF 3 ARROWS · 50FT → 100FT → 150FT · FIRST TO 6 SET POINTS',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Color(0xFF94A3B8),
-                fontSize: 10.5,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.6,
+            CleanRow(
+              icon: Icons.repeat_rounded,
+              label: 'ROUNDS',
+              iconColor: _hoops,
+              trailing: CleanSegmented<int>(
+                segments: [for (final r in _roundOptions) CleanSegment(r, '$r')],
+                selected: selectedRounds.value,
+                accent: _hoops,
+                onChanged: (r) => selectedRounds.value = r,
               ),
             ),
-            const SizedBox(height: 16.0),
+            CleanRow(
+              icon: Icons.timer_outlined,
+              label: 'CLOCK',
+              iconColor: _hoops,
+              trailing: CleanSegmented<int>(
+                segments: [for (final d in _durationOptions) CleanSegment(d, '${d}s')],
+                selected: selectedDuration.value,
+                accent: _hoops,
+                onChanged: (d) => selectedDuration.value = d,
+              ),
+            ),
+            ValueListenableBuilder<ShotDifficulty>(
+              valueListenable: selectedDifficulty,
+              builder: (context, diff, _) => DifficultySteppedSlider(
+                value: diff,
+                onChanged: (newDiff) => selectedDifficulty.value = newDiff,
+                title: 'DIFFICULTY',
+              ),
+            ),
+            const SizedBox(height: 14.0),
           ],
 
           // Inline validation hint (replaces the old floating SnackBar)
           InlineFeedbackSwitcher(
-            child: (showPickFriendHint.value &&
-                    opponentMode.value == 1 &&
-                    selectedFriend.value == null)
+            child: (showPickFriendHint.value && !codeMode && selectedFriend.value == null)
                 ? Padding(
                     key: const ValueKey('pick-friend'),
                     padding: const EdgeInsets.only(bottom: 10.0),
@@ -547,136 +367,97 @@ class MatchSetupDialog extends HookWidget {
                       icon: Icons.people_alt_rounded,
                       accent: AppColors.accentAmber,
                       title: 'PICK A FRIEND',
-                      message:
-                          'Select a friend to challenge above, or switch to Open Code.',
+                      message: 'Select a friend above, or share a code instead.',
                       onDismiss: () => showPickFriendHint.value = false,
                     ),
                   )
                 : const SizedBox.shrink(key: ValueKey('no-hint')),
           ),
 
-          // Primary Start Challenge Button
-          AppPrimaryButton(
-            label: getStartButtonLabel(),
-            backgroundColor: AppColors.accentElectricSky,
-            iconData: Icons.arrow_forward_rounded,
-            onPressed: onStartPressed,
+          CleanButton(
+            label: primaryLabel(),
+            icon: codeMode
+                ? (hasCode ? Icons.arrow_forward_rounded : Icons.tag_rounded)
+                : Icons.send_rounded,
+            primary: true,
+            accent: gameAccent,
+            loading: isGeneratingCode.value,
+            onTap: onPrimary,
           ),
+          if (allowJoin) ...[
+            const SizedBox(height: 8.0),
+            CleanButton(
+              label: 'JOIN WITH A CODE',
+              icon: Icons.login_rounded,
+              onTap: joinWithCode,
+            ),
+          ],
         ],
       ),
     );
   }
+}
 
-  Widget _buildGameTab(
-    String game,
-    String label,
-    IconData icon,
-    ValueNotifier<String> selected, {
-    required bool locked,
-  }) {
-    final isSelected = selected.value == game;
-    final Color accent = game == 'archery'
-        ? const Color(0xFF00FFCC)
-        : AppColors.accentAmber;
-    return Expanded(
-      child: Opacity(
-        opacity: locked && !isSelected ? 0.4 : 1.0,
-        child: InkWell(
-          onTap: locked
-              ? null
-              : () {
-                  HapticFeedback.selectionClick();
-                  selected.value = game;
-                },
-          borderRadius: BorderRadius.circular(12.0),
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 9.0),
-            decoration: BoxDecoration(
-              color: isSelected ? accent.withValues(alpha: 0.14) : AppColors.surfaceTile,
-              borderRadius: BorderRadius.circular(12.0),
-              border: Border.all(
-                color: isSelected ? accent : AppColors.borderInput,
-                width: isSelected ? 1.5 : 1.0,
-              ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, size: 15.0, color: isSelected ? accent : AppColors.textMuted),
-                const SizedBox(width: 6.0),
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: isSelected ? AppColors.textPrimary : AppColors.textMuted,
-                    fontSize: 11.0,
-                    fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
-                    letterSpacing: 0.6,
-                  ),
-                ),
-              ],
+/// The match code, big, with COPY and SHARE (copy confirms in place with
+/// "✓ CODE COPIED").
+class _CodeReveal extends StatelessWidget {
+  final String code;
+  final bool copied;
+  final VoidCallback onCopy;
+  final VoidCallback onShare;
+
+  const _CodeReveal({
+    super.key,
+    required this.code,
+    required this.copied,
+    required this.onCopy,
+    required this.onShare,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        SelectableText(
+          code,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: CleanUi.accent,
+            fontSize: 34.0,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 8.0,
+          ),
+        ),
+        const SizedBox(height: 4.0),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          child: Text(
+            copied ? '✓ CODE COPIED' : 'Send this code to your opponent',
+            key: ValueKey(copied),
+            style: TextStyle(
+              color: copied ? CleanUi.accent : CleanUi.muted,
+              fontSize: 11.5,
+              fontWeight: copied ? FontWeight.w900 : FontWeight.w500,
+              letterSpacing: copied ? 0.8 : 0.0,
+              shadows: copied
+                  ? const [Shadow(color: Color(0x8800FFCC), blurRadius: 10.0)]
+                  : null,
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildOpponentTab(
-    int mode,
-    String label,
-    IconData icon,
-    ValueNotifier<int> opponentMode,
-  ) {
-    final isSelected = opponentMode.value == mode;
-    return Expanded(
-      child: InkWell(
-        onTap: () {
-          HapticFeedback.selectionClick();
-          opponentMode.value = mode;
-        },
-        borderRadius: BorderRadius.circular(12.0),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 8.0),
-          decoration: BoxDecoration(
-            color: isSelected
-                ? const Color(0xFF1E3A5F)
-                : AppColors.surfaceTile,
-            borderRadius: BorderRadius.circular(12.0),
-            border: Border.all(
-              color: isSelected
-                  ? AppColors.accentElectricSky
-                  : AppColors.borderInput,
-              width: isSelected ? 1.5 : 1.0,
+        const SizedBox(height: 10.0),
+        Row(
+          children: [
+            Expanded(
+              child: CleanButton(label: 'COPY', icon: Icons.copy_rounded, onTap: onCopy),
             ),
-          ),
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  icon,
-                  size: 14.0,
-                  color: isSelected
-                      ? AppColors.accentElectricSky
-                      : AppColors.textMuted,
-                ),
-                const SizedBox(width: 6.0),
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: isSelected
-                        ? AppColors.textPrimary
-                        : AppColors.textMuted,
-                    fontSize: 11.0,
-                    fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
-                  ),
-                ),
-              ],
+            const SizedBox(width: 8.0),
+            Expanded(
+              child: CleanButton(label: 'SHARE', icon: Icons.ios_share_rounded, onTap: onShare),
             ),
-          ),
+          ],
         ),
-      ),
+      ],
     );
   }
 }
