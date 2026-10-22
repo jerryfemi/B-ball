@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../game/ui/common/app_avatar.dart';
+import '../../game/ui/common/clean_ui.dart';
 import '../physics/target_scoring.dart';
 import '../state/archery_players.dart';
 import '../state/archery_rules.dart';
@@ -28,6 +29,10 @@ class SetEndCard extends StatefulWidget {
   final VoidCallback onContinue;
   final int? autoContinueSeconds;
 
+  /// Optional second button under the main one (e.g. EXIT after a match).
+  final String? secondaryLabel;
+  final VoidCallback? onSecondary;
+
   const SetEndCard({
     super.key,
     required this.setIndex,
@@ -42,6 +47,8 @@ class SetEndCard extends StatefulWidget {
     required this.continueLabel,
     required this.onContinue,
     this.autoContinueSeconds,
+    this.secondaryLabel,
+    this.onSecondary,
   });
 
   @override
@@ -179,6 +186,8 @@ class _SetEndCardState extends State<SetEndCard> {
                   ),
                   child: Text(
                     _timer != null && _left > 0 ? '${w.continueLabel}  ·  $_left' : w.continueLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontSize: 14.0,
                       fontWeight: FontWeight.w900,
@@ -187,6 +196,20 @@ class _SetEndCardState extends State<SetEndCard> {
                   ),
                 ),
               ),
+              if (w.secondaryLabel != null && w.onSecondary != null) ...[
+                const SizedBox(height: 8.0),
+                SizedBox(
+                  width: double.infinity,
+                  child: CleanButton(
+                    label: w.secondaryLabel!,
+                    icon: Icons.close_rounded,
+                    onTap: () {
+                      _timer?.cancel();
+                      w.onSecondary!();
+                    },
+                  ),
+                ),
+              ],
             ],
           ),
         ),
