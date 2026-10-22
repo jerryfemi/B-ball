@@ -93,6 +93,14 @@ class ArcheryOnlineController {
 
   // Clocks (seconds)
   double _clock = ArcheryRules.shotClockSeconds.toDouble();
+
+  /// Seconds a timed-out arrow ran over, taken off the next arrow's clock
+  /// (so a long absence costs one arrow per 25 s, not just one).
+  double _overrun = 0.0;
+
+  /// Your shot clock when you last left a match (lobby, inbox), per match,
+  /// so coming back continues it instead of starting a fresh 25 s.
+  static final Map<String, _SavedClock> _savedClocks = {};
   double _idle = 0.0; // since the opponent last did anything
   double _drawingFor = -1.0; // since their draw ping, −1 = not drawing
 
@@ -114,6 +122,15 @@ class ArcheryOnlineController {
   }
 
   void dispose() {
+    if (_myTurn && _turnRound > 0 && !_submitting && !_finished &&
+        _myArrows.length < ArcheryRules.arrowsPerSet) {
+      _savedClocks[matchId] = _SavedClock(
+        round: _turnRound,
+        arrowIndex: _myArrows.length,
+        secondsLeft: _clock - _overrun,
+        savedAtMs: DateTime.now().millisecondsSinceEpoch,
+      );
+    }
     _matchSub?.cancel();
     _liveSub?.cancel();
     _matchSub = null;
@@ -252,6 +269,7 @@ class ArcheryOnlineController {
     );
 
     _clock = ArcheryRules.shotClockSeconds.toDouble();
+    _overrun = 0.0;
     _idle = 0.0;
     _drawingFor = -1.0;
 
@@ -263,6 +281,8 @@ class ArcheryOnlineController {
         unawaited(_submit()); // shot it all before, the submit didn't land
         return;
       }
+      // Coming back mid-set: the clock kept running while you were away.
+      _restoreClock(m, round);
       _setStatus(m.status == MatchStatus.waitingForOpponent
           ? ArcheryLiveStatus.waitingToJoin
           : ArcheryLiveStatus.yourShot);
@@ -283,6 +303,36 @@ class ArcheryOnlineController {
     _liveSub?.cancel();
     _liveSub = null;
     shotClock.value = -1;
+  }
+
+  /// Your shot clock for the arrow you're on, if you left and came back:
+  /// what was left when you went, minus the time away. Without that (page
+  /// refresh, other device): 25 s from when your last arrow landed, or from
+  /// when the set began. Anything past zero is carried as [_overrun].
+  void _restoreClock(CloudMatch m, int round) {
+    final double full = ArcheryRules.shotClockSeconds.toDouble();
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    final saved = _savedClocks.remove(matchId);
+    double left;
+    if (saved != null && saved.round == round && saved.arrowIndex == _myArrows.length) {
+      left = saved.secondsLeft - (now - saved.savedAtMs) / 1000.0;
+    } else {
+      int? from;
+      if (_myArrows.isNotEmpty && _myArrows.last.createdAtMs > 0) {
+        from = _myArrows.last.createdAtMs + 3000; // allow for the flight
+      } else if (m.liveShooterUid == myUid && m.turnStartedAtMs != null) {
+        from = m.turnStartedAtMs; // set already started before you left
+      }
+      if (from == null) return; // a fresh set: full clock
+      left = full - (now - from) / 1000.0;
+    }
+    if (left >= full) return;
+    if (left > 0) {
+      _clock = left;
+    } else {
+      _clock = 0.0001; // runs out on the next frame
+      _overrun = -left;
+    }
   }
 
   // ── Opponent's live events ──────────────────────────────────────────────
@@ -350,7 +400,13 @@ class ArcheryOnlineController {
       isX: score.isX,
     );
     _myArrows.add(event);
-    _clock = ArcheryRules.shotClockSeconds.toDouble();
+    _clock = ArcheryRules.shotClockSeconds - _overrun;
+    if (_clock <= 0) {
+      _overrun = -_clock; // still over: the next arrow times out too
+      _clock = 0.0001;
+    } else {
+      _overrun = 0.0;
+    }
     _pendingBroadcast = service.broadcastArcheryEvent(matchId: matchId, event: event);
     if (_myArrows.length >= ArcheryRules.arrowsPerSet) {
       // Give the opponent's phone time to fly your last arrow before the
@@ -458,4 +514,19 @@ class ArcheryOnlineController {
     final int s = seconds.ceil().clamp(0, ArcheryRules.shotClockSeconds);
     if (shotClock.value != s) shotClock.value = s;
   }
+}
+
+/// Shot clock left when you stepped away from a live set.
+class _SavedClock {
+  final int round;
+  final int arrowIndex;
+  final double secondsLeft;
+  final int savedAtMs;
+
+  const _SavedClock({
+    required this.round,
+    required this.arrowIndex,
+    required this.secondsLeft,
+    required this.savedAtMs,
+  });
 }
