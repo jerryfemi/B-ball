@@ -12,6 +12,13 @@ class ArcheryPlayer {
   final String avatar;
 
   const ArcheryPlayer({required this.name, required this.avatar});
+
+  @override
+  bool operator ==(Object other) =>
+      other is ArcheryPlayer && other.name == name && other.avatar == avatar;
+
+  @override
+  int get hashCode => Object.hash(name, avatar);
 }
 
 @immutable
@@ -20,29 +27,35 @@ class ArcheryPlayers {
   final ArcheryPlayer opponent;
 
   const ArcheryPlayers({required this.you, required this.opponent});
+
+  static const ArcheryPlayer defaultYou =
+      ArcheryPlayer(name: 'You', avatar: PlayerDescriptor.defaultAvatar);
+  static const ArcheryPlayer bot =
+      ArcheryPlayer(name: 'Bot', avatar: 'assets/avatars/dunk_heads (2).webp');
+
+  @override
+  bool operator ==(Object other) =>
+      other is ArcheryPlayers && other.you == you && other.opponent == opponent;
+
+  @override
+  int get hashCode => Object.hash(you, opponent);
 }
 
-/// The two players on the scoreboard.
-///
-/// The standalone dev build (main_archery.dart) has no Firebase, so it shows
-/// the default avatar. Inside the app, override this in the ProviderScope
-/// with the signed-in profile (and the opponent's profile in online matches):
-///
-/// ```dart
-/// archeryPlayersProvider.overrideWith((ref) {
-///   final me = ref.watch(currentUserProfileProvider).value;
-///   return ArcheryPlayers(
-///     you: ArcheryPlayer(name: me?.gamerTag ?? 'You', avatar: me?.avatar ?? ...),
-///     opponent: ...,
-///   );
-/// })
-/// ```
-final archeryPlayersProvider = Provider<ArcheryPlayers>(
-  (ref) => const ArcheryPlayers(
-    you: ArcheryPlayer(name: 'You', avatar: PlayerDescriptor.defaultAvatar),
-    opponent: ArcheryPlayer(
-      name: 'Bot',
-      avatar: 'assets/avatars/dunk_heads (2).webp',
-    ),
-  ),
+/// The two players on the scoreboard. The archery screen sets them: the
+/// signed-in profile vs the bot in solo play, both profiles online.
+class ArcheryPlayersNotifier extends Notifier<ArcheryPlayers> {
+  @override
+  ArcheryPlayers build() => const ArcheryPlayers(
+        you: ArcheryPlayers.defaultYou,
+        opponent: ArcheryPlayers.bot,
+      );
+
+  void set(ArcheryPlayers players) {
+    if (state != players) state = players;
+  }
+}
+
+final archeryPlayersProvider =
+    NotifierProvider<ArcheryPlayersNotifier, ArcheryPlayers>(
+  ArcheryPlayersNotifier.new,
 );
