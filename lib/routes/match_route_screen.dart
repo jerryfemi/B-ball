@@ -5,6 +5,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../archery/archery_game_screen.dart';
 import '../darts/darts_game_screen.dart';
 import '../game/basketball_game.dart';
+import '../game/ui/common/inline_feedback.dart';
 import '../game/ui/game_hud_overlay.dart';
 import '../models/cloud_match.dart';
 import '../services/auth_service.dart';
@@ -42,14 +43,32 @@ class _MatchRouteScreenState extends ConsumerState<MatchRouteScreen> {
     });
 
     try {
-      final match = await FirestoreMatchService.instance.getMatch(widget.matchId);
+      // A shared link may be the first thing a player opens: sign in first
+      // (silent guest sign-in), since matches are only readable signed in.
+      final me = AuthService.instance.currentUser ??
+          await AuthService.instance.initialize();
+      CloudMatch? match = await FirestoreMatchService.instance.getMatch(widget.matchId);
       if (!mounted) return;
       if (match == null) {
-        setState(() {
-          _isLoading = false;
-          _errorMessage = 'Match not found or has expired.';
-        });
+        _fail('Match not found or has expired.');
         return;
+      }
+
+      // /match/CODE doubles as the invite link: take the empty seat.
+      if (!match.isParticipant(me.uid)) {
+        if (match.status == MatchStatus.waitingForOpponent && match.player2 == null) {
+          match = await FirestoreMatchService.instance.joinMatchByCode(
+            joinCode: match.joinCode,
+            player2Profile: me,
+          );
+          if (!mounted) return;
+        } else if (match.isFinished) {
+          _fail('This match has already finished.');
+          return;
+        } else {
+          _fail('This match already has two players.');
+          return;
+        }
       }
 
       setState(() {
@@ -58,11 +77,18 @@ class _MatchRouteScreenState extends ConsumerState<MatchRouteScreen> {
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-        _errorMessage = 'Error loading match: $e';
-      });
+      _fail(InlineErrorPanel.friendlyMessage(
+        e,
+        fallback: 'Couldn\'t load this match. Check your connection and try again.',
+      ));
     }
+  }
+
+  void _fail(String message) {
+    setState(() {
+      _isLoading = false;
+      _errorMessage = message;
+    });
   }
 
   @override
@@ -120,6 +146,17 @@ class _MatchRouteScreenState extends ConsumerState<MatchRouteScreen> {
                     ),
                   ),
                   const SizedBox(height: 24),
+                  OutlinedButton.icon(
+                    onPressed: _loadMatch,
+                    icon: const Icon(Icons.refresh_rounded, size: 18),
+                    label: const Text('RETRY'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF00FFCC),
+                      side: const BorderSide(color: Color(0xFF00FFCC)),
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   ElevatedButton.icon(
                     onPressed: () => context.go('/games'),
                     icon: const Icon(Icons.grid_view_rounded, size: 18),
@@ -142,7 +179,7 @@ class _MatchRouteScreenState extends ConsumerState<MatchRouteScreen> {
 
     // 1. Archery match
     if (match.isArchery) {
-      return const ArcheryGameScreen();
+      return ArcheryGameScreen(match: match);
     }
 
     // 2. Darts match
@@ -171,6 +208,9 @@ class _BasketballMatchHarnessState extends State<_BasketballMatchHarness> {
   void initState() {
     super.initState();
     _game = BasketballGame();
+    _game.onOtherGameMatch = (m) {
+      if (mounted) context.go('/match/${m.id}');
+    };
     // Launch cloud match once game is attached
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final myUid = AuthService.instance.currentUser?.uid ?? '';
