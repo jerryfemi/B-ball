@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../game/ui/common/app_avatar.dart';
+import '../../game/ui/match/incoming_challenge_dialog.dart';
+import '../../models/match_invite.dart';
+import '../../providers/app_providers.dart';
+import '../archery_game_screen.dart' show ArcheryChallenge;
 import '../archery_constants.dart';
 import '../archery_game.dart';
 import '../camera/camera_rig.dart';
@@ -84,16 +89,43 @@ class _SetEnd extends ConsumerWidget {
     final players = ref.watch(archeryPlayersProvider);
     final online = game.online;
 
-    final String label;
-    final VoidCallback onContinue;
+    String label;
+    VoidCallback onContinue;
+    String? secondaryLabel;
+    VoidCallback? onSecondary;
     if (online == null) {
       label = s.matchOver ? 'PLAY AGAIN' : 'NEXT SET';
       onContinue = s.matchOver ? game.restartMatch : game.advanceNextSet;
+    } else if (!s.matchOver) {
+      label = 'NEXT SET';
+      onContinue = online.continueAfterSet;
     } else {
-      label = s.matchOver ? 'BACK TO LOBBY' : 'NEXT SET';
-      onContinue = s.matchOver
-          ? (onExitToLobby ?? () {})
-          : online.continueAfterSet;
+      // Match over: rematch the same opponent (or join theirs if they were
+      // quicker), or exit to keep shooting on your own.
+      final finished = online.match.value;
+      final String oppUid = finished?.opponentPlayer(online.myUid)?.uid ?? '';
+      final MatchInvite? theirRematch = oppUid.isEmpty
+          ? null
+          : (ref.watch(incomingMatchChallengesProvider).value ?? const <MatchInvite>[])
+              .where((i) => i.isPending && i.hostUid == oppUid)
+              .firstOrNull;
+      if (theirRematch != null) {
+        label = 'JOIN ${theirRematch.hostName.toUpperCase()}\'S REMATCH';
+        onContinue = () => IncomingChallengeDialog.show(
+              context: context,
+              invite: theirRematch,
+              onAccepted: (m) => GoRouter.maybeOf(context)?.go('/match/${m.id}'),
+            );
+      } else {
+        label = 'REMATCH';
+        onContinue = () {
+          if (finished != null) {
+            ArcheryChallenge.rematch(context, finished: finished, myUid: online.myUid);
+          }
+        };
+      }
+      secondaryLabel = 'EXIT';
+      onSecondary = () => GoRouter.maybeOf(context)?.go('/archery');
     }
 
     return SetEndCard(
@@ -111,6 +143,8 @@ class _SetEnd extends ConsumerWidget {
       continueLabel: label,
       onContinue: onContinue,
       autoContinueSeconds: online != null ? 5 : null,
+      secondaryLabel: secondaryLabel,
+      onSecondary: onSecondary,
     );
   }
 }
