@@ -38,6 +38,10 @@ class MatchConfig {
   /// Game type identifier (defaults to 'basketball', supports 'archery', 'darts').
   final String game;
 
+  /// Set when the player chose "Join with a code" instead of creating a
+  /// match: the match they joined. Callers open it directly.
+  final CloudMatch? joinedMatch;
+
   const MatchConfig({
     this.totalRounds = 2,
     this.roundDurationSeconds = 60,
@@ -50,6 +54,7 @@ class MatchConfig {
     this.opponentFriend,
     this.precreatedMatch,
     this.game = 'basketball',
+    this.joinedMatch,
   });
 
   MatchConfig copyWith({
