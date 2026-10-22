@@ -19,6 +19,7 @@ import 'state/archery_match_notifier.dart';
 import 'state/archery_players.dart';
 import 'state/archery_rules.dart';
 import 'ui/archery_hud.dart';
+import 'ui/archery_pause_menu.dart';
 
 /// Full-screen archery: solo against the bot (`/archery`), or a live online
 /// match when [match] is given (`/match/:id`).
@@ -32,6 +33,7 @@ class ArcheryGameScreen extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final game = useState<ArcheryGame?>(null);
+    final paused = useState(false);
     final online = useRef<ArcheryOnlineController?>(null);
 
     // Set the match up after the first frame: Riverpod state must not change
@@ -111,6 +113,20 @@ class ArcheryGameScreen extends HookConsumerWidget {
     final g = game.value;
     final bool isOnline = match != null;
 
+    void openPause() {
+      if (g == null || paused.value) return;
+      g.controller.onPointerCancel();
+      // Solo freezes; a live match can't (the opponent is still playing).
+      if (!isOnline) g.pauseEngine();
+      paused.value = true;
+    }
+
+    void resume() {
+      if (g == null) return;
+      if (!isOnline) g.resumeEngine();
+      paused.value = false;
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFF060913),
       body: SafeArea(
@@ -158,15 +174,44 @@ class ArcheryGameScreen extends HookConsumerWidget {
                       onTap: goToLobby,
                     ),
                   ),
-                  if (!isOnline && _firebaseReady)
-                    Positioned(
-                      top: 8.0,
-                      right: 14.0,
-                      child: _CornerButton(
-                        icon: Icons.people_alt_rounded,
-                        label: '1V1',
-                        onTap: () => ArcheryChallenge.start(context),
-                      ),
+                  Positioned(
+                    top: 8.0,
+                    right: 14.0,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (!isOnline && _firebaseReady) ...[
+                          _CornerButton(
+                            icon: Icons.people_alt_rounded,
+                            label: '1V1',
+                            onTap: () => ArcheryChallenge.start(context),
+                          ),
+                          const SizedBox(width: 8.0),
+                        ],
+                        _CornerButton(
+                          icon: Icons.pause_rounded,
+                          label: 'PAUSE',
+                          onTap: openPause,
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // 4. Pause menu (music / effects / birdsong)
+                  if (paused.value)
+                    ArcheryPauseMenu(
+                      online: isOnline,
+                      onResume: resume,
+                      onRestart: isOnline
+                          ? null
+                          : () {
+                              resume();
+                              g.restartMatch();
+                            },
+                      onLobby: () {
+                        paused.value = false;
+                        goToLobby();
+                      },
                     ),
                 ],
               ),
