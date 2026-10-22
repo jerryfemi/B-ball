@@ -87,6 +87,7 @@ flutter:
     - assets/music/short/
     - assets/archery/
     - assets/archery/park/
+    - assets/lobby/
 
   # Shot callout lettering (SWISH! / BANK! / +3). Poppins Bold Italic
   # (SIL Open Font License), subset to basic Latin: ~9 KB.
@@ -96,6 +97,11 @@ flutter:
         - asset: assets/fonts/PoppinsCallout-BoldItalic.ttf
           weight: 700
           style: italic
+    # Lobby type and the GAMEVERSE wordmark. Archivo variable font
+    # (weight 100-900, width 62-125; SIL Open Font License), Latin subset.
+    - family: Archivo
+      fonts:
+        - asset: assets/fonts/Archivo-Variable.ttf
   #   - images/a_dot_ham.jpeg
 
   # An image asset can refer to one or more resolution-specific "variants", see
