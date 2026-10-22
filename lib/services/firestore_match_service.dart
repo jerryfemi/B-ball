@@ -919,6 +919,7 @@ class FirestoreMatchService {
     required int shotIndex,
     required int round,
     int netLevel = 0,
+    Map<String, dynamic>? previousResult,
   }) async {
     final cleanId = matchId.trim().toUpperCase();
     final docRef = _matchesRef.doc(cleanId).collection('live_shots');
@@ -931,6 +932,9 @@ class FirestoreMatchService {
         'shotIndex': shotIndex,
         'round': round,
         'nq': netLevel,
+        // How the shooter's previous shot ended (made/swish/bank/points), so
+        // a turn can be rebuilt if the shooter leaves and comes back.
+        if (previousResult != null) 'pr': previousResult,
         'shot': shot.toJson(),
         'timestamp': shot.timestampMs,
         'createdAt': DateTime.now().millisecondsSinceEpoch,
@@ -984,6 +988,44 @@ class FirestoreMatchService {
         .handleError((e) {
           debugPrint('[FirestoreMatchService] streamLiveShots error: $e');
         });
+  }
+
+  /// Every live shot of one turn ([shooterUid] in [round]), in order, with
+  /// the local time each was sent. Used to rebuild a turn the shooter left
+  /// mid-round (lobby, refresh) instead of restarting it.
+  Future<List<LiveShotRecord>> getLiveShotRecords(
+    String matchId, {
+    required String shooterUid,
+    required int round,
+  }) async {
+    if (matchId.isEmpty || shooterUid.isEmpty) return const [];
+    final cleanId = matchId.trim().toUpperCase();
+    try {
+      final snap = await _matchesRef
+          .doc(cleanId)
+          .collection('live_shots')
+          .where('shooterUid', isEqualTo: shooterUid)
+          .where('round', isEqualTo: round)
+          .get();
+      final records = <LiveShotRecord>[];
+      for (final d in snap.docs) {
+        final data = d.data();
+        if (data['game'] == 'archery') continue;
+        final shotMap = data['shot'] as Map<String, dynamic>?;
+        if (shotMap == null) continue;
+        records.add(LiveShotRecord(
+          shot: RecordedShot.fromJson(shotMap),
+          shotIndex: (data['shotIndex'] as num?)?.toInt() ?? 0,
+          sentAtMs: (data['createdAt'] as num?)?.toInt() ?? 0,
+          previousResult: data['pr'] as Map<String, dynamic>?,
+        ));
+      }
+      records.sort((a, b) => a.shotIndex.compareTo(b.shotIndex));
+      return records;
+    } catch (e) {
+      debugPrint('[FirestoreMatchService] getLiveShotRecords error: $e');
+      return const [];
+    }
   }
 
   /// Broadcasts a courtside reaction (floating emoji or text banter) to the `live_reactions` subcollection.
@@ -1248,4 +1290,23 @@ class LiveShotPacket {
   final int netLevel;
 
   const LiveShotPacket({required this.shot, this.netLevel = 0});
+}
+
+/// One stored live shot, as read back by [FirestoreMatchService.getLiveShotRecords].
+class LiveShotRecord {
+  final RecordedShot shot;
+  final int shotIndex;
+
+  /// The shooter's device time (ms) when the shot was sent.
+  final int sentAtMs;
+
+  /// How the shot before this one ended ({m, s, b, p}), or null.
+  final Map<String, dynamic>? previousResult;
+
+  const LiveShotRecord({
+    required this.shot,
+    required this.shotIndex,
+    required this.sentAtMs,
+    this.previousResult,
+  });
 }
