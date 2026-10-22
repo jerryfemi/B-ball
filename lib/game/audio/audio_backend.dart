@@ -2,8 +2,22 @@ import 'audio_backend_native.dart'
     if (dart.library.js_interop) 'audio_backend_web.dart'
     as impl;
 
-/// The five pre-decoded collision / game sounds.
-enum Sfx { rim, backboard, swish, bounce, buzzer }
+/// Pre-decoded sound effects. The first five are basketball's; the arrow*
+/// ones are archery's and are only decoded when archery loads
+/// ([AudioEngine.loadArcherySfx]).
+enum Sfx {
+  rim,
+  backboard,
+  swish,
+  bounce,
+  buzzer,
+  arrowDraw,
+  arrowFullDraw,
+  arrowRelease,
+  arrowThunk,
+  arrowBell,
+  arrowThud,
+}
 
 /// Low-level sound output used by [AudioEngine].
 ///
