@@ -332,6 +332,7 @@ class FirestoreMatchService {
       difficulty: match.difficulty.name,
       status: MatchInviteStatus.pending,
       createdAt: DateTime.now().millisecondsSinceEpoch,
+      game: match.game,
     );
 
     await _usersRef
