@@ -80,6 +80,10 @@ class VenueTheme {
     this.targetStyle = TargetStyle.standardWorldArchery,
   });
 
+  /// Which distant-hills strip to use. The original stays on disk; flip this
+  /// to compare it with the regenerated one (assets/archery/park/hills_v2.webp).
+  static const bool useHillsV2 = true;
+
   /// The standard daytime Park venue matching GamePigeon archery.
   static VenueTheme createParkTheme({
     double targetDistance = ArcheryK.distanceM,
@@ -100,29 +104,140 @@ class VenueTheme {
       ),
 
       // Behind the target (z relative to the target)
-      BillboardSpec(imageKey: 'tree_2', x: -2.6, z: D + 5.0, widthMeters: 5.5, flipX: true, followTarget: true),
-      BillboardSpec(imageKey: 'tree_3', x: 2.9, z: D + 6.0, widthMeters: 6.0, followTarget: true),
-      BillboardSpec(imageKey: 'tree_1', x: -6.0, z: D + 9.0, widthMeters: 7.5, followTarget: true),
-      BillboardSpec(imageKey: 'tree_1', x: 6.4, z: D + 8.0, widthMeters: 7.2, flipX: true, followTarget: true),
-      BillboardSpec(imageKey: 'tree_3', x: 0.4, z: D + 13.0, widthMeters: 7.0, followTarget: true),
-      BillboardSpec(imageKey: 'tree_2', x: -9.5, z: D + 12.0, widthMeters: 6.5, followTarget: true),
-      BillboardSpec(imageKey: 'tree_3', x: 9.8, z: D + 11.0, widthMeters: 7.0, flipX: true, followTarget: true),
+      BillboardSpec(
+        imageKey: 'tree_2',
+        x: -2.6,
+        z: D + 5.0,
+        widthMeters: 5.5,
+        flipX: true,
+        followTarget: true,
+      ),
+      BillboardSpec(
+        imageKey: 'tree_3',
+        x: 2.9,
+        z: D + 6.0,
+        widthMeters: 6.0,
+        followTarget: true,
+      ),
+      BillboardSpec(
+        imageKey: 'tree_1',
+        x: -6.0,
+        z: D + 9.0,
+        widthMeters: 7.5,
+        followTarget: true,
+      ),
+      BillboardSpec(
+        imageKey: 'tree_1',
+        x: 6.4,
+        z: D + 8.0,
+        widthMeters: 7.2,
+        flipX: true,
+        followTarget: true,
+      ),
+      BillboardSpec(
+        imageKey: 'tree_3',
+        x: 0.4,
+        z: D + 13.0,
+        widthMeters: 7.0,
+        followTarget: true,
+      ),
+      BillboardSpec(
+        imageKey: 'tree_2',
+        x: -9.5,
+        z: D + 12.0,
+        widthMeters: 6.5,
+        followTarget: true,
+      ),
+      BillboardSpec(
+        imageKey: 'tree_3',
+        x: 9.8,
+        z: D + 11.0,
+        widthMeters: 7.0,
+        flipX: true,
+        followTarget: true,
+      ),
 
       // Left side of the lane (fixed)
-      const BillboardSpec(imageKey: 'tree_1', x: -3.3, z: 7.0, widthMeters: 4.8),
-      const BillboardSpec(imageKey: 'tree_2', x: -4.0, z: 12.0, widthMeters: 5.8, flipX: true),
-      const BillboardSpec(imageKey: 'tree_3', x: -3.8, z: 19.0, widthMeters: 6.0),
-      const BillboardSpec(imageKey: 'tree_1', x: -4.4, z: 27.0, widthMeters: 6.5, flipX: true),
-      const BillboardSpec(imageKey: 'tree_3', x: -4.2, z: 36.0, widthMeters: 6.6),
-      const BillboardSpec(imageKey: 'tree_2', x: -4.8, z: 44.0, widthMeters: 7.0, flipX: true),
+      const BillboardSpec(
+        imageKey: 'tree_1',
+        x: -3.3,
+        z: 7.0,
+        widthMeters: 4.8,
+      ),
+      const BillboardSpec(
+        imageKey: 'tree_2',
+        x: -4.0,
+        z: 12.0,
+        widthMeters: 5.8,
+        flipX: true,
+      ),
+      const BillboardSpec(
+        imageKey: 'tree_3',
+        x: -3.8,
+        z: 19.0,
+        widthMeters: 6.0,
+      ),
+      const BillboardSpec(
+        imageKey: 'tree_1',
+        x: -4.4,
+        z: 27.0,
+        widthMeters: 6.5,
+        flipX: true,
+      ),
+      const BillboardSpec(
+        imageKey: 'tree_3',
+        x: -4.2,
+        z: 36.0,
+        widthMeters: 6.6,
+      ),
+      const BillboardSpec(
+        imageKey: 'tree_2',
+        x: -4.8,
+        z: 44.0,
+        widthMeters: 7.0,
+        flipX: true,
+      ),
 
       // Right side of the lane (fixed)
-      const BillboardSpec(imageKey: 'tree_3', x: 3.4, z: 8.0, widthMeters: 5.0, flipX: true),
-      const BillboardSpec(imageKey: 'tree_1', x: 4.1, z: 13.5, widthMeters: 5.6),
-      const BillboardSpec(imageKey: 'tree_2', x: 3.9, z: 21.0, widthMeters: 6.2, flipX: true),
-      const BillboardSpec(imageKey: 'tree_3', x: 4.5, z: 29.0, widthMeters: 6.4),
-      const BillboardSpec(imageKey: 'tree_1', x: 4.3, z: 38.0, widthMeters: 6.8, flipX: true),
-      const BillboardSpec(imageKey: 'tree_2', x: 4.9, z: 46.0, widthMeters: 7.0),
+      const BillboardSpec(
+        imageKey: 'tree_3',
+        x: 3.4,
+        z: 8.0,
+        widthMeters: 5.0,
+        flipX: true,
+      ),
+      const BillboardSpec(
+        imageKey: 'tree_1',
+        x: 4.1,
+        z: 13.5,
+        widthMeters: 5.6,
+      ),
+      const BillboardSpec(
+        imageKey: 'tree_2',
+        x: 3.9,
+        z: 21.0,
+        widthMeters: 6.2,
+        flipX: true,
+      ),
+      const BillboardSpec(
+        imageKey: 'tree_3',
+        x: 4.5,
+        z: 29.0,
+        widthMeters: 6.4,
+      ),
+      const BillboardSpec(
+        imageKey: 'tree_1',
+        x: 4.3,
+        z: 38.0,
+        widthMeters: 6.8,
+        flipX: true,
+      ),
+      const BillboardSpec(
+        imageKey: 'tree_2',
+        x: 4.9,
+        z: 46.0,
+        widthMeters: 7.0,
+      ),
     ];
 
     // Sort back-to-front by Z descending for proper painter's algorithm rendering
@@ -134,7 +249,9 @@ class VenueTheme {
       grassDetailImage: 'assets/archery/park/grass_detail.webp',
       shadowBlobImage: 'assets/archery/shadow_blob.webp',
       billboardImages: const {
-        'hills': 'assets/archery/park/hills.webp',
+        'hills': useHillsV2
+            ? 'assets/archery/park/hills_v2.webp'
+            : 'assets/archery/park/hills.webp',
         'tree_1': 'assets/archery/park/tree_1.webp',
         'tree_2': 'assets/archery/park/tree_2.webp',
         'tree_3': 'assets/archery/park/tree_3.webp',
