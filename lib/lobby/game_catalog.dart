@@ -84,7 +84,8 @@ const List<LobbyGame> lobbyGames = [
     image: 'assets/lobby/archery.webp',
     heroImage: 'assets/lobby/archery_hero.webp',
     heroAlignment: Alignment.center,
-    heroAlignmentNarrow: Alignment(0.3, 0),
+    // Phones: the wind pill, the target and the apple tree all in frame.
+    heroAlignmentNarrow: Alignment(0.16, 0),
     route: '/archery',
     featured: true,
   ),
