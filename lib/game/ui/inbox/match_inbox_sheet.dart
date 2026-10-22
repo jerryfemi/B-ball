@@ -76,6 +76,13 @@ class MatchInboxSheet extends HookConsumerWidget {
           // handed to /match/:id by game.startCloudMatch.
           showGamePicker: true,
         );
+        // "Join with a code" from the dialog: open the joined match.
+        final joined = config?.joinedMatch;
+        if (joined != null) {
+          final myUid = AuthService.instance.currentUser?.uid ?? '';
+          game.startCloudMatch(joined, myUid);
+          return;
+        }
         if (config != null && context.mounted) {
           final user = await AuthService.instance.ensureAuthenticated();
           final profile =
