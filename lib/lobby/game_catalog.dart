@@ -72,7 +72,7 @@ const List<LobbyGame> lobbyGames = [
     heroImage: 'assets/lobby/hoops_hero.webp',
     heroAlignment: Alignment.centerRight,
     heroImageNarrow: 'assets/lobby/hoops_poster.webp',
-    route: '/',
+    route: '/hoops',
   ),
   LobbyGame(
     id: 'archery',
