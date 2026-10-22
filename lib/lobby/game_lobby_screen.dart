@@ -11,8 +11,8 @@ import 'widgets/game_card.dart';
 import 'widgets/lobby_header.dart';
 
 /// The GameVerse lobby (`/games`): jersey wordmark and account chip, a
-/// featured-game banner, your running matches, then every game as a tile
-/// with its gameplay art.
+/// banner that slides through the games (featured one first), your running
+/// matches, then every game as a tile with its gameplay art.
 ///
 /// The screen itself watches nothing; the account chip and the matches
 /// section each watch only what they show.
@@ -34,7 +34,7 @@ class GameLobbyScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final double width = MediaQuery.sizeOf(context).width;
     final double side = width < 600 ? 18 : 32;
-    final LobbyGame hero = featuredGame;
+    final LobbyGame lead = featuredGame;
 
     return Scaffold(
       backgroundColor: LobbyStyle.ink,
@@ -52,9 +52,9 @@ class GameLobbyScreen extends StatelessWidget {
                 SliverPadding(
                   padding: EdgeInsets.fromLTRB(side, 24, side, 0),
                   sliver: SliverToBoxAdapter(
-                    child: FeaturedHero(
-                      game: hero,
-                      onPlay: () => context.go(hero.route),
+                    child: HeroCarousel(
+                      games: heroGames,
+                      onPlay: (g) => context.go(g.route),
                       onChallenge: _online ? () => _challenge(context) : null,
                     ),
                   ),
@@ -94,7 +94,7 @@ class GameLobbyScreen extends StatelessWidget {
                             final game = lobbyGames[i];
                             return GameCard(
                               game: game,
-                              highlighted: identical(game, hero),
+                              highlighted: identical(game, lead),
                               onTap: () => context.go(game.route),
                             );
                           },
