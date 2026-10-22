@@ -1,13 +1,17 @@
 {
-    "name": "DunkVerse",
-    "short_name": "DunkVerse",
+    "name": "GameVerse",
+    "short_name": "GameVerse",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0A0E1A",
     "theme_color": "#0A0E1A",
-    "description": "DunkVerse arcade basketball game. Shoot hoops, challenge friends, and climb the ranks.",
+    "description": "GameVerse: 1v1 arcade games. DunkVerse basketball, archery and more. Challenge friends and climb the ranks.",
     "orientation": "portrait-primary",
-    "categories": ["games", "sports", "entertainment"],
+    "categories": [
+        "games",
+        "sports",
+        "entertainment"
+    ],
     "prefer_related_applications": false,
     "icons": [
         {
