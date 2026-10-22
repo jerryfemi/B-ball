@@ -3,6 +3,8 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
+import '../archery/online/archery_live_event.dart';
+import '../archery/state/archery_rules.dart';
 import '../game/match/match_config.dart';
 import '../game/telemetry/shot_telemetry.dart';
 import '../models/cloud_match.dart';
@@ -1038,6 +1040,203 @@ class FirestoreMatchService {
     } catch (e) {
       debugPrint('[FirestoreMatchService] updateLiveShooterScore error: $e');
     }
+  }
+}
+
+/// Archery live play and turn submission (kept apart from basketball's
+/// methods above; same `live_shots` subcollection and turn rules).
+extension ArcheryMatchService on FirestoreMatchService {
+  /// Writes one live archery event (draw ping or landed arrow). Arrows use a
+  /// fixed document id, so a retry can never write a second, different arrow.
+  Future<bool> broadcastArcheryEvent({
+    required String matchId,
+    required ArcheryLiveEvent event,
+  }) async {
+    final cleanId = matchId.trim().toUpperCase();
+    try {
+      await _matchesRef
+          .doc(cleanId)
+          .collection('live_shots')
+          .doc(event.docId)
+          .set({
+        ...event.toMap(),
+        'expireAt': Timestamp.fromDate(
+          DateTime.now().add(const Duration(hours: 24)),
+        ),
+      });
+      return true;
+    } catch (e) {
+      debugPrint('[FirestoreMatchService] broadcastArcheryEvent error: $e');
+      return false;
+    }
+  }
+
+  /// Live archery events of one archer in one set, as batches. The first
+  /// batch ([ArcheryLiveBatch.initial]) holds what already happened.
+  Stream<ArcheryLiveBatch> streamArcheryEvents(
+    String matchId, {
+    required String shooterUid,
+    required int round,
+  }) {
+    if (matchId.isEmpty || shooterUid.isEmpty) return const Stream.empty();
+    final cleanId = matchId.trim().toUpperCase();
+    bool first = true;
+    return _matchesRef
+        .doc(cleanId)
+        .collection('live_shots')
+        .where('shooterUid', isEqualTo: shooterUid)
+        .where('round', isEqualTo: round)
+        .snapshots()
+        .map((snap) {
+          final events = <ArcheryLiveEvent>[];
+          for (final change in snap.docChanges) {
+            if (change.type != DocumentChangeType.added) continue;
+            final e = ArcheryLiveEvent.fromMap(change.doc.data());
+            if (e != null) events.add(e);
+          }
+          final batch = ArcheryLiveBatch(events, initial: first);
+          first = false;
+          return batch;
+        })
+        .handleError((e) {
+          debugPrint('[FirestoreMatchService] streamArcheryEvents error: $e');
+        });
+  }
+
+  /// The landed arrows of one archer in one set, in arrow order.
+  Future<List<ArcheryLiveEvent>> getArcheryArrows(
+    String matchId, {
+    required String shooterUid,
+    required int round,
+  }) async {
+    final cleanId = matchId.trim().toUpperCase();
+    try {
+      final snap = await _matchesRef
+          .doc(cleanId)
+          .collection('live_shots')
+          .where('shooterUid', isEqualTo: shooterUid)
+          .where('round', isEqualTo: round)
+          .get();
+      final arrows = snap.docs
+          .map((d) => ArcheryLiveEvent.fromMap(d.data()))
+          .whereType<ArcheryLiveEvent>()
+          .where((e) => e.isArrow)
+          .toList()
+        ..sort((a, b) => a.arrowIndex.compareTo(b.arrowIndex));
+      return arrows;
+    } catch (e) {
+      debugPrint('[FirestoreMatchService] getArcheryArrows error: $e');
+      return const [];
+    }
+  }
+
+  /// Submits the shooter's finished set atomically.
+  ///
+  /// Like [FirestoreMatchService.submitTurn], but the set score is worked
+  /// out here from where each arrow hit (never taken as sent), set points
+  /// decide the match (2 per set win, 1 each on a tie, first to 6), and
+  /// whoever shot second in a set leads the next one.
+  Future<void> submitArcherySet({
+    required String matchId,
+    required String shooterUid,
+    required int round,
+    required List<ArcheryLiveEvent> arrows,
+    required double distance,
+  }) async {
+    final docRef = _matchesRef.doc(matchId.trim().toUpperCase());
+
+    await _firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(docRef);
+      if (!snapshot.exists) {
+        throw MatchNotFoundException('Cannot submit set: match $matchId not found.');
+      }
+      final match = CloudMatch.fromFirestore(snapshot);
+      if (match.status != MatchStatus.active &&
+          match.status != MatchStatus.waitingForOpponent) {
+        throw MatchNotActiveException('Match $matchId is not active.');
+      }
+      if (match.activeTurnPlayerUid != shooterUid) {
+        throw const NotYourTurnException('It is not your turn in this match.');
+      }
+      if (match.currentRound != round) {
+        throw RoundMismatchException(
+          'Set mismatch: expected ${match.currentRound}, submitted $round.',
+        );
+      }
+      final isP1 = match.player1.uid == shooterUid;
+      final me = isP1 ? match.player1 : match.player2;
+      if (me == null) {
+        throw const NotParticipantException('Not a participant in this match.');
+      }
+      if (me.roundScores.length >= round) return; // duplicate submit
+
+      // Score from the hit positions; exactly one arrow per slot.
+      final byIndex = <int, ArcheryLiveEvent>{
+        for (final a in arrows)
+          if (a.isArrow && a.arrowIndex >= 0 && a.arrowIndex < ArcheryRules.arrowsPerSet)
+            a.arrowIndex: a,
+      };
+      int score = 0;
+      int onFace = 0;
+      int xs = 0;
+      int tens = 0;
+      for (int i = 0; i < ArcheryRules.arrowsPerSet; i++) {
+        final a = byIndex[i];
+        if (a == null) continue; // missing arrow = miss
+        final s = a.score(distance);
+        score += s.points;
+        if (s.points > 0) onFace++;
+        if (s.isX) xs++;
+        if (s.points == 10) tens++;
+      }
+      final stats = RoundSummaryStats(
+        roundIndex: round,
+        score: score,
+        madeShots: onFace,
+        totalShots: ArcheryRules.arrowsPerSet,
+        swishes: xs,
+        bestStreak: tens,
+      );
+
+      final myScores = [...me.roundScores, score];
+      final mySummaries = [...me.roundSummaries, stats];
+      final opp = isP1 ? match.player2 : match.player1;
+      final oppScores = opp?.roundScores ?? const <int>[];
+
+      int nextRound = match.currentRound;
+      String nextTurnUid;
+      MatchStatus nextStatus = match.status;
+      final bothShot = oppScores.length >= round;
+      if (bothShot) {
+        if (ArcheryRules.isMatchOver(myScores, oppScores)) {
+          nextStatus = MatchStatus.completed;
+          nextTurnUid = '';
+        } else {
+          nextRound += 1;
+          nextTurnUid = shooterUid; // shot second, so leads the next set
+        }
+      } else {
+        nextTurnUid = opp?.uid ?? '';
+      }
+
+      final isConcluding = nextStatus == MatchStatus.completed;
+      final key = isP1 ? 'player1' : 'player2';
+      transaction.update(docRef, {
+        'currentRound': nextRound,
+        'activeTurnPlayerUid': nextTurnUid,
+        'status': nextStatus.key,
+        'updatedAt': DateTime.now().millisecondsSinceEpoch,
+        // Finished matches are permanent trophy history: no TTL.
+        'expireAt': isConcluding
+            ? FieldValue.delete()
+            : Timestamp.fromDate(DateTime.now().add(const Duration(days: 7))),
+        'liveShooterScore': FieldValue.delete(),
+        'liveShooterUid': FieldValue.delete(),
+        'turnStartedAt': FieldValue.delete(),
+        '$key.roundScores': myScores,
+        '$key.roundSummaries': mySummaries.map((s) => s.toMap()).toList(),
+      });
+    });
   }
 }
 
