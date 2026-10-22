@@ -934,7 +934,7 @@ class FirestoreMatchService {
         'nq': netLevel,
         // How the shooter's previous shot ended (made/swish/bank/points), so
         // a turn can be rebuilt if the shooter leaves and comes back.
-        if (previousResult != null) 'pr': previousResult,
+        'pr': ?previousResult,
         'shot': shot.toJson(),
         'timestamp': shot.timestampMs,
         'createdAt': DateTime.now().millisecondsSinceEpoch,
