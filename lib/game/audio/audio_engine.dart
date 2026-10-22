@@ -97,7 +97,10 @@ class AudioEngine {
   static Future<void> setSfxEnabled(bool enabled) async {
     if (sfxEnabledNotifier.value == enabled) return;
     sfxEnabledNotifier.value = enabled;
-    if (enabled && _initialized) unawaited(_loadSfx());
+    if (enabled && _initialized) {
+      unawaited(_loadSfx());
+      if (_archerySfxWanted) unawaited(loadArcherySfx());
+    }
     await _savePref(_prefKeySfxEnabled, enabled);
   }
 
@@ -114,6 +117,8 @@ class AudioEngine {
   static bool _isInitializing = false;
   static Completer<void>? _initCompleter;
   static bool _sfxLoaded = false;
+  static bool _archerySfxWanted = false;
+  static bool _archerySfxLoaded = false;
 
   // ── Monotonic stopwatch (zero-allocation rate-limiting) ──
   static final Stopwatch _clock = Stopwatch();
@@ -127,6 +132,15 @@ class AudioEngine {
     Sfx.swish: 'assets/audio/swish.wav',
     Sfx.bounce: 'assets/audio/bounce.wav',
     Sfx.buzzer: 'assets/audio/buzzer.wav',
+  };
+
+  static const Map<Sfx, String> _archerySfxAssets = {
+    Sfx.arrowDraw: 'assets/archery/sfx_draw.wav',
+    Sfx.arrowFullDraw: 'assets/archery/sfx_click.wav',
+    Sfx.arrowRelease: 'assets/archery/sfx_release.wav',
+    Sfx.arrowThunk: 'assets/archery/sfx_thunk.wav',
+    Sfx.arrowBell: 'assets/archery/sfx_ding.wav',
+    Sfx.arrowThud: 'assets/archery/sfx_thud.wav',
   };
 
   // ── Available Background Music Tracks ──
@@ -190,6 +204,7 @@ class AudioEngine {
       // Ready for taps right away; effects finish decoding in the background.
       _initialized = true;
       if (sfxEnabled) unawaited(_loadSfx());
+      if (sfxEnabled && _archerySfxWanted) unawaited(loadArcherySfx());
       debugPrint('[AudioEngine] Audio ready.');
     } catch (e) {
       debugPrint('[AudioEngine] Audio unavailable: $e');
@@ -221,6 +236,20 @@ class AudioEngine {
     } catch (e) {
       _sfxLoaded = false;
       debugPrint('[AudioEngine] Sound effects failed to load: $e');
+    }
+  }
+
+  /// Decodes archery's sounds (only when archery is opened, so basketball
+  /// players never pay for them). Safe to call repeatedly.
+  static Future<void> loadArcherySfx() async {
+    _archerySfxWanted = true;
+    if (_archerySfxLoaded || !_initialized || !sfxEnabled) return;
+    _archerySfxLoaded = true;
+    try {
+      await _backend.loadSfx(_archerySfxAssets);
+    } catch (e) {
+      _archerySfxLoaded = false;
+      debugPrint('[AudioEngine] Archery sounds failed to load: $e');
     }
   }
 
@@ -259,7 +288,8 @@ class AudioEngine {
           }),
     );
 
-    if (_musicStarted) {
+    // Another game's soundtrack is playing: just remember the choice.
+    if (_musicStarted && _gameTrack == null) {
       await _backend.setMusicTrack(availableTracks[index].assetPath);
       _applyMusicState();
     }
@@ -267,17 +297,46 @@ class AudioEngine {
 
   /// Starts the selected track (only after the first tap, and only if MUSIC
   /// is on — otherwise nothing is downloaded).
-  static void _startMusic() {
-    if (availableTracks.isEmpty || !musicEnabled || !_initialized) return;
-    _musicStarted = true;
+  // ─────────────────────────── Per-game soundtrack ───────────────────────────
+
+  /// null = basketball's playlist (above). Otherwise the asset this game
+  /// plays instead; '' = this game has no music.
+  static String? _gameTrack;
+
+  /// Switches the soundtrack when a game opens. Basketball passes null;
+  /// archery passes its own track (or '' for silence). Settings (MUSIC on/off,
+  /// volume, mute) stay app-wide.
+  static Future<void> useGameSoundtrack(String? assetPath) async {
+    if (_gameTrack == assetPath) return;
+    _gameTrack = assetPath;
+    if (!_musicStarted) return; // picked up by the first tap
+    if (assetPath == '') {
+      _musicStarted = false;
+      _backend.unloadMusic();
+      return;
+    }
+    await _backend.setMusicTrack(_currentTrackPath);
+    _applyMusicState();
+  }
+
+  static String get _currentTrackPath {
+    final override = _gameTrack;
+    if (override != null) return override;
     final index = currentTrackIndexNotifier.value.clamp(
       0,
       availableTracks.length - 1,
     );
+    return availableTracks[index].assetPath;
+  }
+
+  static void _startMusic() {
+    if (availableTracks.isEmpty || !musicEnabled || !_initialized) return;
+    if (_gameTrack == '') return; // this game has no soundtrack
+    _musicStarted = true;
     // Order matters on web: set the source and request playback in the same
     // synchronous tap.
     _backend.setMusicVolume(_effectiveMusicVolume);
-    final load = _backend.setMusicTrack(availableTracks[index].assetPath);
+    final load = _backend.setMusicTrack(_currentTrackPath);
     _backend.setMusicPlaying(_musicShouldPlay);
     unawaited(load.then((_) => _applyMusicState()));
   }
@@ -380,6 +439,39 @@ class AudioEngine {
     _safeHaptic(HapticFeedback.vibrate);
   }
 
+  // ─────────────────────────── Archery ───────────────────────────
+
+  /// Bow creak as the player starts drawing.
+  static void playArrowDraw() {
+    if (!_canPlaySfx) return;
+    _safePlay(Sfx.arrowDraw, 0.55);
+  }
+
+  /// Soft click when the bow reaches full draw (aiming view).
+  static void playArrowFullDraw() {
+    if (!_canPlaySfx) return;
+    _safePlay(Sfx.arrowFullDraw, 0.5);
+  }
+
+  /// String twang + whoosh on release, with a light tap.
+  static void playArrowRelease() {
+    if (!_canPlaySfx) return;
+    _safePlay(Sfx.arrowRelease, 0.9);
+    _safeHaptic(HapticFeedback.lightImpact);
+  }
+
+  /// Arrow landing: thunk into the target (plus a bell for a 10), or a thud
+  /// in the grass. The caller handles the sound-travel delay.
+  static void playArrowImpact({required bool hitTarget, bool bell = false}) {
+    if (!_canPlaySfx) return;
+    if (hitTarget) {
+      _safePlay(Sfx.arrowThunk, 0.95);
+      if (bell) _safePlay(Sfx.arrowBell, 0.55);
+    } else {
+      _safePlay(Sfx.arrowThud, 0.7);
+    }
+  }
+
   static void _safePlay(Sfx sfx, double volume) {
     final effectiveVolume = (volume * masterVolume * sfxVolume).clamp(
       0.0,
@@ -406,6 +498,7 @@ class AudioEngine {
     _backend.dispose();
     _musicStarted = false;
     _sfxLoaded = false;
+    _archerySfxLoaded = false;
     _clock
       ..stop()
       ..reset();
