@@ -20,6 +20,16 @@ import 'routes/match_route_screen.dart';
 /// - `/match/:id`: Auto-dispatching match loader
 final GoRouter appRouter = GoRouter(
   initialLocation: '/',
+  // Invite links shared before the router existed looked like
+  // dunkverse.web.app/#/join?code=ABC123: send them to the match.
+  redirect: (context, state) {
+    if (state.uri.path != '/') return null;
+    final fragment = Uri.base.fragment;
+    if (!fragment.startsWith('/join')) return null;
+    final code = Uri.tryParse(fragment)?.queryParameters['code'];
+    if (code == null || code.isEmpty) return null;
+    return '/match/${code.toUpperCase()}';
+  },
   routes: [
     GoRoute(
       path: '/',
@@ -28,6 +38,14 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/bball',
       redirect: (context, state) => '/',
+    ),
+    // dunkverse.web.app/join?code=ABC123 → the match (which joins you).
+    GoRoute(
+      path: '/join',
+      redirect: (context, state) {
+        final code = state.uri.queryParameters['code'];
+        return (code == null || code.isEmpty) ? '/' : '/match/${code.toUpperCase()}';
+      },
     ),
     GoRoute(
       path: '/games',
@@ -66,6 +84,10 @@ class _BasketballScreenState extends State<BasketballScreen> {
   void initState() {
     super.initState();
     _game = BasketballGame();
+    // Archery/darts matches picked in basketball's inbox open their own game.
+    _game.onOtherGameMatch = (m) {
+      if (mounted) context.go('/match/${m.id}');
+    };
   }
 
   @override
