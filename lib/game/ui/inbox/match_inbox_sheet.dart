@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../../models/cloud_match.dart';
@@ -18,6 +19,7 @@ import 'match_thread_dialog.dart';
 import '../common/app_avatar.dart';
 import '../common/app_colors.dart';
 import '../common/app_modal_sheet.dart';
+import '../common/edit_profile_dialog.dart';
 import '../social/friends_hub_sheet.dart';
 
 /// The central 1v1 Match Hub bottom sheet modal.
@@ -120,158 +122,7 @@ class MatchInboxSheet extends HookConsumerWidget {
     final selectedTab = useState(0); // 0: Live Matches, 1: Trophy History
 
     void showEditProfileDialog(BuildContext ctx, UserProfile current) {
-      final nameCtrl = TextEditingController(text: current.displayName);
-      final avatarOptions = AuthService.avatarImageOptions;
-      String selectedAvatar = current.avatarEmoji.startsWith('assets/')
-          ? current.avatarEmoji
-          : avatarOptions.first;
-
-      showDialog(
-        context: ctx,
-        builder: (dialogCtx) => StatefulBuilder(
-          builder: (dialogCtx, setDialogState) => Dialog(
-            backgroundColor: const Color(0xFF131826),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(24),
-              side: const BorderSide(color: Color(0xFF2E3954), width: 1.5),
-            ),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'EDIT YOUR PROFILE',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w900,
-                          fontSize: 16,
-                          letterSpacing: 1.0,
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(
-                          Icons.close_rounded,
-                          color: Colors.white60,
-                          size: 20,
-                        ),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                        onPressed: () => Navigator.of(dialogCtx).pop(),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-
-                  // Selected Avatar Live Preview Circle
-                  Center(
-                    child: AppAvatar(
-                      avatar: selectedAvatar,
-                      size: 96,
-                      borderColor: const Color(0xFF00FFCC),
-                      borderWidth: 2.5,
-                      showGlow: true,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-
-                  TextField(
-                    controller: nameCtrl,
-                    maxLength: 16,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                    ),
-                    decoration: InputDecoration(
-                      labelText: 'Display Name',
-                      labelStyle: const TextStyle(color: Color(0xFF94A3B8)),
-                      counterText: '',
-                      filled: true,
-                      fillColor: const Color(0xFF1E2638),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  const Text(
-                    'CHOOSE AVATAR',
-                    style: TextStyle(
-                      color: Color(0xFF94A3B8),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.8,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-
-                  // 15 Dunk Head Real Image Avatars using AppAvatar
-                  Wrap(
-                    alignment: WrapAlignment.center,
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: avatarOptions.map((assetPath) {
-                      final isSel = selectedAvatar == assetPath;
-                      return InkWell(
-                        onTap: () {
-                          HapticFeedback.selectionClick();
-                          setDialogState(() => selectedAvatar = assetPath);
-                        },
-                        customBorder: const CircleBorder(),
-                        child: AppAvatar(
-                          avatar: assetPath,
-                          size: 44,
-                          borderColor: isSel
-                              ? const Color(0xFF00FFCC)
-                              : Colors.white24,
-                          borderWidth: isSel ? 2.5 : 1.2,
-                          showGlow: isSel,
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 18),
-
-                  ElevatedButton(
-                    onPressed: () async {
-                      final cleanName = nameCtrl.text.trim();
-                      if (cleanName.isNotEmpty) {
-                        await AuthService.instance.updateProfile(
-                          displayName: cleanName,
-                          avatarEmoji: selectedAvatar,
-                        );
-                        if (dialogCtx.mounted) {
-                          Navigator.of(dialogCtx).pop();
-                        }
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF00FFCC),
-                      foregroundColor: const Color(0xFF0F172A),
-                      padding: const EdgeInsets.symmetric(vertical: 13),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: const Text(
-                      'SAVE PROFILE',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
+      EditProfileDialog.show(ctx, profile: current);
     }
 
     final myProfile = ref.watch(currentUserProfileProvider).value;
@@ -519,6 +370,29 @@ class MatchInboxSheet extends HookConsumerWidget {
                             ),
                           );
                         },
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        height: 40,
+                        width: 40,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1E2638),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFF334155), width: 1.2),
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () {
+                              Navigator.of(context).pop();
+                              context.go('/games');
+                            },
+                            borderRadius: BorderRadius.circular(12),
+                            child: const Center(
+                              child: Icon(Icons.grid_view_rounded, size: 18, color: Color(0xFF00FFCC)),
+                            ),
+                          ),
+                        ),
                       ),
                     ],
                   ),
