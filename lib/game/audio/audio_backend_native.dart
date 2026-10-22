@@ -132,6 +132,83 @@ class SoLoudBackend implements AudioBackend {
     unawaited(_releaseMusic());
   }
 
+  // ── Ambience ─────────────────────────────────────────────────────────────
+
+  AudioSource? _ambSource;
+  SoundHandle? _ambHandle;
+  String? _ambKey;
+  int _ambGen = 0;
+  bool _wantAmbPlaying = false;
+  double _ambVolume = 0.3;
+
+  @override
+  Future<void> setAmbienceTrack(String? assetKey) async {
+    if (!_ready || _ambKey == assetKey) return;
+    _ambKey = assetKey;
+    final gen = ++_ambGen;
+    await _releaseAmbience();
+    if (assetKey == null) return;
+    try {
+      final source = await SoLoud.instance.loadAsset(assetKey, mode: LoadMode.memory);
+      if (gen != _ambGen) {
+        unawaited(SoLoud.instance.disposeSource(source));
+        return;
+      }
+      _ambSource = source;
+      _ambHandle = SoLoud.instance.play(
+        source,
+        volume: _ambVolume,
+        looping: true,
+        paused: !_wantAmbPlaying,
+      );
+    } catch (e) {
+      debugPrint('[SoLoud] Ambience load error: $e');
+    }
+  }
+
+  Future<void> _releaseAmbience() async {
+    final handle = _ambHandle;
+    _ambHandle = null;
+    if (handle != null && _ready) {
+      try {
+        if (SoLoud.instance.getIsValidVoiceHandle(handle)) {
+          await SoLoud.instance.stop(handle);
+        }
+      } catch (_) {}
+    }
+    final source = _ambSource;
+    _ambSource = null;
+    if (source != null && _ready) {
+      try {
+        await SoLoud.instance.disposeSource(source);
+      } catch (_) {}
+    }
+  }
+
+  @override
+  void setAmbiencePlaying(bool playing) {
+    _wantAmbPlaying = playing;
+    final handle = _ambHandle;
+    if (handle == null || !_ready) return;
+    try {
+      if (SoLoud.instance.getIsValidVoiceHandle(handle)) {
+        SoLoud.instance.setPause(handle, !playing);
+      }
+    } catch (_) {}
+  }
+
+  @override
+  void setAmbienceVolume(double volume) {
+    _ambVolume = volume;
+    final handle = _ambHandle;
+    if (handle == null || !_ready) return;
+    try {
+      if (SoLoud.instance.getIsValidVoiceHandle(handle)) {
+        SoLoud.instance.setVolume(handle, volume);
+      }
+    } catch (_) {}
+  }
+
   @override
   void unlock() {}
 
@@ -141,6 +218,7 @@ class SoLoudBackend implements AudioBackend {
   @override
   void dispose() {
     unloadMusic();
+    unawaited(_releaseAmbience());
     _sources.clear();
     if (_ready) {
       unawaited(SoLoud.instance.disposeAllSources());
