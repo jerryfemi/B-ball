@@ -2,7 +2,6 @@ import 'dart:math' as math;
 
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import 'archery_constants.dart';
 import 'audio/archery_audio.dart';
@@ -129,7 +128,6 @@ class ArcheryGame extends FlameGame {
       if (_setOver || arrowPhysics.inFlight) return;
 
       ArcheryAudio.playReleaseTwang();
-      HapticFeedback.lightImpact();
 
       // 1. Unproject visible crosshair point to target plane Z = D
       archeryCamera.unprojectToPlane(crossX, crossY, targetDistance);
@@ -227,6 +225,12 @@ class ArcheryGame extends FlameGame {
     cameraRig.addShake(shot.isX ? 4.0 : 2.5);
   }
 
+  @override
+  void onRemove() {
+    ArcheryAudio.leave();
+    super.onRemove();
+  }
+
   /// "Next set" from the set-end card: clear the target and walk back to the line.
   void advanceNextSet() {
     events.nextSet();
@@ -289,6 +293,8 @@ class ArcheryGame extends FlameGame {
       arrow: arrowPhysics,
     );
 
+    windPill.update(clampedDt);
+
     // 3. Update Bow Overlay slide progress
     bowOverlay.update(clampedDt, slide: cameraRig.bowSlideProgress);
 
@@ -320,8 +326,6 @@ class ArcheryGame extends FlameGame {
         worldZ: arrowPhysics.hitPoint.z,
         score: score,
       );
-      if (arrowPhysics.hitBoss) HapticFeedback.mediumImpact();
-
       // Report the shot; the notifier scores it (and the set on the last arrow).
       final bool isLastArrow = events.shotScored(score);
       _setOver = isLastArrow;
