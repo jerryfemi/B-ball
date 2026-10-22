@@ -19,6 +19,7 @@ import 'state/archery_match_notifier.dart';
 import 'state/archery_players.dart';
 import 'state/archery_rules.dart';
 import 'ui/archery_hud.dart';
+import 'ui/archery_match_bar.dart';
 import 'ui/archery_pause_menu.dart';
 
 /// Full-screen archery: solo against the bot (`/archery`), or a live online
@@ -35,6 +36,8 @@ class ArcheryGameScreen extends HookConsumerWidget {
     final game = useState<ArcheryGame?>(null);
     final paused = useState(false);
     final online = useRef<ArcheryOnlineController?>(null);
+    // The game owns archery's music; kept here so dispose can release it.
+    final audioOwner = useRef<Object?>(null);
 
     // Set the match up after the first frame: Riverpod state must not change
     // while widgets are building.
@@ -92,11 +95,14 @@ class ArcheryGameScreen extends HookConsumerWidget {
           ));
         }
         online.value = controller;
-        game.value = ArcheryGame(events: notifier, online: controller);
+        final created = ArcheryGame(events: notifier, online: controller);
+        audioOwner.value = created;
+        game.value = created;
       });
       return () {
         online.value?.dispose();
-        ArcheryAudio.leave();
+        final owner = audioOwner.value;
+        if (owner != null) ArcheryAudio.leave(owner);
       };
     }, const []);
 
@@ -119,6 +125,13 @@ class ArcheryGameScreen extends HookConsumerWidget {
       // Solo freezes; a live match can't (the opponent is still playing).
       if (!isOnline) g.pauseEngine();
       paused.value = true;
+    }
+
+    /// Opening a dialog over the range: drop any aim being held so the
+    /// arrow isn't released by the dialog's own taps.
+    void openPauseSilently() {
+      if (g == null) return;
+      g.controller.onPointerCancel();
     }
 
     void resume() {
@@ -164,38 +177,68 @@ class ArcheryGameScreen extends HookConsumerWidget {
                   // 2. HUD
                   ArcheryHud(game: g, onExitToLobby: goToLobby),
 
-                  // 3. Lobby (top-left) and, solo, a 1v1 challenge (top-right)
+                  // 3. Corner buttons, icon-only so they never collide with
+                  //    the scoreboard. Left: lobby, matches. Right: pause, 1v1.
                   Positioned(
                     top: 8.0,
-                    left: 14.0,
-                    child: _CornerButton(
-                      icon: Icons.grid_view_rounded,
-                      label: 'LOBBY',
-                      onTap: goToLobby,
-                    ),
-                  ),
-                  Positioned(
-                    top: 8.0,
-                    right: 14.0,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
+                    left: 12.0,
+                    child: Column(
                       children: [
-                        if (!isOnline && _firebaseReady) ...[
-                          _CornerButton(
-                            icon: Icons.people_alt_rounded,
-                            label: '1V1',
-                            onTap: () => ArcheryChallenge.start(context),
-                          ),
-                          const SizedBox(width: 8.0),
-                        ],
-                        _CornerButton(
-                          icon: Icons.pause_rounded,
-                          label: 'PAUSE',
-                          onTap: openPause,
+                        ArcheryRoundButton(
+                          icon: Icons.grid_view_rounded,
+                          tooltip: 'Lobby',
+                          onTap: goToLobby,
                         ),
+                        if (_firebaseReady) ...[
+                          const SizedBox(height: 8.0),
+                          ArcheryMatchesButton(
+                            onTap: () {
+                              openPauseSilently();
+                              ArcheryInbox.open(
+                                context,
+                                onCreateMatch: () => ArcheryChallenge.start(
+                                  context,
+                                  showGamePicker: true,
+                                ),
+                              );
+                            },
+                          ),
+                        ],
                       ],
                     ),
                   ),
+                  Positioned(
+                    top: 8.0,
+                    right: 12.0,
+                    child: Column(
+                      children: [
+                        ArcheryRoundButton(
+                          icon: Icons.pause_rounded,
+                          tooltip: 'Pause',
+                          onTap: openPause,
+                        ),
+                        if (!isOnline && _firebaseReady) ...[
+                          const SizedBox(height: 8.0),
+                          ArcheryRoundButton(
+                            icon: Icons.people_alt_rounded,
+                            tooltip: 'Challenge 1v1',
+                            onTap: () => ArcheryChallenge.start(context),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+
+                  // Incoming challenges (any game), under the scoreboard.
+                  if (_firebaseReady)
+                    Positioned(
+                      left: 60.0,
+                      right: 60.0,
+                      bottom: 18.0,
+                      child: Center(
+                        child: ArcheryChallengePill(onOpen: openPauseSilently),
+                      ),
+                    ),
 
                   // 4. Pause menu (music / effects / birdsong)
                   if (paused.value)
@@ -229,8 +272,12 @@ abstract final class ArcheryChallenge {
     roundDurationSeconds: ArcheryRules.onlineSetSeconds,
   );
 
-  static Future<void> start(BuildContext context) async {
-    final chosen = await MatchSetupDialog.show(context, initialConfig: config);
+  static Future<void> start(BuildContext context, {bool showGamePicker = false}) async {
+    final chosen = await MatchSetupDialog.show(
+      context,
+      initialConfig: config,
+      showGamePicker: showGamePicker,
+    );
     if (chosen == null || !context.mounted) return;
 
     final user = await AuthService.instance.ensureAuthenticated();
@@ -257,52 +304,6 @@ abstract final class ArcheryChallenge {
       challengedFriend: chosen.opponentFriend,
       onPlaySoloWhileWaiting: () => enter(match),
       onEnterArena: enter,
-    );
-  }
-}
-
-class _CornerButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  const _CornerButton({required this.icon, required this.label, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: const Color(0xCC0A0E1A),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0x33FFFFFF), width: 1.0),
-            boxShadow: const [
-              BoxShadow(color: Color(0x44000000), blurRadius: 6, offset: Offset(0, 2)),
-            ],
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 14, color: const Color(0xFF94A3B8)),
-              const SizedBox(width: 5),
-              Text(
-                label,
-                style: const TextStyle(
-                  color: Color(0xFFE2E8F0),
-                  fontSize: 10,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0.8,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
