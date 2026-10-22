@@ -362,8 +362,32 @@ class AudioEngine {
   // ─────────────────────────── Per-game soundtrack ───────────────────────────
 
   /// null = basketball's playlist (above). Otherwise the asset this game
-  /// plays instead; '' = this game has no music.
-  static String? _gameTrack;
+  /// plays instead; '' = no music. Starts silent: only a game that claims
+  /// the soundtrack ([claimSoundtrack]) plays anything, so the lobby and
+  /// screens without music stay quiet.
+  static String? _gameTrack = '';
+
+  /// The game that currently owns the soundtrack (see [claimSoundtrack]).
+  static Object? _soundtrackOwner;
+
+  /// A game takes over the soundtrack while it's open. [track] null =
+  /// basketball's playlist, otherwise that asset; [ambience] a background
+  /// loop (archery's birdsong) or null.
+  static void claimSoundtrack(Object owner, {String? track, String? ambience}) {
+    _soundtrackOwner = owner;
+    unawaited(useGameSoundtrack(track));
+    unawaited(useGameAmbience(ambience));
+  }
+
+  /// The game is closing: silence, and the decoded track is freed. Ignored
+  /// if another game has already claimed the soundtrack (the next screen
+  /// opens before the old one is disposed). Safe to call more than once.
+  static void releaseSoundtrack(Object owner) {
+    if (!identical(_soundtrackOwner, owner)) return;
+    _soundtrackOwner = null;
+    unawaited(useGameSoundtrack(''));
+    unawaited(useGameAmbience(null));
+  }
 
   /// Switches the soundtrack when a game opens. Basketball passes null;
   /// archery passes its own track (or '' for silence). Settings (MUSIC on/off,
@@ -371,7 +395,12 @@ class AudioEngine {
   static Future<void> useGameSoundtrack(String? assetPath) async {
     if (_gameTrack == assetPath) return;
     _gameTrack = assetPath;
-    if (!_musicStarted) return; // picked up by the first tap
+    if (!_musicStarted) {
+      // Audio already unlocked by an earlier tap: start now. Otherwise the
+      // first tap starts it.
+      if (assetPath != '' && _audioUnlocked) _startMusic();
+      return;
+    }
     if (assetPath == '') {
       _musicStarted = false;
       _backend.unloadMusic();
