@@ -1816,7 +1816,9 @@ class BasketballGame extends Forge2DGame {
     _liveShotSubscription?.cancel();
     _liveMatchSubscription?.cancel();
     liveTransitionNotifier.dispose();
-    AudioEngine.dispose();
+    // The audio engine is app-wide (archery and the lobby use it too), so
+    // it is never disposed here; basketball only gives up its music.
+    AudioEngine.releaseSoundtrack(this);
     scoreNotifier.dispose();
     streakNotifier.dispose();
     streakFxEnabledNotifier.dispose();
