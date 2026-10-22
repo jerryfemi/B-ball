@@ -4,6 +4,7 @@ import '../archery_constants.dart';
 import '../camera/camera_rig.dart';
 import '../physics/target_scoring.dart';
 import 'archery_match_state.dart';
+import 'archery_rules.dart';
 
 /// What the Flame game needs from the match: the seed and arrow position for
 /// deterministic wind/sway, and somewhere to report events.
@@ -11,19 +12,26 @@ abstract interface class ArcheryGameEvents {
   int get matchSeed;
   int get setIndex;
 
-  /// Arrows already shot in the current set.
+  /// Arrows already shot in the current set by whoever is shooting.
   int get arrowIndex;
+
+  /// False while watching the opponent shoot (online).
+  bool get isMyTurn;
 
   void phaseChanged(ShotPhase phase);
   void windChanged(double windDisplay);
 
-  /// The opponent's next arrow of this set has landed (set-start replay).
+  /// Solo: the bot's next arrow of this set has landed (set-start replay).
   /// Returns its score, or null once all of its arrows are in.
   ShotScore? botArrowLanded();
 
-  /// Records your arrow and, on the last arrow of the set, awards set points.
-  /// Returns true when the set is over.
+  /// Records your arrow. Solo: on the last arrow of the set, also scores the
+  /// set; returns true when the set is over. Online: always false (the set
+  /// result comes from the server once both archers have shot).
   bool shotScored(ShotScore score);
+
+  /// Online: the opponent's arrow landed (re-flown on this phone).
+  void opponentShotScored(ShotScore score);
 
   void nextSet();
   void restartMatch();
@@ -51,6 +59,9 @@ class ArcheryMatchNotifier extends Notifier<ArcheryMatchState>
   int get arrowIndex => state.arrowIndex;
 
   @override
+  bool get isMyTurn => state.isMyTurn;
+
+  @override
   void phaseChanged(ShotPhase phase) {
     if (state.phase == phase) return;
     state = state.copyWith(phase: phase);
@@ -62,63 +73,59 @@ class ArcheryMatchNotifier extends Notifier<ArcheryMatchState>
     state = state.copyWith(windDisplay: windDisplay);
   }
 
+  // ── Solo ────────────────────────────────────────────────────────────────
+
   @override
   ShotScore? botArrowLanded() {
-    final int i = state.botShots.length;
-    if (i >= ArcheryMatchState.arrowsPerSet) return null;
+    if (state.online) return null;
+    final int i = state.opponentShots.length;
+    if (i >= ArcheryRules.arrowsPerSet) return null;
     final ShotScore shot = botShot(state.matchSeed, state.setIndex, i);
-    state = state.copyWith(botShots: [...state.botShots, shot.points]);
+    state = state.copyWith(opponentShots: [...state.opponentShots, shot]);
     return shot;
   }
 
   @override
   bool shotScored(ShotScore score) {
     if (state.setOver) return true;
-
     final shots = [...state.setShots, score];
-    if (shots.length < ArcheryMatchState.arrowsPerSet) {
+
+    if (state.online) {
+      state = state.copyWith(setShots: shots);
+      return false;
+    }
+
+    if (shots.length < ArcheryRules.arrowsPerSet) {
       state = state.copyWith(setShots: shots);
       return false;
     }
 
     // Normally the replay already revealed all bot arrows; fill any missing.
-    final bot = [...state.botShots];
-    while (bot.length < ArcheryMatchState.arrowsPerSet) {
-      bot.add(botShot(state.matchSeed, state.setIndex, bot.length).points);
+    final bot = [...state.opponentShots];
+    while (bot.length < ArcheryRules.arrowsPerSet) {
+      bot.add(botShot(state.matchSeed, state.setIndex, bot.length));
     }
 
-    final int you = shots.fold(0, (sum, s) => sum + s.points);
-    final int them = bot.fold(0, (sum, p) => sum + p);
-    int userSets = state.userSets;
-    int botSets = state.botSets;
-    if (you > them) {
-      userSets++;
-    } else if (you < them) {
-      botSets++;
-    } else {
-      userSets++;
-      botSets++;
-    }
-
+    final you = [...state.userSetTotals, shots.fold(0, (s, a) => s + a.points)];
+    final them = [...state.opponentSetTotals, bot.fold(0, (s, a) => s + a.points)];
     state = state.copyWith(
       setShots: shots,
-      botShots: bot,
-      userSets: userSets,
-      botSets: botSets,
+      opponentShots: bot,
+      userSetTotals: you,
+      opponentSetTotals: them,
       setOver: true,
-      matchOver: userSets >= ArcheryMatchState.setsToWin ||
-          botSets >= ArcheryMatchState.setsToWin,
+      matchOver: ArcheryRules.isMatchOver(you, them),
     );
     return true;
   }
 
   @override
   void nextSet() {
-    if (state.matchOver) return;
+    if (state.matchOver || state.online) return;
     state = state.copyWith(
       setIndex: state.setIndex + 1,
       setShots: const [],
-      botShots: const [],
+      opponentShots: const [],
       setOver: false,
     );
   }
@@ -128,6 +135,84 @@ class ArcheryMatchNotifier extends Notifier<ArcheryMatchState>
     state = ArcheryMatchState.initial(seed: _newSeed())
         .copyWith(windDisplay: state.windDisplay);
   }
+
+  // ── Online ──────────────────────────────────────────────────────────────
+
+  @override
+  void opponentShotScored(ShotScore score) {
+    if (!state.online || state.opponentShots.length >= ArcheryRules.arrowsPerSet) {
+      return;
+    }
+    state = state.copyWith(opponentShots: [...state.opponentShots, score]);
+  }
+
+  /// Switches to an online match: seed from the match id, empty board.
+  void startOnline({required int seed, required String joinCode}) {
+    state = ArcheryMatchState.initial(seed: seed).copyWith(
+      online: true,
+      joinCode: joinCode,
+      windDisplay: state.windDisplay,
+    );
+  }
+
+  /// Sets up the board for a turn: which set, who shoots, arrows already in
+  /// (yours and theirs for this set) and every finished set's totals.
+  void beginOnlineTurn({
+    required int setIndex,
+    required ArcheryShooter shooter,
+    required List<ShotScore> mine,
+    required List<ShotScore> theirs,
+    required List<int> userSetTotals,
+    required List<int> opponentSetTotals,
+  }) {
+    state = state.copyWith(
+      setIndex: setIndex,
+      shooter: shooter,
+      setShots: mine,
+      opponentShots: theirs,
+      userSetTotals: userSetTotals,
+      opponentSetTotals: opponentSetTotals,
+      setOver: false,
+      bannerId: state.bannerId + 1,
+    );
+  }
+
+  /// Both archers finished the set: show its result (and the match result
+  /// when [matchOver]).
+  void showOnlineSetResult({
+    required List<ShotScore> mine,
+    required List<ShotScore> theirs,
+    required List<int> userSetTotals,
+    required List<int> opponentSetTotals,
+    required bool matchOver,
+  }) {
+    state = state.copyWith(
+      setShots: mine,
+      opponentShots: theirs,
+      userSetTotals: userSetTotals,
+      opponentSetTotals: opponentSetTotals,
+      setOver: true,
+      matchOver: matchOver,
+      liveStatus: ArcheryLiveStatus.none,
+    );
+  }
+
+  /// The match ended by forfeit (+1 you won, −1 they won).
+  void endOnlineByForfeit(int winner) {
+    state = state.copyWith(
+      setOver: true,
+      matchOver: true,
+      forfeitWinner: winner,
+      liveStatus: ArcheryLiveStatus.none,
+    );
+  }
+
+  void setLiveStatus(ArcheryLiveStatus status) {
+    if (state.liveStatus == status) return;
+    state = state.copyWith(liveStatus: status);
+  }
+
+  // ── Bot ─────────────────────────────────────────────────────────────────
 
   /// Deterministic bot arrow: a 2D normal hit offset on the face, scored by
   /// the same rules as yours. Its grouping opens up a little with distance.
