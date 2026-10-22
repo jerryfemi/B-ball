@@ -1,79 +1,101 @@
 import 'package:flutter/material.dart';
 
-/// One game on the lobby grid. Add a game here and it appears in the lobby.
+/// One game in the lobby. Add a game here and it appears in the lobby.
 @immutable
 class LobbyGame {
+  /// Same id as `CloudMatch.game` ('basketball', 'archery', 'darts').
+  final String id;
   final String title;
-  final String category;
-  final String badge;
-  final Color badgeColor;
-  final IconData icon;
-  final Color accentColor;
-  final List<Color> gradientColors;
-  final String description;
-  final String features;
-  final String buttonLabel;
 
-  /// Where the card goes (a GoRouter path).
+  /// One line under the tile.
+  final String tagline;
+
+  /// Longer copy for the featured banner.
+  final String pitch;
+
+  /// Small line above the title in the featured banner.
+  final String featuredLabel;
+
+  final Color accent;
+
+  /// Tile art (gameplay) and how to crop it.
+  final String image;
+  final Alignment imageAlignment;
+
+  /// Banner art: wide crop, plus a focus point for tall phone banners.
+  final String heroImage;
+  final Alignment heroAlignment;
+  final Alignment heroAlignmentNarrow;
+
+  /// Where the game opens (a GoRouter path).
   final String route;
 
+  /// False: shown greyed with "Coming soon" (still opens its preview).
+  final bool available;
+
+  /// Shown as the big banner at the top of the lobby (first one wins).
+  final bool featured;
+
   const LobbyGame({
+    required this.id,
     required this.title,
-    required this.category,
-    required this.badge,
-    required this.badgeColor,
-    required this.icon,
-    required this.accentColor,
-    required this.gradientColors,
-    required this.description,
-    required this.features,
-    required this.buttonLabel,
+    required this.tagline,
+    required this.pitch,
+    required this.accent,
+    required this.image,
     required this.route,
-  });
+    this.featuredLabel = '',
+    this.imageAlignment = Alignment.center,
+    String? heroImage,
+    this.heroAlignment = Alignment.center,
+    this.heroAlignmentNarrow = Alignment.center,
+    this.available = true,
+    this.featured = false,
+  }) : heroImage = heroImage ?? image;
 }
 
 /// The games in GameVerse, in lobby order.
 const List<LobbyGame> lobbyGames = [
   LobbyGame(
-    title: 'DunkVerse',
-    category: 'BASKETBALL',
-    badge: 'POPULAR',
-    badgeColor: Color(0xFFFF8A00),
-    icon: Icons.sports_basketball_rounded,
-    accentColor: Color(0xFFFF6B00),
-    gradientColors: [Color(0xFF26130A), Color(0xFF131826)],
-    description:
-        'Arcade 1v1 hoop shootout. Beat the clock, rack up clean swishes, and challenge friends.',
-    features: '2–4 Rounds • 30–60s Clock • Physics',
-    buttonLabel: 'PLAY HOOPS',
+    id: 'basketball',
+    title: 'Hoops',
+    tagline: "Sixty seconds, one hoop. Beat your rival's score.",
+    pitch: 'Sixty seconds on the clock. Swish, bank and streak your way past a friend.',
+    accent: Color(0xFFF59E0B),
+    image: 'assets/lobby/hoops.webp',
+    imageAlignment: Alignment(0, -0.2),
     route: '/',
   ),
   LobbyGame(
+    id: 'archery',
     title: 'Archery',
-    category: 'PRECISION',
-    badge: 'NEW',
-    badgeColor: Color(0xFF10B981),
-    icon: Icons.track_changes_rounded,
-    accentColor: Color(0xFF00FFCC),
-    gradientColors: [Color(0xFF06281E), Color(0xFF131826)],
-    description:
-        'GamePigeon-style set archery. Read the wind, hold steady, and hit the X-ring. Play the bot or go live 1v1.',
-    features: 'Sets of 3 • First to 6 • 50/100/150 ft',
-    buttonLabel: 'PLAY ARCHERY',
+    tagline: 'Read the wind and hit the gold.',
+    pitch: 'Three arrows a set, and the wind changes every shot. First archer to six set points wins.',
+    featuredLabel: 'New this week',
+    accent: Color(0xFF00FFCC),
+    image: 'assets/lobby/archery.webp',
+    heroImage: 'assets/lobby/archery_hero.webp',
+    heroAlignment: Alignment.center,
+    heroAlignmentNarrow: Alignment(0.3, 0),
     route: '/archery',
+    featured: true,
   ),
   LobbyGame(
+    id: 'darts',
     title: 'Darts',
-    category: 'TARGET',
-    badge: 'COMING SOON',
-    badgeColor: Color(0xFFA855F7),
-    icon: Icons.adjust_rounded,
-    accentColor: Color(0xFFA855F7),
-    gradientColors: [Color(0xFF1F1033), Color(0xFF131826)],
-    description:
-        'Regulation 501 countdown & tactical Cricket. Flick throw mechanics with double-out finishes.',
-    features: '501 Rules • Cricket • Flick Mechanics',
-    buttonLabel: 'PREVIEW',
+    tagline: '501 and Cricket, thrown with a flick.',
+    pitch: '501 and Cricket, thrown with a flick.',
+    accent: Color(0xFFEF4444),
+    image: 'assets/lobby/darts.webp',
+    imageAlignment: Alignment(0, -0.3),
     route: '/darts',
+    available: false,
   ),
 ];
+
+LobbyGame get featuredGame =>
+    lobbyGames.firstWhere((g) => g.featured, orElse: () => lobbyGames.first);
+
+/// The lobby entry for a `CloudMatch.game` id (falls back to basketball).
+LobbyGame lobbyGameById(String id) =>
+    lobbyGames.firstWhere((g) => g.id == id, orElse: () => lobbyGames.first);
