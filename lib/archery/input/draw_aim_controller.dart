@@ -24,6 +24,9 @@ class DrawAimController {
   bool isHolding = false;
   double holdTime = 0.0;
 
+  /// False while watching the opponent shoot (online): touches are ignored.
+  bool inputEnabled = true;
+
   // Screen metrics & target center
   double screenW = 0.0;
   double screenH = 0.0;
@@ -84,6 +87,7 @@ class DrawAimController {
   }
 
   void onPointerDown(int pointerId, double x, double y) {
+    if (!inputEnabled) return;
     if (_activePointerId != null) return; // Track first finger only
     if (cameraRig.phase != ShotPhase.atLine && cameraRig.phase != ShotPhase.returning) return;
 
@@ -184,6 +188,7 @@ class DrawAimController {
   }
 
   void render(Canvas canvas) {
+    if (!isHolding && !inputEnabled) return; // spectating: no crosshair
     if (cameraRig.phase != ShotPhase.aiming && cameraRig.phase != ShotPhase.raising) {
       return;
     }
