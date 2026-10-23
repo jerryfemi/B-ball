@@ -93,18 +93,24 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
       restingDart.visible = true; // it eases back to rest on its own
     };
 
-    flickController.onThrow = (launchVel) {
+    flickController.onThrow = (targetMmX, targetMmY) {
       DartsAudio.playThrow();
-      restingDart.visible = false;
       flickController.inputEnabled = false;
 
+      // Leaves your hand from where the dart is, in the pose it was held.
+      final double sx = restingDart.startXm;
+      final double sy = restingDart.startYm;
       flyingDart.launch(
-        launchVel: launchVel,
+        launchVel: FlickSolver.launchFor(targetMmX, targetMmY, DartsK.idealSpeed, sx, sy),
         playerIndex: 0,
         onLanded: _onLocalDartLanded,
-        startPxX: restingDart.tipX,
-        startPxY: restingDart.tipY,
+        startXm: sx,
+        startYm: sy,
+        handPitch: restingDart.pitch,
+        handYaw: restingDart.yaw,
+        spinStart: restingDart.spinColumn,
       );
+      restingDart.visible = false;
     };
 
     await add(backdrop); // Priority 0
@@ -139,21 +145,7 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
   void _onLocalDartLanded(DartHit hit, {bool launched = true}) {
     dartboard.flashArea(hit);
 
-    if (launched) {
-      final stuck = StuckDart(
-        projection: projection,
-        sprites: sprites,
-        hit: hit,
-        playerIndex: 0,
-      );
-      stuckDarts.add(stuck);
-      add(stuck);
-
-      if (stuckDarts.length > 3) {
-        final oldest = stuckDarts.removeAt(0);
-        oldest.startPull();
-      }
-    }
+    if (launched) _stickFlyingDart(hit);
 
     if (!hit.isMiss) {
       DartsAudio.playHit(isBull: hit.isBull);
@@ -178,6 +170,25 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
       flickController.inputEnabled = false;
       if (online != null) _awaitingOnlineTurn = true;
       _handlePlayerTurnOver();
+    }
+  }
+
+  /// Leaves the dart that just landed stuck in the board, in the pose it
+  /// flew in with (a miss sticks in the wall the same way).
+  void _stickFlyingDart(DartHit hit) {
+    final stuck = StuckDart(
+      projection: projection,
+      sprites: sprites,
+      hit: hit,
+      axisX: flyingDart.axisX,
+      axisY: flyingDart.axisY,
+      axisZ: flyingDart.axisZ,
+      spinColumn: flyingDart.spinColumn,
+    );
+    stuckDarts.add(stuck);
+    add(stuck);
+    if (stuckDarts.length > 3) {
+      stuckDarts.removeAt(0).startPull();
     }
   }
 
@@ -273,19 +284,7 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
         onLanded: (hit) {
           dartboard.flashArea(hit);
 
-          final stuck = StuckDart(
-            projection: projection,
-            sprites: sprites,
-            hit: hit,
-            playerIndex: 1,
-          );
-          stuckDarts.add(stuck);
-          add(stuck);
-
-          if (stuckDarts.length > 3) {
-            final oldest = stuckDarts.removeAt(0);
-            oldest.startPull();
-          }
+          _stickFlyingDart(hit);
 
           if (!hit.isMiss) {
             DartsAudio.playHit(isBull: hit.isBull);
@@ -356,7 +355,7 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
   }
 
   @override
-  Color backgroundColor() => const Color(DartsK.surfaceDark);
+  Color backgroundColor() => const Color(0xFF3B2414);
 
   @override
   void onGameResize(Vector2 size) {
@@ -411,19 +410,7 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
       onLanded: (hit) {
         dartboard.flashArea(hit);
 
-        final stuck = StuckDart(
-          projection: projection,
-          sprites: sprites,
-          hit: hit,
-          playerIndex: player,
-        );
-        stuckDarts.add(stuck);
-        add(stuck);
-
-        if (stuckDarts.length > 3) {
-          final oldest = stuckDarts.removeAt(0);
-          oldest.startPull();
-        }
+        _stickFlyingDart(hit);
 
         if (!hit.isMiss) {
           DartsAudio.playHit(isBull: hit.isBull);
@@ -525,20 +512,7 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
   void _onRemoteDartLanded(DartHit hit, {bool launched = true}) {
     dartboard.flashArea(hit);
 
-    if (launched) {
-      final stuck = StuckDart(
-        projection: projection,
-        sprites: sprites,
-        hit: hit,
-        playerIndex: 1,
-      );
-      stuckDarts.add(stuck);
-      add(stuck);
-      if (stuckDarts.length > 3) {
-        final oldest = stuckDarts.removeAt(0);
-        oldest.startPull();
-      }
-    }
+    if (launched) _stickFlyingDart(hit);
 
     if (!hit.isMiss) {
       DartsAudio.playHit(isBull: hit.isBull);
