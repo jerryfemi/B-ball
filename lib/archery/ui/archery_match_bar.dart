@@ -8,6 +8,7 @@ import '../../game/ui/inbox/match_inbox_sheet.dart';
 import '../../game/ui/match/incoming_challenge_dialog.dart';
 import '../../models/cloud_match.dart';
 import '../../providers/app_providers.dart';
+import '../../notifications/app_notices.dart';
 
 /// Round icon button for the archery screen's corners (icon only, so it never
 /// collides with the scoreboard on narrow phones). Optional count badge.
@@ -114,11 +115,14 @@ class ArcheryMatchesButton extends ConsumerWidget {
     final myUid = ref.watch(currentUserProfileProvider.select((p) => p.value?.uid ?? ''));
     final matches = ref.watch(userMatchesProvider).value ?? const <CloudMatch>[];
     final int yourTurn = myUid.isEmpty ? 0 : matches.where((m) => m.isMyTurn(myUid)).length;
+    // Opens your profile drawer, so the badge counts everything in it:
+    // matches waiting on you plus invites and friend requests.
+    final int waiting = ref.watch(appNoticesProvider).length;
     return ArcheryRoundButton(
-      icon: Icons.inbox_rounded,
-      tooltip: 'Matches',
+      icon: Icons.person_rounded,
+      tooltip: 'You: invites, friends, matches',
       onTap: onTap,
-      badge: yourTurn,
+      badge: yourTurn + waiting,
     );
   }
 }
