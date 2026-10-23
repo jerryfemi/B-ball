@@ -27,17 +27,15 @@ class RestingDart extends Component {
   bool visible = true;
 
   bool _holding = false;
-  double _fingerX = 0.0;
   double _fingerY = 0.0;
   double _pickupY = 0.0;
 
   /// Current (smoothed) tip position in screen px.
   double tipX = 0.0;
   double tipY = 0.0;
-  double _lean = 0.0;
   bool _placed = false;
 
-  /// Spin frame shown in hand (changes per dart, so each looks a bit different).
+  /// Spin frame shown in hand: locked to frame 2 (matching reference pose).
   int spinColumn = 2;
 
   RestingDart({
@@ -48,7 +46,7 @@ class RestingDart extends Component {
 
   /// In-hand pose (radians).
   double get pitch => DartsK.handPitchDeg * math.pi / 180.0;
-  double get yaw => _lean;
+  double get yaw => 0.0;
 
   /// Where a throw starts (physics metres at the release distance).
   double get startXm {
@@ -65,7 +63,6 @@ class RestingDart extends Component {
   void setHold(bool holding, double fingerX, double fingerY) {
     if (holding && !_holding) _pickupY = fingerY;
     _holding = holding;
-    _fingerX = fingerX;
     _fingerY = fingerY;
   }
 
@@ -74,9 +71,8 @@ class RestingDart extends Component {
     _holding = false;
     tipX = projection.handX;
     tipY = projection.handY;
-    _lean = 0.0;
     _placed = true;
-    spinColumn = (spinColumn + 3) % sprites.spinColumns;
+    spinColumn = 2; // Locked to constant reference frame
   }
 
   @override
@@ -86,12 +82,11 @@ class RestingDart extends Component {
     if (!_placed) resetToRest();
 
     final double h = projection.screenHeight;
-    double targetX = projection.handX;
+    // Strictly pinned to horizontal center — no dragging left or right.
+    final double targetX = projection.handX;
     double targetY = projection.handY;
     if (_holding) {
-      final double margin = projection.screenWidth * 0.12;
-      targetX = _fingerX.clamp(margin, projection.screenWidth - margin).toDouble();
-      // Barely lifts: a third of the drag, capped.
+      // Only lifts vertically with upward flick motion, capped.
       targetY = projection.handY +
           ((_fingerY - _pickupY) * 0.35)
               .clamp(-DartsK.handLiftFrac * h, 0.015 * h)
@@ -99,15 +94,8 @@ class RestingDart extends Component {
     }
 
     final double k = 1.0 - math.exp(-dt * 28.0);
-    final double moveX = (targetX - tipX) * k;
-    tipX += moveX;
+    tipX = targetX;
     tipY += (targetY - tipY) * k;
-
-    // Turn a little toward sideways motion (yaw), settle back when still.
-    final double leanTarget = dt > 0.0
-        ? ((moveX / dt) / 3000.0).clamp(-0.25, 0.25).toDouble()
-        : 0.0;
-    _lean += (leanTarget - _lean) * (1.0 - math.exp(-dt * 12.0));
   }
 
   @override
@@ -125,11 +113,12 @@ class RestingDart extends Component {
       x,
       y,
       DartsK.throwDistanceM,
-      math.sin(_lean) * cp,
+      0.0,
       math.sin(p),
-      -math.cos(_lean) * cp,
+      -cp,
       spinColumn,
       scaleMultiplier: DartsK.handDartScale,
+      fixedRow: 6, // Row 6 (50.91°) permanently matches user's reference dart image
     );
   }
 }
