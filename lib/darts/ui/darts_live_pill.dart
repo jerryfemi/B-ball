@@ -55,12 +55,6 @@ class DartsLivePill extends ConsumerWidget {
               'WAITING FOR $who$clock',
               false,
             ),
-          DartsLiveStatus.opponentAiming => (
-              Icons.gps_fixed_rounded,
-              const Color(DartsK.accentP2),
-              '$who IS AIMING…',
-              true,
-            ),
           DartsLiveStatus.reconnecting => (
               Icons.wifi_off_rounded,
               const Color(DartsK.accentP2),
