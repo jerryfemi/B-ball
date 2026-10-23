@@ -52,6 +52,58 @@ class MatchInboxSheet extends HookConsumerWidget {
     );
   }
 
+  /// "Play a friend": create a 1v1 match (code or friend challenge) or join
+  /// one with a code, then go into it. Used by the inbox and by the Hoops
+  /// people button.
+  static Future<void> playAFriend(
+    BuildContext context, {
+    required BasketballGame game,
+  }) async {
+    final config = await MatchSetupDialog.show(
+      context,
+      initialConfig: game.currentMatchConfig,
+      // Basketball or archery from the same inbox; archery matches are
+      // handed to /match/:id by game.startCloudMatch.
+      showGamePicker: true,
+    );
+    // "Join with a code" from the dialog: open the joined match.
+    final joined = config?.joinedMatch;
+    if (joined != null) {
+      final myUid = AuthService.instance.currentUser?.uid ?? '';
+      game.startCloudMatch(joined, myUid);
+      return;
+    }
+    if (config != null && context.mounted) {
+      final user = await AuthService.instance.ensureAuthenticated();
+      final profile =
+          AuthService.instance.currentUser ??
+          UserProfile(
+            uid: user.uid,
+            displayName: user.displayName ?? 'Player',
+            avatarEmoji: PlayerDescriptor.defaultAvatar,
+          );
+      final newMatch = config.precreatedMatch ??
+          await FirestoreMatchService.instance.createMatch(
+            config: config,
+            player1Profile: profile,
+          );
+
+      if (context.mounted) {
+        MatchLobbyDialog.show(
+          context: context,
+          match: newMatch,
+          challengedFriend: config.opponentFriend,
+          onPlaySoloWhileWaiting: () {
+            game.startCloudMatch(newMatch, profile.uid);
+          },
+          onEnterArena: (confirmedMatch) {
+            game.startCloudMatch(confirmedMatch, profile.uid);
+          },
+        );
+      }
+    }
+  }
+
   /// Convenience coordinator to open the Match Inbox and wire all cloud match actions
   /// (joining, creating lobby, playing, viewing podium) directly to the [BasketballGame].
   static Future<void> openWithGame(
@@ -68,51 +120,7 @@ class MatchInboxSheet extends HookConsumerWidget {
         final myUid = AuthService.instance.currentUser?.uid ?? '';
         game.startCloudMatch(match, myUid);
       },
-      onCreateMatch: () async {
-        final config = await MatchSetupDialog.show(
-          context,
-          initialConfig: game.currentMatchConfig,
-          // Basketball or archery from the same inbox; archery matches are
-          // handed to /match/:id by game.startCloudMatch.
-          showGamePicker: true,
-        );
-        // "Join with a code" from the dialog: open the joined match.
-        final joined = config?.joinedMatch;
-        if (joined != null) {
-          final myUid = AuthService.instance.currentUser?.uid ?? '';
-          game.startCloudMatch(joined, myUid);
-          return;
-        }
-        if (config != null && context.mounted) {
-          final user = await AuthService.instance.ensureAuthenticated();
-          final profile =
-              AuthService.instance.currentUser ??
-              UserProfile(
-                uid: user.uid,
-                displayName: user.displayName ?? 'Player',
-                avatarEmoji: PlayerDescriptor.defaultAvatar,
-              );
-          final newMatch = config.precreatedMatch ??
-              await FirestoreMatchService.instance.createMatch(
-                config: config,
-                player1Profile: profile,
-              );
-
-          if (context.mounted) {
-            MatchLobbyDialog.show(
-              context: context,
-              match: newMatch,
-              challengedFriend: config.opponentFriend,
-              onPlaySoloWhileWaiting: () {
-                game.startCloudMatch(newMatch, profile.uid);
-              },
-              onEnterArena: (confirmedMatch) {
-                game.startCloudMatch(confirmedMatch, profile.uid);
-              },
-            );
-          }
-        }
-      },
+      onCreateMatch: () => playAFriend(context, game: game),
       onViewPodium: (match) {
         if (!match.isBasketball) {
           // Archery/darts show their own final card on their own screen.
