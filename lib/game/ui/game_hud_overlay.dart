@@ -1,19 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
-import '../../providers/app_providers.dart';
 import '../../services/auth_service.dart';
 import '../basketball_game.dart';
 import '../match/match_session.dart';
 import '../../services/update/update_service.dart';
-import 'common/app_avatar.dart';
-import 'common/app_colors.dart';
 import 'common/update_available_banner.dart';
 import 'floating_score_toast.dart';
 import 'game_over_overlay.dart';
 import 'game_rules_dialog.dart';
-import 'match/incoming_challenge_dialog.dart';
 import 'match/match_winner_podium_overlay.dart';
 import 'match/round_intermission_overlay.dart';
 import 'pause_overlay.dart';
@@ -21,6 +16,9 @@ import 'replay_hud_overlay.dart';
 import 'inbox/match_inbox_sheet.dart';
 import 'stadium_scoreboard.dart';
 import 'tour/onboarding_tour_overlay.dart';
+import '../../notifications/notice_stack.dart';
+import '../../notifications/profile_drawer.dart';
+import 'common/lobby_pill.dart';
 import 'play_friend_button.dart';
 import 'match/live_spectator_status_pill.dart';
 import 'match/live_turn_transition_overlay.dart';
@@ -46,6 +44,16 @@ class GameHudOverlay extends StatelessWidget {
   Future<void> _handleInboxTapped(BuildContext context) =>
       MatchInboxSheet.openWithGame(context, game: game);
 
+  /// Your avatar opens the profile drawer: what's waiting, friends, matches.
+  Future<void> _openDrawer(BuildContext context) => ProfileDrawer.show(
+        context,
+        onOpenMatch: (m) =>
+            game.startCloudMatch(m, AuthService.instance.currentUser?.uid ?? ''),
+        onOpenMatches: () => _handleInboxTapped(context),
+        onPlayFriend: () => MatchInboxSheet.playAFriend(context, game: game),
+        onHowToPlay: () => _handleHelpTapped(context),
+      );
+
   @override
   Widget build(BuildContext context) {
     return Stack(
@@ -57,7 +65,7 @@ class GameHudOverlay extends StatelessWidget {
           child: StadiumScoreboard(
             game: game,
             onHelpTapped: () => _handleHelpTapped(context),
-            onInboxTapped: () => _handleInboxTapped(context),
+            onInboxTapped: () => _openDrawer(context),
           ),
         ),
 
@@ -75,111 +83,28 @@ class GameHudOverlay extends StatelessWidget {
           ),
         ),
 
-        // 1c. Incoming 1v1 Challenge Notification Pill
-        Consumer(
-          builder: (context, ref, _) {
-            final challenges =
-                ref.watch(incomingMatchChallengesProvider).value ?? const [];
-            if (challenges.isEmpty) return const SizedBox.shrink();
-            final topChallenge = challenges.first;
-
+        // 1c. Notifications from any game (invites, friend requests) at the
+        //     top. In a live 1v1 they shrink to bubbles on the right edge.
+        ValueListenableBuilder<MatchSession?>(
+          valueListenable: game.matchSessionNotifier,
+          builder: (context, session, _) {
+            final bool live = session != null && session.isOnline;
             return Positioned(
-              top: MediaQuery.of(context).padding.top + 74.0,
+              // Solo: below the Lobby pill and the people button.
+              top: MediaQuery.of(context).padding.top + (live ? 62.0 : 112.0),
               left: 16.0,
-              right: 16.0,
-              child: Center(
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: () {
-                      HapticFeedback.mediumImpact();
-                      final wasPlaying =
-                          game.gameStateNotifier.value == GameModeState.playing;
-                      if (wasPlaying) game.pauseGame(manual: true);
-
-                      IncomingChallengeDialog.show(
-                        context: context,
-                        invite: topChallenge,
-                        onAccepted: (joinedMatch) {
-                          final myUid =
-                              AuthService.instance.currentUser?.uid ?? '';
-                          game.startCloudMatch(joinedMatch, myUid);
-                        },
-                      );
-                    },
-                    borderRadius: BorderRadius.circular(20.0),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14.0,
-                        vertical: 8.0,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.surfaceTile,
-                        borderRadius: BorderRadius.circular(20.0),
-                        border: Border.all(
-                          color: AppColors.accentNeonCyan,
-                          width: 1.2,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.accentNeonCyan.withValues(alpha: 0.2),
-                            blurRadius: 12.0,
-                            spreadRadius: 1.0,
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          AppAvatar(
-                            avatar: topChallenge.hostAvatar,
-                            size: 26.0,
-                            borderColor: AppColors.accentNeonCyan,
-                            borderWidth: 1.0,
-                          ),
-                          const SizedBox(width: 8.0),
-                          Flexible(
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                topChallenge.isArchery
-                                    ? '🎯 ${topChallenge.hostName} challenged you to Archery!'
-                                    : '⚔️ ${topChallenge.hostName} challenged you to 1v1!',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: AppColors.textPrimary,
-                                  fontSize: 12.0,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8.0),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8.0,
-                              vertical: 3.0,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppColors.accentNeonCyan,
-                              borderRadius: BorderRadius.circular(10.0),
-                            ),
-                            child: const Text(
-                              'ACCEPT ➔',
-                              style: TextStyle(
-                                color: AppColors.buttonDarkText,
-                                fontSize: 10.0,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
+              right: live ? 12.0 : 16.0,
+              child: NoticeStack(
+                live: live,
+                onBeforeOpen: () {
+                  if (game.gameStateNotifier.value == GameModeState.playing) {
+                    game.pauseGame(manual: true);
+                  }
+                },
+                onOpenMatch: (m) {
+                  final myUid = AuthService.instance.currentUser?.uid ?? '';
+                  game.startCloudMatch(m, myUid);
+                },
               ),
             );
           },
@@ -262,6 +187,19 @@ class GameHudOverlay extends StatelessWidget {
             }
             return const SizedBox.shrink();
           },
+        ),
+
+        // 5a. "‹ Lobby" top-left, mirroring the people button (solo only;
+        //     in a 1v1, leaving goes through FORFEIT in the pause menu).
+        Positioned(
+          top: MediaQuery.of(context).padding.top + 62.0,
+          left: 12.0,
+          child: ValueListenableBuilder<MatchSession?>(
+            valueListenable: game.matchSessionNotifier,
+            builder: (context, session, _) => session != null
+                ? const SizedBox.shrink()
+                : LobbyPill(onTap: () => GoRouter.maybeOf(context)?.go('/')),
+          ),
         ),
 
         // 5b. "Play a friend" button under the sound button (solo only)
