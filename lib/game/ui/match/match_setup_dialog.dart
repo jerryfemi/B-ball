@@ -4,6 +4,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../archery/state/archery_rules.dart';
+import '../../../darts/state/darts_rules.dart';
 import '../../../models/cloud_match.dart';
 import '../../../models/friend_profile.dart';
 import '../../../models/player_descriptor.dart';
@@ -60,25 +61,35 @@ class MatchSetupDialog extends HookWidget {
   }
 
   static const Color _hoops = Color(0xFFF59E0B);
+  static const Color _darts = Color(0xFFEF4444);
 
   static const List<int> _roundOptions = [2, 3, 4];
   static const List<int> _durationOptions = [30, 60];
 
   @override
   Widget build(BuildContext context) {
-    // Archery has fixed rules (sets to 6 points, per-arrow shot clock), so
-    // only the opponent part of this dialog applies.
+    // Archery and darts have fixed rules (archery: sets to 6 points; darts:
+    // 301 over at most 20 rounds), so only the opponent part of this dialog
+    // applies to them.
     final selectedGame = useState(initialConfig.game);
     final bool isArchery = selectedGame.value == 'archery';
+    final bool isDarts = selectedGame.value == 'darts';
+    final bool fixedRules = isArchery || isDarts;
 
-    /// Archery has fixed rules; basketball uses the chosen options.
-    MatchConfig withGameRules(MatchConfig c) => selectedGame.value == 'archery'
-        ? c.copyWith(
-            game: 'archery',
-            totalRounds: ArcheryRules.maxSets,
-            roundDurationSeconds: ArcheryRules.onlineSetSeconds,
-          )
-        : c.copyWith(game: selectedGame.value);
+    /// Archery and darts have fixed rules; basketball uses the chosen options.
+    MatchConfig withGameRules(MatchConfig c) => switch (selectedGame.value) {
+          'archery' => c.copyWith(
+              game: 'archery',
+              totalRounds: ArcheryRules.maxSets,
+              roundDurationSeconds: ArcheryRules.onlineSetSeconds,
+            ),
+          'darts' => c.copyWith(
+              game: 'darts',
+              totalRounds: DartsRules.maxRounds,
+              roundDurationSeconds: DartsRules.onlineTurnSeconds,
+            ),
+          _ => c.copyWith(game: selectedGame.value),
+        };
     final selectedRounds = useState(initialConfig.totalRounds);
     final selectedDuration = useState(initialConfig.roundDurationSeconds);
     final selectedDifficulty = useState(initialConfig.difficulty);
@@ -172,8 +183,11 @@ class MatchSetupDialog extends HookWidget {
       final text = match.isArchery
           ? '🎯 Shoot archery with me on GameVerse! Match code: $code\n'
               'https://dunkverse.web.app/match/$code'
-          : '🏀 Play me 1v1 on DunkVerse! Match code: $code\n'
-              'https://dunkverse.web.app/match/$code';
+          : match.isDarts
+              ? '🎯 Play me at darts on GameVerse! 301, first to zero. Match code: $code\n'
+                  'https://dunkverse.web.app/match/$code'
+              : '🏀 Play me 1v1 on DunkVerse! Match code: $code\n'
+                  'https://dunkverse.web.app/match/$code';
       try {
         await SharePlus.instance.share(ShareParams(text: text));
       } catch (_) {
@@ -246,13 +260,16 @@ class MatchSetupDialog extends HookWidget {
     }
 
     final profile = AuthService.instance.currentUser;
-    final Color gameAccent = isArchery ? CleanUi.accent : _hoops;
+    final Color gameAccent =
+        isArchery ? CleanUi.accent : (isDarts ? _darts : _hoops);
 
     return CleanDialog(
       title: 'PLAY A FRIEND',
       subtitle: isArchery
           ? 'Archery 1v1: sets of 3 arrows, first to 6 set points'
-          : 'Hoops 1v1: take turns, highest total wins',
+          : isDarts
+              ? 'Darts 1v1: 301 down to exactly zero, 3 darts a turn'
+              : 'Hoops 1v1: take turns, highest total wins',
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -264,6 +281,7 @@ class MatchSetupDialog extends HookWidget {
               segments: const [
                 CleanSegment('basketball', 'HOOPS', icon: Icons.sports_basketball_rounded),
                 CleanSegment('archery', 'ARCHERY', icon: Icons.track_changes_rounded),
+                CleanSegment('darts', 'DARTS', icon: Icons.gps_fixed_rounded),
               ],
               selected: selectedGame.value,
               accent: gameAccent,
@@ -323,7 +341,7 @@ class MatchSetupDialog extends HookWidget {
             ),
           const SizedBox(height: 16.0),
 
-          if (!isArchery) ...[
+          if (!fixedRules) ...[
             CleanRow(
               icon: Icons.repeat_rounded,
               label: 'ROUNDS',
