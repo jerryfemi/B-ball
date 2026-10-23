@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../game/ui/common/app_avatar.dart';
 import '../../game/ui/match/incoming_challenge_dialog.dart';
+import '../../models/cloud_match.dart';
 import '../../models/match_invite.dart';
 import '../../providers/app_providers.dart';
 import '../archery_game_screen.dart' show ArcheryChallenge;
@@ -78,7 +82,7 @@ class ArcheryHud extends ConsumerWidget {
   }
 }
 
-class _SetEnd extends ConsumerWidget {
+class _SetEnd extends HookConsumerWidget {
   final ArcheryGame game;
   final VoidCallback? onExitToLobby;
   const _SetEnd({required this.game, this.onExitToLobby});
@@ -88,6 +92,30 @@ class _SetEnd extends ConsumerWidget {
     final s = ref.watch(archeryMatchProvider);
     final players = ref.watch(archeryPlayersProvider);
     final online = game.online;
+
+    // Online match over: nobody rematched -> back to solo against the bot.
+    // Shorter when the opponent left. Paused while their rematch invite is
+    // waiting, stopped once you tap REMATCH or JOIN.
+    final bool onlineOver = online != null && s.matchOver;
+    final CloudMatch? endDoc = online?.match.value;
+    final bool oppLeft = endDoc != null &&
+        (endDoc.status == MatchStatus.forfeited || endDoc.status == MatchStatus.abandoned);
+    final left = useState<int>(oppLeft ? 10 : 45);
+    final acted = useRef(false);
+    final inviteWaiting = useRef(false);
+    useEffect(() {
+      if (!onlineOver) return null;
+      left.value = oppLeft ? 10 : 45;
+      final t = Timer.periodic(const Duration(seconds: 1), (t) {
+        if (acted.value || inviteWaiting.value) return;
+        left.value--;
+        if (left.value <= 0) {
+          t.cancel();
+          if (context.mounted) GoRouter.maybeOf(context)?.go('/archery');
+        }
+      });
+      return t.cancel;
+    }, [onlineOver, oppLeft]);
 
     String label;
     VoidCallback onContinue;
@@ -109,22 +137,32 @@ class _SetEnd extends ConsumerWidget {
           : (ref.watch(incomingMatchChallengesProvider).value ?? const <MatchInvite>[])
               .where((i) => i.isPending && i.hostUid == oppUid)
               .firstOrNull;
+      inviteWaiting.value = theirRematch != null;
       if (theirRematch != null) {
         label = 'JOIN ${theirRematch.hostName.toUpperCase()}\'S REMATCH';
-        onContinue = () => IncomingChallengeDialog.show(
-              context: context,
-              invite: theirRematch,
-              onAccepted: (m) => GoRouter.maybeOf(context)?.go('/match/${m.id}'),
-            );
+        onContinue = () {
+          acted.value = true;
+          IncomingChallengeDialog.show(
+            context: context,
+            invite: theirRematch,
+            onAccepted: (m) => GoRouter.maybeOf(context)?.go('/match/${m.id}'),
+          );
+        };
       } else {
         label = 'REMATCH';
-        onContinue = () {
-          if (finished != null) {
-            ArcheryChallenge.rematch(context, finished: finished, myUid: online.myUid);
+        onContinue = () async {
+          if (finished == null) return;
+          acted.value = true;
+          try {
+            await ArcheryChallenge.rematch(context, finished: finished, myUid: online.myUid);
+          } catch (_) {
+            acted.value = false; // couldn't start it: let the countdown resume
           }
         };
       }
-      secondaryLabel = 'EXIT';
+      secondaryLabel = acted.value || inviteWaiting.value
+          ? 'BACK TO SOLO'
+          : 'BACK TO SOLO · ${left.value}s';
       onSecondary = () => GoRouter.maybeOf(context)?.go('/archery');
     }
 
