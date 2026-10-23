@@ -5,17 +5,15 @@ import '../state/darts_rules.dart';
 /// One live darts event in `/matches/{id}/live_shots` (shared with
 /// basketball and archery, told apart by `game: 'darts'`).
 ///
-///  * `aim`  — the thrower pressed to aim (the opponent's screen shows the
-///    reticle where they are aiming). Optional, one per dart.
 ///  * `dart` — a dart landed: where it hit, in board millimetres. The score
 ///    is ALWAYS recomputed from [hitX]/[hitY] on the receiving phone and in
 ///    the Firestore transaction; nothing else is trusted. A shot-clock
 ///    timeout is a dart with [launched] false (a miss).
 ///
-/// Document ids start with `t_` (throw) and `p_` (aim ping), so they never
-/// collide with archery's `a_`/`d_` ids.
+/// Document ids start with `t_` (throw), so they never collide with
+/// archery's `a_`/`d_` ids. Darts is a pure flick game: nothing is sent
+/// before a dart lands (there is no aiming to watch).
 class DartsLiveEvent {
-  static const String kindAim = 'aim';
   static const String kindDart = 'dart';
 
   final String kind;
@@ -27,14 +25,9 @@ class DartsLiveEvent {
   /// 0, 1 or 2 within the turn.
   final int dartIndex;
 
-  // Dart only
   final bool launched;
   final double hitX;
   final double hitY;
-
-  // Aim only (board mm)
-  final double aimX;
-  final double aimY;
 
   /// The sender's device time (ms) when it was written; 0 if unknown.
   /// Read back only (a new event stamps the current time in [toMap]).
@@ -48,8 +41,6 @@ class DartsLiveEvent {
     this.launched = false,
     this.hitX = 0.0,
     this.hitY = 0.0,
-    this.aimX = 0.0,
-    this.aimY = 0.0,
     this.createdAtMs = 0,
   });
 
@@ -73,13 +64,10 @@ class DartsLiveEvent {
   }
 
   bool get isDart => kind == kindDart;
-  bool get isAim => kind == kindAim;
 
-  /// Firestore document id. A dart has a fixed id per (thrower, round,
-  /// dart), so it can be written once and never overwritten.
-  String get docId => isDart
-      ? 't_${shooterUid}_${round}_$dartIndex'
-      : 'p_${shooterUid}_${round}_${dartIndex}_${DateTime.now().millisecondsSinceEpoch}';
+  /// Firestore document id: fixed per (thrower, round, dart), so a dart can
+  /// be written once and never overwritten.
+  String get docId => 't_${shooterUid}_${round}_$dartIndex';
 
   /// Where a timed-out (never thrown) dart counts: off the board.
   static const double missX = DartsK.boardR + 10.0;
@@ -95,22 +83,16 @@ class DartsLiveEvent {
         'shooterUid': shooterUid,
         'round': round,
         'dartIndex': dartIndex,
-        if (isDart) ...{
-          'launched': launched,
-          'hitX': hitX,
-          'hitY': hitY,
-        },
-        if (isAim) ...{
-          'aimX': aimX,
-          'aimY': aimY,
-        },
+        'launched': launched,
+        'hitX': hitX,
+        'hitY': hitY,
         'createdAt': DateTime.now().millisecondsSinceEpoch,
       };
 
   static DartsLiveEvent? fromMap(Map<String, dynamic>? m) {
     if (m == null || m['game'] != 'darts') return null;
     final kind = m['kind'];
-    if (kind != kindDart && kind != kindAim) return null;
+    if (kind != kindDart) return null;
     double d(String k) => (m[k] as num?)?.toDouble() ?? 0.0;
     final int dartIndex = (m['dartIndex'] as num?)?.toInt() ?? -1;
     if (dartIndex < 0 || dartIndex >= DartsK.dartsPerTurn) return null;
@@ -122,8 +104,6 @@ class DartsLiveEvent {
       launched: m['launched'] as bool? ?? false,
       hitX: d('hitX'),
       hitY: d('hitY'),
-      aimX: d('aimX'),
-      aimY: d('aimY'),
       createdAtMs: (m['createdAt'] as num?)?.toInt() ?? 0,
     );
   }
