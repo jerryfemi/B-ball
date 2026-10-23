@@ -21,6 +21,15 @@ abstract interface class DartsGameEvents {
   /// True if it is currently your turn to throw.
   bool get isMyTurn;
 
+  /// True if the match has concluded.
+  bool get isMatchOver;
+
+  /// Points remaining for Player 1 (you).
+  int get yourRemaining;
+
+  /// Points remaining for Player 2 (opponent / bot).
+  int get theirRemaining;
+
   /// Reports a landed dart for the current thrower.
   /// Evaluates bust, checkout, and turn over, updating match state.
   DartTurnResult dartLanded(DartHit hit);
@@ -55,6 +64,15 @@ class DartsMatchNotifier extends Notifier<DartsMatchState>
 
   @override
   bool get isMyTurn => state.isMyTurn;
+
+  @override
+  bool get isMatchOver => state.matchOver;
+
+  @override
+  int get yourRemaining => state.yourRemaining;
+
+  @override
+  int get theirRemaining => state.theirRemaining;
 
   @override
   DartTurnResult dartLanded(DartHit hit) {
