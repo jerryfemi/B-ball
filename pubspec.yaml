@@ -102,6 +102,11 @@ flutter:
     - family: Archivo
       fonts:
         - asset: assets/fonts/Archivo-Variable.ttf
+    # UI text (tours, START, dialogs). Inter variable font (weight 100-900;
+    # SIL Open Font License), Latin subset. Set weight with UiFont.
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Variable.ttf
   #   - images/a_dot_ham.jpeg
 
   # An image asset can refer to one or more resolution-specific "variants", see
