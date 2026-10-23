@@ -91,9 +91,11 @@ lib/darts/
   components/
     dartboard.dart              board recorded once into a ui.Picture; hit-area flash
     board_backdrop.dart         wall + spotlight, recorded once into a ui.Picture
-    dart_renderer.dart          vector dart (barrel, shaft, flights), shared static Paints
-    flying_dart.dart            the dart in flight (perspective-scaled)
-    stuck_dart.dart             a landed dart (max 3 in the board at a time)
+    dart_sprites.dart           loads darts_atlas.png + .json once; cached src Rects per frame
+    dart_renderer.dart          draws one atlas frame at (x, y, scale, angle) with zero allocations
+    resting_dart.dart           the dart in hand at the bottom of the screen (aim phase)
+    flying_dart.dart            the dart in flight (spin frames, perspective-scaled)
+    stuck_dart.dart             a landed dart (max 3 in the board at a time) + impact wobble
     aim_reticle.dart            reticle + steady ring
     hit_popup_canvas.dart       score pop text + BUST banner
   input/
@@ -124,6 +126,7 @@ test/darts/
   scoring_test.dart  rules_test.dart  bot_test.dart  flick_solver_test.dart
   physics_test.dart  wobble_test.dart  match_notifier_test.dart  live_event_test.dart
 assets/darts/                   sfx_*.wav + ambience_pub.mp3 (supplied by Oyindamola, see step 13)
+assets/darts/sprites/           darts_atlas.png + darts_atlas.json (rendered by Oyindamola from a CC-BY Sketchfab model, see step 10)
 ```
 
 Generic archery widgets (`ui/pulse.dart`, `ui/claim_button.dart`, `ui/live_pill.dart`) are **imported from `lib/archery/ui/`**, not copied. Moving them to `lib/game/ui/common/` is a later refactor, not part of this build.
@@ -222,8 +225,16 @@ Each step is small and ends with a check you can run. Steps 1–6 are pure Dart 
 **Step 9 — Board + backdrop.** `components/board_backdrop.dart` and `components/dartboard.dart`: record both into `ui.Picture` in `onLoad`/`onGameResize`; render = `drawPicture`. Standard colours: black/cream singles, red/green alternating doubles & trebles, green outer bull, red bull, thin silver wires, white numbers on the black surround. Add `flashArea(DartHit)` that draws the precomputed path for that area (paths for all 82 areas built at record time) with a fading `#38BDF8` alpha.
 ✅ Check: board looks right against a real board (20 at top, 3 at bottom, 6 at right, 11 at left); Chrome DevTools Performance shows no per-frame Picture recording; 60 fps on a mid phone.
 
-**Step 10 — Dart rendering.** `dart_renderer.dart` (static Paints; barrel, shaft, three flights), `flying_dart.dart` (scale = f / (f + z), slight tail wag), `stuck_dart.dart` (short foreshortened dart + shadow, tilted by where it hit). Resting dart at bottom-centre.
-✅ Check: a debug key throws a dart at the bull with the ideal launch; it flies, shrinks, sticks in the bull.
+**Step 10 — Dart rendering (pre-rendered 3D sprites).** The dart is a real 3D model ("GAME READY RED DART ASSET" by oxxycodone, Sketchfab, CC-BY 4.0) rendered ahead of time into one sprite sheet. Do **not** draw the dart with vector paths and do **not** add any 3D/glTF package.
+- Assets (supplied by Oyindamola, already rendered; the chosen sheet has the dart upright, tip up toward the board, flights at the bottom, as in GamePigeon): `assets/darts/sprites/darts_atlas.png` and `darts_atlas.json`. Register the folder in `pubspec.yaml`. The JSON gives `cellWidth`, `cellHeight`, `spinFrames`, `stuckFrames` and a `frames` map keyed `p1_rest`, `p1_spin_0..N`, `p1_stuck_0..M`, then the same for `p2`, each `{x, y, w, h}` in sheet pixels. Row 0 = player 1 (you), row 1 = player 2 (opponent/bot).
+- `dart_sprites.dart`: in `onLoad`, load the image once (`images.load`) and parse the JSON once; build every source `Rect` **once** into fixed lists (`rest[2]`, `spin[2][N]`, `stuck[2][M]`). Nothing else ever touches the JSON.
+- `dart_renderer.dart`: `static void draw(Canvas c, ui.Image sheet, Rect src, double cx, double cy, double scale, double angle, Paint paint)`. Implementation: `c.save(); c.translate(cx, cy); c.rotate(angle); c.scale(scale); c.drawImageRect(sheet, src, dstAtOrigin, paint); c.restore();` where `dstAtOrigin` is a cached `Rect` per frame size, centred on the dart's **tip** (anchor computed once from the cell). One shared `static final Paint` with `filterQuality = FilterQuality.medium`. No `Sprite.render`, no new `Vector2`/`Rect`/`Paint` per frame.
+- `resting_dart.dart` (aim phase): `p?_rest` frame at bottom-centre, scale so the dart is ~38 % of screen height. It follows the reticle horizontally a little (±12 % of width) and leans toward it (±6°), and adds the wobble offset so the hand visibly shakes with fatigue. During the flick it pulls back ~4 % for 80 ms before release.
+- `flying_dart.dart`: each frame, `BoardProjection` maps the physics position (x, y, z mm) to a screen point and `depthScale = f / (f + z)`; draw scale = `restScale * depthScale` (about 1.0 at release, ~0.15 at the board). Spin frame index = `(flightTime * 18 * spinFrames).floor() % spinFrames` (≈ 4.5 turns/s; the frames loop because the four flights repeat every 90°). Tilt the nose down as the dart falls: `angle = atan2(vy, vz) * 0.35`. Draw a soft shadow on the board under the target point: one pre-blurred ellipse `ui.Image` made in `onLoad` (never a per-frame `MaskFilter`), growing darker and smaller as `z → 0`.
+- `stuck_dart.dart`: on landing, switch to a `p?_stuck_k` frame picked from where it hit, which matches real perspective (the tail is nearer the thrower, so it splays away from the board centre): `x < -60 mm` → `stuck_0` (tip leans right, toward centre), `x > 60 mm` → `stuck_2` (tip leans left), otherwise `stuck_1` (straight). It depends only on the hit position, so both online players see the same pose, drawn at the board scale with its tip on the hit point. Impact wobble: rotate by `3° * e^(−t/0.12) * sin(t * 60)` for 0.35 s. Keep max 3 per turn; at turn end fade them out over 200 ms (the "pull").
+- Draw order (component priorities, fixed): backdrop 0 → board 1 → area flash 2 → board shadows 3 → stuck darts 4 → flying dart 5 → resting dart 6 → reticle 7 → popups 8.
+- Credit: add "Dart model by oxxycodone (Sketchfab), CC-BY 4.0" to the darts tour's last page (and the lobby footer credits if one exists). The licence requires it.
+✅ Check: a debug key throws a dart at the bull with the ideal launch; it leaves the hand at full size, spins smoothly while shrinking, casts a shadow that tightens as it arrives, and sticks in the bull with a short wobble. Player 2/bot darts use row 1 colours. DevTools Performance: no allocations growing per frame, 60 fps on a mid phone.
 
 **Step 11 — Input.** `input/flick_controller.dart` + `components/aim_reticle.dart`: §1.2 touch/drag/flick, wobble applied to the reticle, steady ring. On flick: build launch via `flick_solver`, fly, on landing score with `DartScoring`, call `events.dartLanded`, show flash + pop (`hit_popup_canvas.dart`), handle bust/checkout banners.
 ✅ Check: on a phone, a gentle straight flick from a steady reticle hits where aimed; a weak flick drops low; a sideways flick drifts; lifting without a flick throws nothing.
