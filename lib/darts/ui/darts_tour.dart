@@ -9,7 +9,7 @@ import '../darts_constants.dart';
 /// Interactive walkthrough tour introducing Darts 301 mechanics.
 ///
 /// Features 4 cards:
-/// 1. HOLD TO AIM
+/// 1. PICK UP THE DART
 /// 2. FLICK TO THROW
 /// 3. 301 TO ZERO (Bust & Checkout)
 /// 4. PLAY A FRIEND (Multiplayer & Sketchfab 3D model attribution)
@@ -63,15 +63,15 @@ class _DartsTourState extends State<DartsTour> {
   static const List<_TourStep> _steps = [
     _TourStep(
       icon: Icons.touch_app_rounded,
-      title: 'HOLD TO AIM',
+      title: 'PICK UP THE DART',
       body:
-          'Press and hold anywhere in the lower screen to raise your dart. Drag your thumb to guide the aim reticle across the dartboard.',
+          'Touch the lower screen and the dart jumps under your finger. Slide left or right to line it up under the number you want.',
     ),
     _TourStep(
       icon: Icons.arrow_upward_rounded,
       title: 'FLICK TO THROW',
       body:
-          'Flick upward smoothly through the release line. Controlled, straight flicks land true; flicking too fast lands high, while too slow drops low.',
+          'Flick straight up and let go. Harder flicks land higher, softer ones lower, and a sideways flick drifts that way. Stop before you let go and the dart stays in your hand.',
     ),
     _TourStep(
       icon: Icons.track_changes_rounded,
