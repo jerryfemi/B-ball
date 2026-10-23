@@ -93,8 +93,8 @@ void main() {
         ),
       );
 
-      // Card 1: HOLD TO AIM
-      expect(find.text('HOLD TO AIM'), findsOneWidget);
+      // Card 1: PICK UP THE DART
+      expect(find.text('PICK UP THE DART'), findsOneWidget);
       expect(find.text('HOW TO PLAY · 1/4'), findsOneWidget);
       await tester.tap(find.text('NEXT'));
       await tester.pumpAndSettle();
