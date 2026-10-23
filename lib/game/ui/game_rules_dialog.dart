@@ -42,7 +42,9 @@ class GameRulesDialog extends StatelessWidget {
                         ? TextButton(
                             onPressed: () {
                               Navigator.of(context).pop();
-                              game!.isTourActiveNotifier.value = true;
+                              game!
+                              ..tourNewStepsOnly = false
+                              ..isTourActiveNotifier.value = true;
                             },
                             style: TextButton.styleFrom(
                               padding: const EdgeInsets.symmetric(
@@ -134,7 +136,9 @@ class GameRulesDialog extends StatelessWidget {
                         TextButton(
                           onPressed: () {
                             Navigator.of(context).pop();
-                            game!.isTourActiveNotifier.value = true;
+                            game!
+                              ..tourNewStepsOnly = false
+                              ..isTourActiveNotifier.value = true;
                           },
                           style: TextButton.styleFrom(
                             padding: const EdgeInsets.symmetric(
