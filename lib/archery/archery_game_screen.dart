@@ -23,6 +23,9 @@ import 'state/archery_rules.dart';
 import 'ui/archery_hud.dart';
 import 'ui/archery_match_bar.dart';
 import 'ui/archery_pause_menu.dart';
+import '../game/ui/common/lobby_pill.dart';
+import '../notifications/notice_stack.dart';
+import '../notifications/profile_drawer.dart';
 import 'ui/archery_tour.dart';
 
 /// Full-screen archery: solo against the bot (`/archery`), or a live online
@@ -252,36 +255,38 @@ class ArcheryGameScreen extends HookConsumerWidget {
                   // 2. HUD
                   ArcheryHud(game: g, onExitToLobby: goToLobby),
 
-                  // 3. Corner buttons, icon-only so they never collide with
-                  //    the scoreboard. Left: lobby, matches. Right: pause, 1v1.
-                  Positioned(
-                    top: 8.0,
-                    left: 12.0,
-                    child: Column(
-                      children: [
-                        ArcheryRoundButton(
-                          icon: Icons.grid_view_rounded,
-                          tooltip: 'Lobby',
-                          onTap: goToLobby,
-                        ),
-                        if (_firebaseReady) ...[
-                          const SizedBox(height: 8.0),
-                          ArcheryMatchesButton(
-                            key: matchesKey,
-                            onTap: () {
-                              openPauseSilently();
-                              ArcheryInbox.open(
+                  // 3. Corner buttons, icon-only up top so they never collide
+                  //    with the scoreboard. Left: your profile drawer
+                  //    (invites, friends, matches). Right: pause, 1v1.
+                  if (_firebaseReady)
+                    Positioned(
+                      top: 8.0,
+                      left: 12.0,
+                      child: ArcheryMatchesButton(
+                        key: matchesKey,
+                        onTap: () {
+                          openPauseSilently();
+                          ProfileDrawer.show(
+                            context,
+                            onOpenMatch: (m) => GoRouter.maybeOf(context)?.go('/match/${m.id}'),
+                            onOpenMatches: () => ArcheryInbox.open(
+                              context,
+                              onCreateMatch: () => ArcheryChallenge.start(
                                 context,
-                                onCreateMatch: () => ArcheryChallenge.start(
-                                  context,
-                                  showGamePicker: true,
-                                ),
-                              );
-                            },
-                          ),
-                        ],
-                      ],
+                                showGamePicker: true,
+                              ),
+                            ),
+                            onPlayFriend: () => ArcheryChallenge.start(context),
+                          );
+                        },
+                      ),
                     ),
+                  // "‹ Lobby" under the scoreboard's left edge. In a live
+                  // match it asks first (leaving is a forfeit).
+                  Positioned(
+                    top: 108.0,
+                    left: 12.0,
+                    child: LobbyPill(onTap: goToLobby),
                   ),
                   Positioned(
                     top: 8.0,
@@ -306,15 +311,19 @@ class ArcheryGameScreen extends HookConsumerWidget {
                     ),
                   ),
 
-                  // Incoming challenges (any game), at the top under the
-                  // scoreboard (and under the live pill online).
+                  // Notifications from any game (invites, friend requests),
+                  // at the top under the scoreboard. In a live 1v1 they
+                  // shrink to bubbles on the right edge.
                   if (_firebaseReady)
                     Positioned(
-                      left: 60.0,
-                      right: 60.0,
-                      top: isOnline ? 150.0 : 104.0,
-                      child: Center(
-                        child: ArcheryChallengePill(onOpen: openPauseSilently),
+                      left: isOnline ? 12.0 : 60.0,
+                      right: isOnline ? 12.0 : 60.0,
+                      // Solo: below the Lobby pill. Live: bubbles on the right.
+                      top: isOnline ? 104.0 : 158.0,
+                      child: NoticeStack(
+                        live: isOnline,
+                        onBeforeOpen: openPauseSilently,
+                        onOpenMatch: (m) => GoRouter.maybeOf(context)?.go('/match/${m.id}'),
                       ),
                     ),
 
