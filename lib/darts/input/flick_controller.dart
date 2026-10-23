@@ -3,7 +3,6 @@ import 'package:vector_math/vector_math_64.dart';
 
 import '../darts_constants.dart';
 import '../physics/flick_solver.dart';
-import '../physics/wobble_model.dart';
 import '../scene/board_projection.dart';
 
 class _PointerSample {
@@ -12,46 +11,54 @@ class _PointerSample {
   double time = 0.0;
 }
 
-/// Gesture and aim controller implementing hold-aim and upward flick throw.
+/// Pure flick input, GamePigeon style.
 ///
-/// Follows DARTS_PLAN.md §1.2 & Step 11:
-/// 1. Touch in lower 60% of screen initiates aiming.
-/// 2. Drag moves reticle relative to finger via thumb-roll (`DartsK.aimGain`).
-/// 3. Wobble model applies deterministic hand tremor to reticle and resting dart.
-/// 4. Upward flick with speed $\ge \text{minFlick}$ throws the dart via ballistic solver.
-/// 5. Release without flick cancels throw with no penalty.
-/// 6. Zero heap allocations in pointer sampling and update loops.
+/// 1. Touching the lower part of the screen picks the dart up; it follows the
+///    finger ([isHolding], [fingerX], [fingerY]).
+/// 2. Swiping up and letting go throws it. There is no aim preview: the
+///    landing spot comes only from the flick ([FlickSolver.targetForFlick]):
+///    release position → left/right, swipe angle → drift, swipe speed → height.
+/// 3. Letting go without an upward swipe puts the dart back down.
+///
+/// Zero heap allocations while the finger moves (fixed ring buffer).
 class FlickController {
   final BoardProjection projection;
 
   // ─── Callbacks ─────────────────────────────────────────────────────────────
+  /// The dart was thrown with this launch velocity, from the finger's
+  /// release point (screen px).
   void Function(Vector3 launchVel)? onThrow;
-  void Function()? onAimStart;
-  void Function()? onAimCancel;
 
-  // ─── Aim State ─────────────────────────────────────────────────────────────
-  bool isAiming = false;
+  /// The finger picked the dart up.
+  void Function()? onPickUp;
+
+  /// The finger let go without a flick: the dart goes back to rest.
+  void Function()? onDrop;
+
+  // ─── State ─────────────────────────────────────────────────────────────────
   bool inputEnabled = true;
 
-  double rawAimMmX = 0.0;
-  double rawAimMmY = 0.0;
-  double lastAimMmX = 0.0;
-  double lastAimMmY = 0.0;
+  /// True while a finger holds the dart.
+  bool isHolding = false;
 
-  double shownMmX = 0.0;
-  double shownMmY = 0.0;
+  /// Current finger position (screen px) while [isHolding].
+  double fingerX = 0.0;
+  double fingerY = 0.0;
 
-  double holdTime = 0.0;
-  double totalTime = 0.0;
+  /// The last throw's target (board mm), for tests and debugging.
+  double lastTargetMmX = 0.0;
+  double lastTargetMmY = 0.0;
 
-  WobbleModel? wobbleModel;
+  /// Real time in seconds, for swipe speed. Pointer events arrive between
+  /// frames, so frame time would be too coarse. Tests inject their own.
+  final double Function() _now;
+  static final Stopwatch _watch = Stopwatch()..start();
+  static double _wallClock() => _watch.elapsedMicroseconds / 1e6;
 
   // ─── Pointer Tracking & Ring Buffer ────────────────────────────────────────
   int? _activePointerId;
-  double _anchorX = 0.0;
-  double _anchorY = 0.0;
 
-  static const int _sampleCapacity = 10;
+  static const int _sampleCapacity = 12;
   final List<_PointerSample> _samples = List.generate(
     _sampleCapacity,
     (_) => _PointerSample(),
@@ -60,20 +67,8 @@ class FlickController {
   int _sampleHead = 0;
   int _sampleCount = 0;
 
-  FlickController({required this.projection});
-
-  /// Initializes the deterministic wobble seed for the upcoming throw.
-  void initWobbleSeed({
-    required int matchSeed,
-    required int round,
-    required int dartIndex,
-  }) {
-    wobbleModel = WobbleModel.fromMatch(
-      matchSeed: matchSeed,
-      round: round,
-      dartIndex: dartIndex,
-    );
-  }
+  FlickController({required this.projection, double Function()? now})
+      : _now = now ?? _wallClock;
 
   void _pushSample(double x, double y, double t) {
     final s = _samples[_sampleHead];
@@ -81,147 +76,93 @@ class FlickController {
     s.y = y;
     s.time = t;
     _sampleHead = (_sampleHead + 1) % _sampleCapacity;
-    if (_sampleCount < _sampleCapacity) {
-      _sampleCount++;
-    }
+    if (_sampleCount < _sampleCapacity) _sampleCount++;
   }
 
   void onPointerDown(int pointerId, double x, double y) {
     if (!inputEnabled || _activePointerId != null) return;
-
-    // Only allow initiating aim from lower 60% of the screen
-    final double lowerThreshold = projection.screenHeight * 0.40;
-    if (y < lowerThreshold) return;
+    if (y < projection.screenHeight * DartsK.flickTouchTopFrac) return;
 
     _activePointerId = pointerId;
-    isAiming = true;
-    holdTime = 0.0;
-    _anchorX = x;
-    _anchorY = y;
-
-    // Start from last aimed location, clamped inside board face
-    rawAimMmX = lastAimMmX;
-    rawAimMmY = lastAimMmY;
-    shownMmX = rawAimMmX;
-    shownMmY = rawAimMmY;
-
+    isHolding = true;
+    fingerX = x;
+    fingerY = y;
     _sampleHead = 0;
     _sampleCount = 0;
-    _pushSample(x, y, totalTime);
-
-    onAimStart?.call();
+    _pushSample(x, y, _now());
+    onPickUp?.call();
   }
 
   void onPointerMove(int pointerId, double x, double y) {
-    if (_activePointerId != pointerId || !isAiming) return;
-
-    _pushSample(x, y, totalTime);
-
-    // Thumb-roll sensitivity: DartsK.aimGain board-mm per screen pixel
-    const double gain = DartsK.aimGain;
-    final double deltaPxX = x - _anchorX;
-    final double deltaPxY = y - _anchorY;
-
-    // Invert Y since screen +y is down, but board +y is up
-    const double maxR = DartsK.doubleOutR;
-    rawAimMmX = (lastAimMmX + deltaPxX * gain).clamp(-maxR, maxR);
-    rawAimMmY = (lastAimMmY - deltaPxY * gain).clamp(-maxR, maxR);
+    if (_activePointerId != pointerId || !isHolding) return;
+    fingerX = x;
+    fingerY = y;
+    _pushSample(x, y, _now());
   }
 
   void onPointerUp(int pointerId) {
     if (_activePointerId != pointerId) return;
     _activePointerId = null;
+    if (!isHolding) return;
+    isHolding = false;
 
-    if (!isAiming) return;
-    isAiming = false;
-
-    // Save aim coordinates for next dart
-    lastAimMmX = rawAimMmX;
-    lastAimMmY = rawAimMmY;
-
-    // Evaluate upward flick velocity from recent samples (last 60–120 ms)
-    if (_sampleCount >= 2 && projection.screenHeight > 0.0) {
-      final int latestIdx = (_sampleHead - 1 + _sampleCapacity) % _sampleCapacity;
-      final _PointerSample latest = _samples[latestIdx];
-
-      // Find sample ~70ms in the past for robust velocity estimation
-      _PointerSample past = latest;
-      for (int i = 1; i < _sampleCount; i++) {
-        final int idx = (_sampleHead - 1 - i + _sampleCapacity) % _sampleCapacity;
-        final _PointerSample s = _samples[idx];
-        final double dt = latest.time - s.time;
-        if (dt >= 0.050) {
-          past = s;
-          break;
-        }
-        past = s;
-      }
-
-      final double dt = latest.time - past.time;
-      if (dt > 0.015) {
-        final double deltaY = latest.y - past.y;
-        final double deltaX = latest.x - past.x;
-
-        // Upward flick speed in screen-heights / sec
-        final double upwardSpeed = -deltaY / (projection.screenHeight * dt);
-
-        if (upwardSpeed >= DartsK.minFlick) {
-          // Flick throw confirmed!
-          final double flickPower = upwardSpeed / DartsK.idealFlick;
-          // Flick release angle vs straight-up in degrees (-left, +right)
-          final double flickAngleRad = math.atan2(deltaX, -deltaY);
-          final double flickAngleDeg = flickAngleRad * 180.0 / math.pi;
-
-          // Build ballistic launch trajectory
-          final Vector3 idealLaunch = FlickSolver.launchFor(
-            shownMmX,
-            shownMmY,
-            DartsK.idealSpeed,
-          );
-          final Vector3 actualLaunch = FlickSolver.applyFlick(
-            idealLaunch,
-            flickPower,
-            flickAngleDeg,
-          );
-
-          onThrow?.call(actualLaunch);
-          return;
-        }
-      }
+    // Stamp the release: stopping before lifting the finger means no flick.
+    _pushSample(fingerX, fingerY, _now());
+    final Vector3? launch = _launchFromSamples();
+    if (launch != null) {
+      onThrow?.call(launch);
+    } else {
+      onDrop?.call();
     }
-
-    // Release without valid flick -> cancel with no penalty
-    onAimCancel?.call();
   }
 
   void onPointerCancel() {
     _activePointerId = null;
-    if (isAiming) {
-      isAiming = false;
-      onAimCancel?.call();
+    if (isHolding) {
+      isHolding = false;
+      onDrop?.call();
     }
   }
 
-  void update(double dt) {
-    totalTime += dt;
+  /// Kept for the game loop; swipe timing uses real time, not frames.
+  void update(double dt) {}
 
-    if (isAiming) {
-      holdTime += dt;
-      wobbleModel?.update(holdTime, isAiming);
+  /// Turns the last ~60 ms of the swipe into a launch velocity, or null when
+  /// the finger didn't flick up fast enough.
+  Vector3? _launchFromSamples() {
+    final double screenH = projection.screenHeight;
+    if (_sampleCount < 2 || screenH <= 0.0) return null;
 
-      final double wobbleX = wobbleModel?.dx ?? 0.0;
-      final double wobbleY = wobbleModel?.dy ?? 0.0;
+    final int latestIdx = (_sampleHead - 1 + _sampleCapacity) % _sampleCapacity;
+    final _PointerSample latest = _samples[latestIdx];
 
-      shownMmX = rawAimMmX + wobbleX;
-      shownMmY = rawAimMmY + wobbleY;
-    } else {
-      holdTime = 0.0;
-      wobbleModel?.reset();
-      shownMmX = rawAimMmX;
-      shownMmY = rawAimMmY;
+    // A sample ~60 ms before release, for a steady velocity estimate.
+    _PointerSample past = latest;
+    for (int i = 1; i < _sampleCount; i++) {
+      final int idx = (_sampleHead - 1 - i + _sampleCapacity) % _sampleCapacity;
+      past = _samples[idx];
+      if (latest.time - past.time >= 0.060) break;
     }
-  }
 
-  double get wobbleMmX => wobbleModel?.dx ?? 0.0;
-  double get wobbleMmY => wobbleModel?.dy ?? 0.0;
+    final double dt = latest.time - past.time;
+    if (dt < 0.012) return null;
+
+    final double dx = latest.x - past.x;
+    final double dy = latest.y - past.y; // negative = upward on screen
+    final double upwardSpeed = -dy / (screenH * dt); // screen heights / s
+    if (upwardSpeed < DartsK.minFlick) return null;
+
+    final double angleDeg = math.atan2(dx, -dy) * 180.0 / math.pi;
+    final double releaseMmX =
+        (latest.x - projection.boardCenterX) * projection.pxToMm;
+
+    final target = FlickSolver.targetForFlick(
+      releaseMmX: releaseMmX,
+      upwardSpeed: upwardSpeed,
+      angleDeg: angleDeg,
+    );
+    lastTargetMmX = target.x;
+    lastTargetMmY = target.y;
+    return FlickSolver.launchFor(target.x, target.y, DartsK.idealSpeed);
+  }
 }
