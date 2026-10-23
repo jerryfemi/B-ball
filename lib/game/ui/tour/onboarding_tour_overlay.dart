@@ -234,7 +234,13 @@ class _OnboardingTourOverlayState extends State<OnboardingTourOverlay>
       right: 20.0,
       top: isBottomStep ? null : topPadding + 88.0,
       bottom: isBottomStep ? 160.0 : null,
-      child: Container(
+      // Capped so the card stays card-sized on tablets and desktops.
+      child: Align(
+        alignment: Alignment.topCenter,
+        heightFactor: 1.0,
+        child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 380.0),
+        child: Container(
         padding: const EdgeInsets.all(20.0),
         decoration: BoxDecoration(
           color: const Color(0xF2090D16),
@@ -379,6 +385,8 @@ class _OnboardingTourOverlayState extends State<OnboardingTourOverlay>
               ],
             ),
           ],
+        ),
+      ),
         ),
       ),
     );
