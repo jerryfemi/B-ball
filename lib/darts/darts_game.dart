@@ -1,17 +1,21 @@
 import 'dart:ui';
 import 'package:flame/game.dart';
 
+import 'components/aim_reticle.dart';
 import 'components/board_backdrop.dart';
 import 'components/dartboard.dart';
 import 'components/dart_sprites.dart';
 import 'components/flying_dart.dart';
+import 'components/hit_popup_canvas.dart';
 import 'components/resting_dart.dart';
 import 'components/stuck_dart.dart';
 import 'darts_constants.dart';
+import 'input/flick_controller.dart';
 import 'physics/dart_scoring.dart';
 import 'physics/flick_solver.dart';
 import 'scene/board_projection.dart';
 import 'state/darts_match_notifier.dart';
+import 'state/darts_rules.dart';
 
 /// Online game interface for controlling live match turns and sync from Firestore.
 abstract interface class DartsOnlineGame {
@@ -40,7 +44,8 @@ abstract interface class DartsOnlineGame {
 /// Follows DARTS_PLAN.md:
 /// - Screen framing and projection handled by [BoardProjection].
 /// - Component draw priorities:
-///   Backdrop 0 → Board 1 → Area Flash 2 → Board Shadows 3 → Stuck Darts 4 → Flying Dart 5 → Resting Dart 6
+///   Backdrop 0 → Board 1 → Area Flash 2 → Board Shadows 3 → Stuck Darts 4 →
+///   Flying Dart 5 → Resting Dart 6 → Aim Reticle 7 → Score Popups 8
 /// - 240 Hz clamped fixed-step simulation loop to match physics integration.
 /// - Dark obsidian background (#0A0E1A) with zero per-frame heap allocations.
 /// - Game state, match rules, and scoring are owned by [DartsGameEvents].
@@ -55,6 +60,9 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
   late final Dartboard dartboard;
   late final FlyingDart flyingDart;
   late final RestingDart restingDart;
+  late final AimReticle aimReticle;
+  late final HitPopupCanvas hitPopup;
+  late final FlickController flickController;
 
   final List<StuckDart> stuckDarts = [];
 
@@ -73,12 +81,101 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
     dartboard = Dartboard(projection: projection);
     flyingDart = FlyingDart(projection: projection, sprites: sprites);
     restingDart = RestingDart(projection: projection, sprites: sprites);
+    aimReticle = AimReticle(projection: projection);
+    hitPopup = HitPopupCanvas(projection: projection);
+    flickController = FlickController(projection: projection);
+
+    // Wire up flick controller throw and aim events
+    flickController.onAimStart = () {
+      aimReticle.visible = true;
+      restingDart.visible = true;
+    };
+
+    flickController.onAimCancel = () {
+      aimReticle.visible = false;
+      restingDart.resetPullBack();
+      restingDart.visible = true;
+    };
+
+    flickController.onThrow = (launchVel) {
+      aimReticle.visible = false;
+      restingDart.visible = false;
+      restingDart.startPullBack();
+      flickController.inputEnabled = false;
+
+      flyingDart.launch(
+        launchVel: launchVel,
+        playerIndex: 0,
+        onLanded: _onLocalDartLanded,
+      );
+    };
 
     await add(backdrop); // Priority 0
     await add(dartboard); // Priority 1
     await add(flyingDart.shadow); // Priority 3
     await add(flyingDart); // Priority 5
     await add(restingDart); // Priority 6
+    await add(aimReticle); // Priority 7
+    await add(hitPopup); // Priority 8
+
+    _setupCurrentDart();
+  }
+
+  /// Configures seeds and enables input for the current player's dart.
+  void _setupCurrentDart() {
+    flickController.initWobbleSeed(
+      matchSeed: events.matchSeed,
+      round: events.round,
+      dartIndex: events.dartIndex,
+    );
+    flickController.inputEnabled = events.isMyTurn && !flyingDart.isFlying;
+  }
+
+  void _onLocalDartLanded(DartHit hit) {
+    dartboard.flashArea(hit);
+
+    final stuck = StuckDart(
+      projection: projection,
+      sprites: sprites,
+      hit: hit,
+      playerIndex: 0,
+    );
+    stuckDarts.add(stuck);
+    add(stuck);
+
+    if (stuckDarts.length > 3) {
+      final oldest = stuckDarts.removeAt(0);
+      oldest.startPull();
+    }
+
+    final DartTurnResult result = events.dartLanded(hit);
+    hitPopup.showHit(hit, isBust: result.bust, isCheckout: result.checkout);
+
+    if (!result.turnOver && events.isMyTurn) {
+      restingDart.resetPullBack();
+      restingDart.visible = true;
+      _setupCurrentDart();
+    } else {
+      restingDart.visible = false;
+    }
+  }
+
+  // ─── Pointer Input Hooks ───────────────────────────────────────────────────
+
+  void onPointerDown(int pointerId, double x, double y) {
+    flickController.onPointerDown(pointerId, x, y);
+  }
+
+  void onPointerMove(int pointerId, double x, double y) {
+    flickController.onPointerMove(pointerId, x, y);
+  }
+
+  void onPointerUp(int pointerId) {
+    flickController.onPointerUp(pointerId);
+  }
+
+  void onPointerCancel() {
+    flickController.onPointerCancel();
   }
 
   @override
@@ -92,6 +189,21 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
 
   @override
   void update(double dt) {
+    flickController.update(dt);
+
+    if (flickController.isAiming) {
+      aimReticle.visible = true;
+      aimReticle.setAim(
+        mmX: flickController.shownMmX,
+        mmY: flickController.shownMmY,
+        holdSec: flickController.holdTime,
+      );
+      aimReticle.targetMmX = flickController.shownMmX;
+      aimReticle.targetMmY = flickController.shownMmY;
+      restingDart.setAimOffset(flickController.shownMmX / DartsK.boardR);
+      restingDart.setWobble(flickController.wobbleMmX, flickController.wobbleMmY);
+    }
+
     // Clamp frame dt to avoid spiral of death on lag spikes (50 ms max)
     final double clampedDt =
         dt > DartsK.dtClamp ? DartsK.dtClamp : (dt < 0.0 ? 0.0 : dt);
@@ -118,8 +230,6 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
   }
 
   /// Launches a test/debug dart toward target `(targetMmX, targetMmY)` on the dartboard.
-  ///
-  /// Used in Step 10 verification to test flight, shadow, spin, and board impact wobble.
   void throwDebugDart({
     int player = 0,
     double targetMmX = 0.0,
@@ -129,6 +239,7 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
 
     restingDart.visible = false;
     restingDart.startPullBack();
+    flickController.inputEnabled = false;
 
     final launchVel =
         FlickSolver.launchFor(targetMmX, targetMmY, DartsK.idealSpeed);
@@ -148,14 +259,17 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
         stuckDarts.add(stuck);
         add(stuck);
 
-        // Keep maximum 3 stuck darts per turn
         if (stuckDarts.length > 3) {
           final oldest = stuckDarts.removeAt(0);
           oldest.startPull();
         }
 
-        restingDart.visible = true;
+        final DartTurnResult result = events.dartLanded(hit);
+        hitPopup.showHit(hit, isBust: result.bust, isCheckout: result.checkout);
+
+        restingDart.visible = !result.turnOver;
         restingDart.resetPullBack();
+        _setupCurrentDart();
       },
     );
   }
@@ -180,6 +294,7 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
     final pIdx = mine ? 0 : 1;
     restingDart.playerIndex = pIdx;
     restingDart.visible = mine;
+    flickController.inputEnabled = mine;
 
     for (final hit in turnDarts) {
       final stuck = StuckDart(
@@ -195,11 +310,14 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
 
   @override
   void remoteAim(double aimX, double aimY) {
+    aimReticle.visible = true;
+    aimReticle.setAim(mmX: aimX, mmY: aimY, holdSec: 0.6);
     restingDart.setAimOffset(aimX / DartsK.boardR);
   }
 
   @override
   void playRemoteDart(DartHit hit) {
+    aimReticle.visible = false;
     throwDebugDart(player: 1, targetMmX: hit.x, targetMmY: hit.y);
   }
 
