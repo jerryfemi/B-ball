@@ -307,10 +307,11 @@ service cloud.firestore {
                 shotId == 'a_' + request.auth.uid + '_' + string(e.round) + '_' + string(e.arrowIndex)));
         }
 
-        // Darts events: same idea. Only your own, only on your turn, only for
-        // the current round, darts 0-2. A dart's id is fixed per (thrower,
-        // round, dart) and its hit position must be a finite number of
-        // millimetres near the board; the score is never sent.
+        // Darts events: landed darts only (pure flick, nothing is sent while
+        // aiming). Only your own, only on your turn, only for the current
+        // round, darts 0-2. A dart's id is fixed per (thrower, round, dart)
+        // and its hit position must be a number of millimetres near the
+        // board; the score is never sent.
         function isValidDartsEvent() {
           let m = get(/databases/$(database)/documents/matches/$(matchId)).data;
           let e = request.resource.data;
@@ -319,13 +320,11 @@ service cloud.firestore {
             m.activeTurnPlayerUid == request.auth.uid &&
             e.round == m.currentRound &&
             e.dartIndex is int && e.dartIndex >= 0 && e.dartIndex < 3 &&
-            ((e.kind == 'aim' &&
-                shotId.matches('p_.*')) ||
-              (e.kind == 'dart' &&
-                e.launched is bool &&
-                e.hitX is number && e.hitX >= -1000 && e.hitX <= 1000 &&
-                e.hitY is number && e.hitY >= -1000 && e.hitY <= 1000 &&
-                shotId == 't_' + request.auth.uid + '_' + string(e.round) + '_' + string(e.dartIndex)));
+            e.kind == 'dart' &&
+            e.launched is bool &&
+            e.hitX is number && e.hitX >= -1000 && e.hitX <= 1000 &&
+            e.hitY is number && e.hitY >= -1000 && e.hitY <= 1000 &&
+            shotId == 't_' + request.auth.uid + '_' + string(e.round) + '_' + string(e.dartIndex);
         }
 
         allow read: if isAuthenticated();
