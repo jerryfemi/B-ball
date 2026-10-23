@@ -38,15 +38,12 @@ void main() {
       expect(DartsLiveEvent.fromMap(bad), isNull);
     });
 
-    test('doc ids use t_ and p_ prefixes (never archery a_/d_)', () {
+    test('doc ids use the t_ prefix (never archery a_/d_)', () {
       expect(dartAt(2, 0, 0).docId, 't_u1_3_2');
-      const aim = DartsLiveEvent(
-        kind: DartsLiveEvent.kindAim,
-        shooterUid: 'u1',
-        round: 3,
-        dartIndex: 0,
-      );
-      expect(aim.docId.startsWith('p_u1_3_0_'), isTrue);
+    });
+
+    test('only landed darts are read back (no aim events)', () {
+      expect(DartsLiveEvent.fromMap({'game': 'darts', 'kind': 'aim', 'dartIndex': 0}), isNull);
     });
 
     test('score is recomputed from the hit position', () {
