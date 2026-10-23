@@ -327,8 +327,15 @@ class ArcheryGame extends FlameGame implements ArcheryOnlineGame {
     cameraRig.startIntro();
   }
 
+  /// Solo: the bot's opening arrows wait until the player taps START (and
+  /// the how-to-play steps are done). Set before the game loads.
+  bool awaitingStart = false;
+
+  /// Lets the set-start replay (and the match) begin.
+  void startMatch() => awaitingStart = false;
+
   void _updateIntro(double dt) {
-    if (_introTime < 0.0) return;
+    if (_introTime < 0.0 || awaitingStart) return;
     _introTime += dt;
     const int n = ArcheryMatchState.arrowsPerSet;
     if (_introLanded < n && _introTime >= _introFirst + _introLanded * _introGap) {
