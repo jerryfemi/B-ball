@@ -1,4 +1,5 @@
 import 'dart:ui' as ui;
+
 import 'package:flame/components.dart';
 
 import '../darts_constants.dart';
@@ -110,23 +111,24 @@ class HitPopupCanvas extends Component {
     required ui.FontWeight fontWeight,
     double letterSpacing = 0.5,
   }) {
-    final builder = ui.ParagraphBuilder(
-      ui.ParagraphStyle(
-        textAlign: ui.TextAlign.center,
-        fontSize: fontSize,
-        fontWeight: fontWeight,
-        fontFamily: 'Inter',
-      ),
-    )
-      ..pushStyle(
-        ui.TextStyle(
-          color: color,
-          fontSize: fontSize,
-          fontWeight: fontWeight,
-          letterSpacing: letterSpacing,
-        ),
-      )
-      ..addText(text);
+    final builder =
+        ui.ParagraphBuilder(
+            ui.ParagraphStyle(
+              textAlign: ui.TextAlign.center,
+              fontSize: fontSize,
+              fontWeight: fontWeight,
+              fontFamily: 'Inter',
+            ),
+          )
+          ..pushStyle(
+            ui.TextStyle(
+              color: color,
+              fontSize: fontSize,
+              fontWeight: fontWeight,
+              letterSpacing: letterSpacing,
+            ),
+          )
+          ..addText(text);
 
     final paragraph = builder.build();
     paragraph.layout(const ui.ParagraphConstraints(width: 320.0));
@@ -186,8 +188,12 @@ class HitPopupCanvas extends Component {
           py + _popHeight + padY,
           const ui.Radius.circular(6.0),
         );
-        _popBgPaint.color =
-            ui.Color.fromARGB((alpha * 215.0).round(), 10, 14, 26);
+        _popBgPaint.color = ui.Color.fromARGB(
+          (alpha * 215.0).round(),
+          10,
+          14,
+          26,
+        );
         canvas.drawRRect(rect, _popBgPaint);
 
         canvas.drawParagraph(_popParagraph!, ui.Offset(px, py));
