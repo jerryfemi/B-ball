@@ -2,9 +2,8 @@ import 'audio_backend_native.dart'
     if (dart.library.js_interop) 'audio_backend_web.dart'
     as impl;
 
-/// Pre-decoded sound effects. The first five are basketball's; the arrow*
-/// ones are archery's and are only decoded when archery loads
-/// ([AudioEngine.loadArcherySfx]).
+/// Pre-decoded sound effects. The first five are basketball's; arrow* are
+/// archery's; dart* are darts' ([AudioEngine.loadDartsSfx]).
 enum Sfx {
   rim,
   backboard,
@@ -17,6 +16,12 @@ enum Sfx {
   arrowThunk,
   arrowBell,
   arrowThud,
+  dartThrow,
+  dartHit,
+  dartBull,
+  dartMiss,
+  dartBust,
+  dartPull,
 }
 
 /// Low-level sound output used by [AudioEngine].
