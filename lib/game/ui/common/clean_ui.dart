@@ -27,7 +27,7 @@ abstract final class CleanUi {
     fontSize: 11.0,
     fontWeight: FontWeight.w900,
     fontFamily: 'Inter',
-    fontVariations: const [FontVariation('wght', 900)],
+    fontVariations: [FontVariation('wght', 900)],
     letterSpacing: 0.6,
   );
 }
