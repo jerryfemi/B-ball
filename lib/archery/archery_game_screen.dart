@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../game/match/match_config.dart';
+import '../game/ui/common/clean_ui.dart';
 import '../game/ui/match/match_lobby_dialog.dart';
 import '../game/ui/match/match_setup_dialog.dart';
 import '../models/cloud_match.dart';
@@ -110,7 +111,7 @@ class ArcheryGameScreen extends HookConsumerWidget {
       };
     }, const []);
 
-    void goToLobby() {
+    void leaveScreen() {
       final router = GoRouter.maybeOf(context);
       if (router == null) return;
       if (router.canPop()) {
@@ -118,6 +119,53 @@ class ArcheryGameScreen extends HookConsumerWidget {
       } else {
         router.go('/games');
       }
+    }
+
+    // Leaving a live 1v1 is a forfeit: ask first, record it (the match stays
+    // in both players' history as completed), and the opponent is told at
+    // once instead of waiting out the clock.
+    Future<void> goToLobbyAsync() async {
+      final ctrl = online.value;
+      final CloudMatch? live = ctrl?.match.value;
+      if (ctrl != null && live != null && live.status == MatchStatus.active && live.player2 != null) {
+        final opp = live.opponentPlayer(ctrl.myUid);
+        final bool? leave = await CleanUi.show<bool>(
+          context,
+          (c) => CleanDialog(
+            title: 'LEAVE MATCH?',
+            subtitle: "You'll forfeit and ${opp?.displayName ?? 'your opponent'} wins.",
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                CleanButton(
+                  label: 'LEAVE AND FORFEIT',
+                  primary: true,
+                  accent: const Color(0xFFEF4444),
+                  onTap: () => Navigator.of(c).pop(true),
+                ),
+                const SizedBox(height: 10.0),
+                CleanButton(
+                  label: 'KEEP PLAYING',
+                  onTap: () => Navigator.of(c).pop(false),
+                ),
+              ],
+            ),
+          ),
+        );
+        if (leave != true || !context.mounted) return;
+        await FirestoreMatchService.instance.forfeitMatch(
+          matchId: live.id,
+          forfeiterUid: ctrl.myUid,
+          winnerUid: opp?.uid ?? '',
+        );
+        if (!context.mounted) return;
+      }
+      leaveScreen();
+    }
+
+    void goToLobby() {
+      goToLobbyAsync();
     }
 
     final g = game.value;
@@ -258,12 +306,13 @@ class ArcheryGameScreen extends HookConsumerWidget {
                     ),
                   ),
 
-                  // Incoming challenges (any game), under the scoreboard.
+                  // Incoming challenges (any game), at the top under the
+                  // scoreboard (and under the live pill online).
                   if (_firebaseReady)
                     Positioned(
                       left: 60.0,
                       right: 60.0,
-                      bottom: 18.0,
+                      top: isOnline ? 150.0 : 104.0,
                       child: Center(
                         child: ArcheryChallengePill(onOpen: openPauseSilently),
                       ),
@@ -348,25 +397,42 @@ abstract final class ArcheryChallenge {
       avatarEmoji: opp.avatarEmoji,
       addedAt: DateTime.now().millisecondsSinceEpoch,
     );
-    await _createAndEnter(
-      context,
-      config.copyWith(
-        player2Name: opp.displayName,
-        player2Avatar: opp.avatarEmoji,
-        player2Uid: opp.uid,
-        opponentFriend: friend,
-      ),
+    final profile = await _me();
+    final cfg = config.copyWith(
+      player1Name: profile.displayName,
+      player1Avatar: profile.avatarEmoji,
+      player2Name: opp.displayName,
+      player2Avatar: opp.avatarEmoji,
+      player2Uid: opp.uid,
+      opponentFriend: friend,
     );
+    // Both archers may tap REMATCH at once: they share one room, so the
+    // second tap joins the first instead of opening a second waiting room.
+    final result = await FirestoreMatchService.instance.createOrJoinRematch(
+      finishedMatchId: finished.id,
+      config: cfg,
+      me: profile,
+    );
+    if (!context.mounted) return;
+    if (result.joined) {
+      GoRouter.maybeOf(context)?.go('/match/${result.match.id}');
+      return;
+    }
+    await _createAndEnter(context, cfg.copyWith(precreatedMatch: result.match));
   }
 
-  static Future<void> _createAndEnter(BuildContext context, MatchConfig chosen) async {
+  static Future<UserProfile> _me() async {
     final user = await AuthService.instance.ensureAuthenticated();
-    final profile = AuthService.instance.currentUser ??
+    return AuthService.instance.currentUser ??
         UserProfile(
           uid: user.uid,
           displayName: user.displayName ?? 'Player',
           avatarEmoji: PlayerDescriptor.defaultAvatar,
         );
+  }
+
+  static Future<void> _createAndEnter(BuildContext context, MatchConfig chosen) async {
+    final profile = await _me();
     final CloudMatch match = chosen.precreatedMatch ??
         await FirestoreMatchService.instance.createMatch(
           config: chosen.copyWith(
