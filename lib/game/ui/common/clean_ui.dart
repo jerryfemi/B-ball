@@ -26,6 +26,8 @@ abstract final class CleanUi {
     color: Colors.white,
     fontSize: 11.0,
     fontWeight: FontWeight.w900,
+    fontFamily: 'Inter',
+    fontVariations: const [FontVariation('wght', 900)],
     letterSpacing: 0.6,
   );
 }
@@ -66,6 +68,8 @@ class CleanDialog extends StatelessWidget {
           ),
           child: Material(
             color: Colors.transparent,
+            // Inter for every dialog's text (weights set per style).
+            textStyle: const TextStyle(fontFamily: 'Inter'),
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(20.0, 18.0, 20.0, 18.0),
               child: Column(
@@ -86,6 +90,8 @@ class CleanDialog extends StatelessWidget {
                                 color: Colors.white,
                                 fontSize: 20.0,
                                 fontWeight: FontWeight.w900,
+                                fontFamily: 'Inter',
+                                fontVariations: [FontVariation('wght', 900)],
                                 letterSpacing: 1.6,
                               ),
                             ),
@@ -98,6 +104,8 @@ class CleanDialog extends StatelessWidget {
                                   color: CleanUi.muted,
                                   fontSize: 12.0,
                                   fontWeight: FontWeight.w500,
+                                  fontFamily: 'Inter',
+                                  fontVariations: [FontVariation('wght', 500)],
                                 ),
                               ),
                             ],
@@ -209,6 +217,8 @@ class CleanSegmented<T> extends StatelessWidget {
                                     : (onChanged == null ? CleanUi.subtle : Colors.white),
                                 fontSize: 12.0,
                                 fontWeight: FontWeight.w900,
+                                fontFamily: 'Inter',
+                                fontVariations: const [FontVariation('wght', 900)],
                                 letterSpacing: 0.5,
                               ),
                             ),
@@ -318,6 +328,8 @@ class CleanButton extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontWeight: FontWeight.w900,
+                        fontFamily: 'Inter',
+                        fontVariations: [FontVariation('wght', 900)],
                         letterSpacing: 0.9,
                         fontSize: 13.0,
                       ),
