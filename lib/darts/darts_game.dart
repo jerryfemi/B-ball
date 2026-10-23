@@ -1,6 +1,8 @@
 import 'dart:ui';
 import 'package:flame/game.dart';
 
+import 'components/board_backdrop.dart';
+import 'components/dartboard.dart';
 import 'darts_constants.dart';
 import 'physics/dart_scoring.dart';
 import 'scene/board_projection.dart';
@@ -41,10 +43,22 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
   /// Global camera & coordinate projection between board millimeters and screen pixels.
   final BoardProjection projection = BoardProjection();
 
+  late final BoardBackdrop backdrop;
+  late final Dartboard dartboard;
+
   // ─── Fixed-step Accumulator State ──────────────────────────────────────────
   double _accumulator = 0.0;
 
   DartsGame({required this.events});
+
+  @override
+  Future<void> onLoad() async {
+    await super.onLoad();
+    backdrop = BoardBackdrop(projection: projection);
+    dartboard = Dartboard(projection: projection);
+    await add(backdrop);
+    await add(dartboard);
+  }
 
   @override
   Color backgroundColor() => const Color(DartsK.surfaceDark);
