@@ -18,10 +18,12 @@ import '../services/firestore_match_service.dart';
 import 'audio/darts_audio.dart';
 import 'darts_constants.dart';
 import 'darts_game.dart';
+import 'online/darts_online_controller.dart';
 import 'state/darts_match_notifier.dart';
 import 'state/darts_players.dart';
 import 'state/darts_rules.dart';
 import 'ui/darts_hud.dart';
+import 'ui/darts_live_pill.dart';
 import 'ui/darts_pause_menu.dart';
 import 'ui/darts_result_card.dart';
 import 'ui/darts_tour.dart';
@@ -46,6 +48,7 @@ class DartsGameScreen extends HookConsumerWidget {
     final paused = useState(false);
     final showTour = useState(false);
     final audioOwner = useRef<Object?>(null);
+    final online = useRef<DartsOnlineController?>(null);
 
     final bool isOnline = match != null;
 
@@ -66,28 +69,41 @@ class DartsGameScreen extends HookConsumerWidget {
         final notifier = ref.read(dartsMatchProvider.notifier);
         final players = ref.read(dartsPlayersProvider.notifier);
 
+        DartsOnlineController? controller;
         if (m != null && me != null && m.isParticipant(me.uid)) {
-          // Online match setup
-          final mine = m.myPlayer(me.uid);
-          final theirs = m.opponentPlayer(me.uid);
-
-          players.set(DartsPlayers(
-            you: DartsPlayer(
-              name: mine?.displayName ?? me.displayName,
-              avatar: mine?.avatarEmoji ?? me.avatarEmoji,
-            ),
-            opponent: theirs == null
-                ? const DartsPlayer(name: 'Opponent', avatar: '⏳')
-                : DartsPlayer(
-                    name: theirs.displayName,
-                    avatar: theirs.avatarEmoji,
-                  ),
-          ));
-
+          // Online match: player 1 (the host) opens every round.
           notifier.startOnline(
-            seed: DartsRules.seedFromMatchId(m.id),
+            seed: DartsOnlineController.seedFor(m.id),
             joinCode: m.joinCode,
+            youThrowFirst: m.player1.uid == me.uid,
           );
+          controller = DartsOnlineController(
+            matchId: m.id,
+            myUid: me.uid,
+            notifier: notifier,
+          );
+          final UserProfile self = me;
+          final DartsOnlineController ctrl = controller;
+          void syncPlayers() {
+            final cm = ctrl.match.value ?? m;
+            final mine = cm.myPlayer(self.uid);
+            final theirs = cm.opponentPlayer(self.uid);
+            players.set(DartsPlayers(
+              you: DartsPlayer(
+                name: mine?.displayName ?? self.displayName,
+                avatar: mine?.avatarEmoji ?? self.avatarEmoji,
+              ),
+              opponent: theirs == null
+                  ? const DartsPlayer(name: 'Opponent', avatar: '⏳')
+                  : DartsPlayer(
+                      name: theirs.displayName,
+                      avatar: theirs.avatarEmoji,
+                    ),
+            ));
+          }
+
+          syncPlayers();
+          ctrl.match.addListener(syncPlayers);
         } else {
           // Solo play setup
           notifier.restartMatch();
@@ -99,12 +115,14 @@ class DartsGameScreen extends HookConsumerWidget {
           ));
         }
 
-        final created = DartsGame(events: notifier);
+        online.value = controller;
+        final created = DartsGame(events: notifier, online: controller);
         audioOwner.value = created;
         game.value = created;
       });
 
       return () {
+        online.value?.dispose();
         final owner = audioOwner.value;
         if (owner != null) DartsAudio.leave(owner);
       };
@@ -131,11 +149,18 @@ class DartsGameScreen extends HookConsumerWidget {
       }
     }
 
+    // Leaving a live 1v1 is a forfeit: ask first, record it (the match stays
+    // in both players' history), and the opponent is told at once. A waiting
+    // room or a finished match is just left.
     Future<void> goToLobbyAsync() async {
-      final g = game.value;
-      if (g != null && isOnline && match != null) {
-        final myUid = AuthService.instance.currentUser?.uid ?? '';
-        final opp = match!.opponentPlayer(myUid);
+      final ctrl = online.value;
+      final CloudMatch? live = ctrl?.match.value;
+      if (ctrl != null &&
+          live != null &&
+          live.status == MatchStatus.active &&
+          live.player2 != null) {
+        final myUid = ctrl.myUid;
+        final opp = live.opponentPlayer(myUid);
         final bool? leave = await CleanUi.show<bool>(
           context,
           (c) => CleanDialog(
@@ -162,7 +187,7 @@ class DartsGameScreen extends HookConsumerWidget {
         );
         if (leave != true || !context.mounted) return;
         await FirestoreMatchService.instance.forfeitMatch(
-          matchId: match!.id,
+          matchId: live.id,
           forfeiterUid: myUid,
           winnerUid: opp?.uid ?? '',
         );
@@ -241,6 +266,17 @@ class DartsGameScreen extends HookConsumerWidget {
                     child: LobbyPill(onTap: goToLobbyAsync),
                   ),
 
+                  // 3b. Online status pill (shot clock / opponent status)
+                  if (isOnline)
+                    Positioned(
+                      top: 96.0,
+                      left: 16.0,
+                      right: 16.0,
+                      child: Center(
+                        child: DartsLivePill(online: online.value),
+                      ),
+                    ),
+
                   // 4. Turn Banner Overlay (YOUR TURN / BOT'S TURN / LAST CHANCE)
                   const Positioned.fill(
                     child: DartsTurnBanner(),
@@ -248,10 +284,26 @@ class DartsGameScreen extends HookConsumerWidget {
 
                   // 5. Match Result Card (Victory / Defeat / Draw with Rematch)
                   Positioned.fill(
-                    child: DartsResultCard(
-                      onRematch: () => g.restartGame(),
-                      onPlayFriend: () => DartsChallenge.start(context),
-                    ),
+                    child: isOnline
+                        ? DartsResultCard(
+                            online: true,
+                            onRematch: () async {
+                              final ctrl = online.value;
+                              final finished = ctrl?.match.value;
+                              if (ctrl == null || finished == null) return;
+                              await DartsChallenge.rematch(
+                                context,
+                                finished: finished,
+                                myUid: ctrl.myUid,
+                              );
+                            },
+                            onPlayFriend: () =>
+                                GoRouter.maybeOf(context)?.go('/darts'),
+                          )
+                        : DartsResultCard(
+                            onRematch: () => g.restartGame(),
+                            onPlayFriend: () => DartsChallenge.start(context),
+                          ),
                   ),
 
                   // 6. How-to-play Guided Walkthrough Tour
