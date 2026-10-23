@@ -158,7 +158,7 @@ abstract final class DartsK {
 
   /// Where the tip of the dart in hand sits, as a fraction of screen height.
   /// The eye height is solved from this so the board stays where it is.
-  static const double handTipFrac = 0.78;
+  static const double handTipFrac = 0.67;
 
   /// How far the dart in hand lifts with the finger (fraction of screen height).
   static const double handLiftFrac = 0.05;
@@ -170,7 +170,11 @@ abstract final class DartsK {
   // ─── Dart Sprites & Animation ──────────────────────────────────────────────
   /// Drawn dart length, tip to tail (m). Sized so it sits naturally in hand
   /// and fits comfortably on the board.
-  static const double dartLengthM = 0.088;
+  static const double dartLengthM = 0.076;
+
+  /// In-hand scale multiplier so the entire dart body (flights, shaft, and tip)
+  /// is fully visible in frame.
+  static const double handDartScale = 0.82;
 
   /// The dart's pitch in flight is exaggerated by this much so the rise and
   /// the dip into the board read clearly (1 = exactly along the velocity).
