@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../archery/state/archery_rules.dart';
+import '../darts/state/darts_rules.dart';
 import '../game/physics/shot_difficulty.dart';
 import '../game/telemetry/shot_telemetry.dart';
 import 'player_descriptor.dart';
@@ -351,6 +352,23 @@ class CloudMatch {
     if (isArchery) {
       // Archery is decided on set points, not total score.
       final w = ArcheryRules.winner(player1.roundScores, player2!.roundScores);
+      return w > 0
+          ? MatchOutcome.player1Won
+          : (w < 0 ? MatchOutcome.player2Won : MatchOutcome.tie);
+    }
+    if (isDarts) {
+      // Darts 301: first to exactly zero, equal turns, fewer darts in the
+      // checkout turn breaks a double checkout; lower remaining after the
+      // round cap. Total points alone would get a bust-heavy game wrong.
+      int lastDarts(CloudPlayer p) => p.roundSummaries.isEmpty
+          ? DartsRules.dartsPerTurn
+          : p.roundSummaries.last.totalShots;
+      final w = DartsRules.winner(
+        player1.roundScores,
+        player2!.roundScores,
+        p1LastDarts: lastDarts(player1),
+        p2LastDarts: lastDarts(player2!),
+      );
       return w > 0
           ? MatchOutcome.player1Won
           : (w < 0 ? MatchOutcome.player2Won : MatchOutcome.tie);
