@@ -6,7 +6,8 @@
 /// - Fixed-step 240 Hz ballistic dart physics at 2.37 m distance
 /// - Hold-aim, flick-up throw with sweet-band power/angle error
 /// - Settle → steady → fatigue deterministic reticle wobble
-/// - Sprite-sheet based 3D dart rendering
+/// - Real perspective camera behind the oche; the dart is drawn from an
+///   angle-sweep sprite sheet (one row per viewing angle)
 abstract final class DartsK {
   // ─── Regulation Dartboard Dimensions (mm) ─────────────────────────────────
   // Radii measured from board center to the outer edge of each wire boundary.
@@ -37,9 +38,9 @@ abstract final class DartsK {
   /// Earth gravity (m/s²).
   static const double gravity = 9.81;
 
-  /// Launch speed used by the ballistic solver (m/s). Slow enough that the
-  /// flight is readable (~0.45 s to the board).
-  static const double idealSpeed = 5.5;
+  /// Launch speed used by the ballistic solver (m/s). About 0.27 s to the
+  /// board: quick like a real throw, with a small rise and a visible dip.
+  static const double idealSpeed = 9.0;
 
   /// Fixed physics integration timestep (240 Hz).
   static const double fixedDt = 1.0 / 240.0;
@@ -149,19 +150,40 @@ abstract final class DartsK {
   /// Vertical position of the board center as a fraction of screen height.
   static const double boardCenterYFrac = 0.40;
 
+  // ─── Camera (real perspective, DARTS_PLAN §1.5 rebuilt) ────────────────────
+  /// The player's eye is this far behind the release point (m). The dart in
+  /// hand sits this far in front of the camera, so it is drawn big and
+  /// shrinks fast as it flies away.
+  static const double releaseDepthM = 0.82;
+
+  /// Where the tip of the dart in hand sits, as a fraction of screen height.
+  /// The eye height is solved from this so the board stays where it is.
+  static const double handTipFrac = 0.70;
+
+  /// How far the dart in hand lifts with the finger (fraction of screen height).
+  static const double handLiftFrac = 0.06;
+
+  /// The dart in hand points up at this angle (degrees), so its body shows.
+  static const double handPitchDeg = 28.0;
+
   // ─── Dart Sprites & Animation ──────────────────────────────────────────────
-  static const int spinFrames = 8;
-  static const int stuckFrames = 3;
+  /// Drawn dart length, tip to tail (m). A little shorter than a real dart so
+  /// the oversized flights of the model don't crowd the board.
+  static const double dartLengthM = 0.115;
 
-  /// Resting dart height as a fraction of screen height (in hand).
-  static const double restingDartHeightFrac = 0.22;
+  /// The dart's pitch in flight is exaggerated by this much so the rise and
+  /// the dip into the board read clearly (1 = exactly along the velocity).
+  static const double flightPitchGain = 1.6;
 
-  /// Stuck dart height as a fraction of the board's diameter.
-  static const double stuckDartBoardFrac = 0.13;
+  /// Fraction of the flight over which the dart turns from its in-hand pose
+  /// to pointing along its velocity.
+  static const double launchSettleFrac = 0.35;
 
-  /// Height of the flight's arc above the straight path, as a fraction of
-  /// screen height (the lob before it drops into the board).
-  static const double flightArcFrac = 0.15;
+  /// Light direction for dart shadows (travelling toward the board, z = -1):
+  /// from above and slightly left, so shadows fall below and right and
+  /// slide in to meet the dart as it lands.
+  static const double shadowLightX = 0.08;
+  static const double shadowLightY = -0.22;
 
   /// Flight spin rate in revolutions per second (~4.5 turns/s).
   static const double flightSpinRps = 4.5;
