@@ -55,21 +55,23 @@ class _DartsTurnBannerState extends ConsumerState<DartsTurnBanner> {
     }
 
     final bool isYou = match.thrower == DartsThrower.you;
-    final bool isLastChance =
-        !isYou && match.yourRemaining == 0 && match.theirRemaining <= 180;
+    // The second thrower is up and the first already checked out (equal
+    // turns): it's their last chance to tie. Online, the guest throws second.
+    final bool isLastChance = match.isLastChance;
+    final String who = opponentName.toUpperCase();
 
     final Color accentColor = isLastChance
         ? const Color(DartsK.accentP2) // Gold / Amber for Last Chance
         : (isYou
             ? const Color(DartsK.accentP1) // Sky blue for You
-            : const Color(DartsK.accentP2)); // Amber for Bot
+            : const Color(DartsK.accentP2)); // Amber for the opponent
 
     final String headline = isLastChance
         ? 'LAST CHANCE'
-        : (isYou ? 'YOUR TURN' : 'BOT\'S TURN');
+        : (isYou ? 'YOUR TURN' : '$who\'S TURN');
 
     final String subline = isLastChance
-        ? 'EQUAL TURNS · BOT CAN STILL TIE'
+        ? (isYou ? 'EQUAL TURNS · CHECK OUT TO TIE' : 'EQUAL TURNS · $who CAN STILL TIE')
         : (isYou
             ? 'ROUND ${match.round}  ·  3 DARTS'
             : 'ROUND ${match.round}  ·  WATCHING ${opponentName.toUpperCase()}');
