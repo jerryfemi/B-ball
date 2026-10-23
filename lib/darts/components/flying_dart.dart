@@ -118,14 +118,16 @@ class FlyingDartShadow extends Component {
   }
 }
 
-/// Renders the in-flight ballistic dart with perspective scaling and flight spin.
+/// The dart in flight: a lob from your hand that drops into the board.
 ///
-/// Follows DARTS_PLAN.md Step 10:
-/// - Priority 5 (above stuck darts and board shadows, below resting dart).
-/// - Depth scale: $f / (f + z)$ (~1.0 at release down to ~0.15 at the board).
-/// - 4.5 revolutions/second spin cycle through pre-rendered 8-frame atlas sprites.
-/// - Dynamic flight pitch tilt $\text{atan2}(v_y, -v_z) \times 0.35$ as dart arcs downward.
-/// - Zero heap allocations during `update()` and `render()`.
+/// - Physics ([DartPhysics], fixed 240 Hz) decides where it lands.
+/// - On screen it travels from where it left your hand to the landing point
+///   along an eased path (fast out of the hand, slowing as it gets far) with
+///   an arc on top, so it rises and then drops in like a real throw instead
+///   of sliding up in a straight line.
+/// - It shrinks from the resting size to the stuck size, spins (8 frames)
+///   and leans into its sideways motion.
+/// - Zero heap allocations in `update()` and `render()`.
 class FlyingDart extends Component {
   final BoardProjection projection;
   final DartSprites sprites;
@@ -135,7 +137,7 @@ class FlyingDart extends Component {
   /// Associated board shadow component at priority 3.
   late final FlyingDartShadow shadow;
 
-  /// Player index: 0 for P1 (you / sky blue), 1 for P2 / bot (amber).
+  /// Sprite row (0 = you, 1 = opponent / bot).
   int playerIndex = 0;
 
   /// Whether a dart is currently in flight.
@@ -144,7 +146,13 @@ class FlyingDart extends Component {
   /// Callback fired upon board impact.
   void Function(DartHit hit)? onLanded;
 
-  final vm.Vector2 _screenPos = vm.Vector2.zero();
+  // Screen path, fixed at launch (px).
+  double _startX = 0.0;
+  double _startY = 0.0;
+  final vm.Vector2 _landPx = vm.Vector2.zero();
+
+  /// How strongly the path eases out (higher = more "into the distance").
+  static const double _ease = 1.7;
 
   FlyingDart({
     required this.projection,
@@ -153,15 +161,28 @@ class FlyingDart extends Component {
     shadow = FlyingDartShadow(flyingDart: this, projection: projection);
   }
 
-  /// Launches a dart with specified 3D velocity vector in meters/second.
+  /// Launches a dart with [launchVel] (m/s). The flight is drawn from
+  /// ([startPxX], [startPxY]), the tip of the dart in hand; defaults to the
+  /// resting spot (bot and opponent throws).
   void launch({
     required vm64.Vector3 launchVel,
     int playerIndex = 0,
     void Function(DartHit hit)? onLanded,
+    double? startPxX,
+    double? startPxY,
   }) {
     this.playerIndex = playerIndex;
     this.onLanded = onLanded;
     physics.launch(launchVel: launchVel);
+    _startX = startPxX ?? projection.handX;
+    _startY = startPxY ?? projection.handY;
+
+    // Where it will land: vz is constant, so the flight time is exact.
+    final double vz = launchVel.z.abs() < 1e-6 ? -1e-6 : launchVel.z;
+    final double t = DartsK.throwDistanceM / -vz;
+    final double landX = launchVel.x * t * 1000.0;
+    final double landY = (launchVel.y * t - 0.5 * DartsK.gravity * t * t) * 1000.0;
+    projection.boardMmToScreen(landX, landY, _landPx);
     isFlying = true;
   }
 
@@ -181,46 +202,47 @@ class FlyingDart extends Component {
 
   @override
   void render(ui.Canvas canvas) {
-    if (!isFlying) return;
+    if (!isFlying || projection.screenHeight <= 0.0) return;
 
-    final double screenH = projection.screenHeight;
-    if (screenH <= 0.0) return;
+    // 0 at release, 1 at the board (vz is constant, so this is also time).
+    final double f = ((DartsK.throwDistanceM - physics.pos.z) /
+            DartsK.throwDistanceM)
+        .clamp(0.0, 1.0)
+        .toDouble();
 
-    // 1. Project 3D physics position to screen coordinates
-    projection.projectFlightPosition(
-      physics.pos.x,
-      physics.pos.y,
-      physics.pos.z,
-      _screenPos,
-    );
+    // Eased progress along the path and the lob on top of it.
+    final double rest = 1.0 - f;
+    final double p = 1.0 - math.pow(rest, _ease).toDouble();
+    final double arc = projection.flightArcPx;
+    final double x = _startX + (_landPx.x - _startX) * p;
+    final double y = _startY + (_landPx.y - _startY) * p - arc * math.sin(math.pi * f);
 
-    // 2. Perspective depth scale (~1.0 at launch down to ~0.15 at board)
-    final double depth = projection.depthScale(physics.pos.z);
-    final double restScale =
-        (screenH * DartsK.restingDartHeightFrac) / sprites.cellHeight;
-    final double scale = restScale * depth;
+    // Shrinks from the in-hand size to the stuck size.
+    final double heightPx = projection.restDartHeightPx +
+        (projection.stuckDartHeightPx - projection.restDartHeightPx) * p;
+    final double scale = heightPx / sprites.cellHeight;
 
-    // 3. Spin frame index: 18 cycles/sec for 4-flight symmetry (~4.5 rps)
+    // Spin: 8 frames cover 90°, looping (four flights).
     final int pIdx = playerIndex.clamp(0, 1);
     final List<ui.Rect> spinList = sprites.spin[pIdx];
     final int spinCount = spinList.length;
     final int spinIdx =
-        (physics.flightTime * 18.0 * spinCount).floor() % spinCount;
-    final ui.Rect src = spinList[spinIdx];
+        (physics.flightTime * DartsK.flightSpinRps * 4.0 * spinCount).floor() %
+            spinCount;
 
-    // 4. Aerodynamic flight orientation: pitch tilt + lateral lean
-    final double fwdSpeed = math.max(-physics.vel.z, 0.1);
-    final double lateralYaw = math.atan2(physics.vel.x, fwdSpeed);
-    final double pitchDown = math.atan2(physics.vel.y, fwdSpeed) * 0.35;
-    final double angle = (lateralYaw * 0.5) + pitchDown;
+    // Lean into the sideways motion (screen-space slope of the path).
+    final double dpdf = _ease * math.pow(rest, _ease - 1.0).toDouble();
+    final double dxdf = (_landPx.x - _startX) * dpdf;
+    final double dydf = (_landPx.y - _startY) * dpdf - arc * math.pi * math.cos(math.pi * f);
+    final double angle =
+        (math.atan(dxdf / (dydf.abs() + 40.0)) * 0.8).clamp(-0.6, 0.6).toDouble();
 
-    // 5. Draw sprite with zero allocations
     DartRenderer.draw(
       canvas,
       sprites.atlasImage,
-      src,
-      _screenPos.x,
-      _screenPos.y,
+      spinList[spinIdx],
+      x,
+      y,
       scale,
       angle,
       sprites.dstAtOrigin,
