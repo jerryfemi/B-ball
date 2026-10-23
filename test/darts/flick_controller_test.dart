@@ -5,6 +5,7 @@ import 'package:vector_math/vector_math_64.dart' as vm64;
 import 'package:b_ball/darts/darts_constants.dart';
 import 'package:b_ball/darts/input/flick_controller.dart';
 import 'package:b_ball/darts/physics/dart_physics.dart';
+import 'package:b_ball/darts/physics/flick_solver.dart';
 import 'package:b_ball/darts/scene/board_projection.dart';
 
 void main() {
@@ -56,7 +57,7 @@ void main() {
       bool dropped = false;
       bool thrown = false;
       controller.onDrop = () => dropped = true;
-      controller.onThrow = (_) => thrown = true;
+      controller.onThrow = (_, _) => thrown = true;
       swipe(x: 200, y0: 700, y1: 690, ms: 400); // slow drift
       expect(dropped, isTrue);
       expect(thrown, isFalse);
@@ -64,7 +65,7 @@ void main() {
 
     test('stopping before lifting the finger is not a flick', () {
       bool thrown = false;
-      controller.onThrow = (_) => thrown = true;
+      controller.onThrow = (_, _) => thrown = true;
       controller.onPointerDown(1, 200, 700);
       now += 0.05;
       controller.onPointerMove(1, 200, 500);
@@ -75,7 +76,7 @@ void main() {
 
     test('a straight reference-speed flick under the bull lands near the bull', () {
       vm64.Vector3? launch;
-      controller.onThrow = (v) => launch = v;
+      controller.onThrow = (x, y) => launch = FlickSolver.launchFor(x, y);
       // Reference speed: 2.4 screen heights/s = 1920 px/s on an 800 px screen.
       const double ms = 100.0;
       const double dist = DartsK.flickRefSpeed * 800 * ms / 1000;
@@ -88,7 +89,7 @@ void main() {
     });
 
     test('a harder flick lands higher than a softer one', () {
-      controller.onThrow = (_) {};
+      controller.onThrow = (_, _) {};
       swipe(x: 200, y0: 700, y1: 400, ms: 120);
       final double hard = controller.lastTargetMmY;
       swipe(x: 200, y0: 700, y1: 550, ms: 120);
@@ -97,7 +98,7 @@ void main() {
     });
 
     test('a flick angled right drifts right', () {
-      controller.onThrow = (_) {};
+      controller.onThrow = (_, _) {};
       swipe(x: 200, y0: 700, y1: 450, dx: 60, ms: 120);
       expect(controller.lastTargetMmX, greaterThan(20.0));
     });
