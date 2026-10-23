@@ -8,6 +8,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'darts/darts_constants.dart';
 import 'darts/darts_game.dart';
 import 'darts/state/darts_match_notifier.dart';
+import 'darts/ui/darts_result_card.dart';
+import 'darts/ui/darts_turn_banner.dart';
 import 'game/audio/audio_engine.dart';
 
 void main() {
@@ -133,6 +135,16 @@ class _DartsHarnessScreenState extends ConsumerState<DartsHarnessScreen> {
                   _game = game;
                   return game;
                 },
+              ),
+            ),
+            // Turn transition banner (Round N / Bot's Turn / Last Chance)
+            const Positioned.fill(
+              child: DartsTurnBanner(),
+            ),
+            // Match result card (Victory / Defeat / Draw with Rematch)
+            Positioned.fill(
+              child: DartsResultCard(
+                onRematch: () => _game?.restartGame(),
               ),
             ),
             // Debug controls overlay at bottom of screen
