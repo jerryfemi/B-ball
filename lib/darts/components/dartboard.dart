@@ -11,10 +11,11 @@ import '../scene/board_projection.dart';
 ///
 /// Follows DARTS_PLAN.md Step 9:
 /// - Recorded into a single [ui.Picture] on resize.
-/// - Standard colors: black/cream singles, alternating red/green doubles and trebles,
-///   green outer bull, red inner bull, thin silver wires, white numbers on black surround.
+/// - GamePigeon-bright colors: true black and white singles, saturated
+///   red/green doubles and trebles, bold white numbers on a black surround,
+///   a metal rim and a soft drop shadow onto the wall.
 /// - Precomputes paths for all 82 scoring areas at record time.
-/// - `flashArea(DartHit)` triggers a 450 ms fade flash with `#38BDF8` at 35% alpha.
+/// - `flashArea(DartHit)` flashes the hit bed pale blue for 450 ms.
 /// - Zero allocations per frame in `render()`.
 class Dartboard extends Component {
   final BoardProjection projection;
@@ -87,14 +88,42 @@ class Dartboard extends Component {
     final double rBoard = DartsK.boardR * mmToPx;
 
     // Colors
-    const Color colorBlackSingle = Color(0xFF1E232F);
-    const Color colorCreamSingle = Color(0xFFF6F0DC);
-    const Color colorRed = Color(0xFFDC2626);
-    const Color colorGreen = Color(0xFF16A34A);
-    const Color colorSurround = Color(0xFF0F141C);
-    const Color colorWire = Color(0xFFE2E8F0);
+    const Color colorBlackSingle = Color(0xFF141414);
+    const Color colorCreamSingle = Color(0xFFF7F3E8);
+    const Color colorRed = Color(0xFFE3262B);
+    const Color colorGreen = Color(0xFF13A048);
+    const Color colorSurround = Color(0xFF101010);
+    const Color colorWire = Color(0xFFC9CED6);
 
     final Paint fillPaint = Paint()..style = PaintingStyle.fill;
+
+    // 0. Drop shadow on the wall (a soft offset gradient, no blur filter).
+    final double rimOuter = rBoard * 1.035;
+    final Offset shadowC = Offset(cx + rBoard * 0.035, cy + rBoard * 0.07);
+    c.drawCircle(
+      shadowC,
+      rimOuter * 1.12,
+      Paint()
+        ..shader = ui.Gradient.radial(
+          shadowC,
+          rimOuter * 1.12,
+          const [Color(0x99000000), Color(0x66000000), Color(0x00000000)],
+          const [0.0, 0.86, 1.0],
+        ),
+    );
+
+    // 0b. Metal rim around the board.
+    c.drawCircle(
+      center,
+      rimOuter,
+      Paint()
+        ..shader = ui.Gradient.linear(
+          Offset(cx, cy - rimOuter),
+          Offset(cx, cy + rimOuter),
+          const [Color(0xFF9AA3AE), Color(0xFF4B525C), Color(0xFF2A2F36)],
+          const [0.0, 0.55, 1.0],
+        ),
+    );
 
     // 1. Black board surround / number ring
     fillPaint.color = colorSurround;
@@ -210,7 +239,7 @@ class Dartboard extends Component {
     // Outer board boundary wire
     final Paint rimPaint = Paint()
       ..style = PaintingStyle.stroke
-      ..color = const Color(0xFF475569)
+      ..color = const Color(0xFF2A2F36)
       ..strokeWidth = math.max(1.5, rBoard * 0.008);
     c.drawCircle(center, rBoard, rimPaint);
 
@@ -238,7 +267,7 @@ class Dartboard extends Component {
   }
 
   void _drawNumbers(Canvas c, Offset center, double numberRadiusPx, double mmToPx) {
-    final double fontSize = (24.0 * mmToPx).clamp(12.0, 36.0);
+    final double fontSize = (34.0 * mmToPx).clamp(12.0, 48.0);
     const double degToRad = math.pi / 180.0;
 
     for (int i = 0; i < DartsK.segmentOrder.length; i++) {
@@ -252,17 +281,10 @@ class Dartboard extends Component {
         text: TextSpan(
           text: '$segment',
           style: TextStyle(
-            color: const Color(0xFFF8FAFC),
+            color: const Color(0xFFFFFFFF),
             fontSize: fontSize,
-            fontWeight: FontWeight.w800,
-            fontFamily: 'Roboto',
-            shadows: const [
-              Shadow(
-                color: Color(0x99000000),
-                offset: Offset(0, 1),
-                blurRadius: 2,
-              ),
-            ],
+            fontWeight: FontWeight.w900,
+            height: 1.0,
           ),
         ),
         textDirection: TextDirection.ltr,
@@ -292,8 +314,8 @@ class Dartboard extends Component {
 
     // 2. Draw hit-area flash overlay
     if (_flashTime > 0.0 && _activeFlashPath != null) {
-      final double alpha = (_flashTime / _flashDuration).clamp(0.0, 1.0) * 0.35;
-      _flashPaint.color = const Color(DartsK.accentP1).withValues(alpha: alpha);
+      final double alpha = (_flashTime / _flashDuration).clamp(0.0, 1.0) * 0.7;
+      _flashPaint.color = const Color(0xFFA9DCFF).withValues(alpha: alpha);
       canvas.drawPath(_activeFlashPath!, _flashPaint);
     }
   }
