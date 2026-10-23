@@ -108,11 +108,8 @@ class StuckDart extends Component {
     // 1. Tip lands exactly on the hit millimeter point on the dartboard face
     projection.boardMmToScreen(hit.x, hit.y, _screenPos);
 
-    // 2. Board-plane perspective scale factor
-    final double depth = projection.depthScale(0.0);
-    final double restScale =
-        (screenH * DartsK.restingDartHeightFrac) / sprites.cellHeight;
-    final double scale = restScale * depth;
+    // 2. Stuck size scales with the board (a flying dart shrinks to this)
+    final double scale = projection.stuckDartHeightPx / sprites.cellHeight;
 
     // 3. Perspective pose and impact wobble angle
     final int pIdx = playerIndex.clamp(0, 1);
