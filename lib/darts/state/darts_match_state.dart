@@ -23,9 +23,6 @@ enum DartsLiveStatus {
   /// Opponent's turn, waiting for their next dart.
   waitingForShot,
 
-  /// Opponent pressed to aim on their device.
-  opponentAiming,
-
   /// Reconnecting / transient disconnection.
   reconnecting,
 
