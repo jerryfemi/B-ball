@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui';
 import 'package:flame/game.dart';
 
+import 'audio/darts_audio.dart';
 import 'components/aim_reticle.dart';
 import 'components/board_backdrop.dart';
 import 'components/dartboard.dart';
@@ -85,6 +86,8 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
   Future<void> onLoad() async {
     await super.onLoad();
 
+    DartsAudio.init(this);
+
     sprites = await DartSprites.load();
 
     backdrop = BoardBackdrop(projection: projection);
@@ -108,6 +111,7 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
     };
 
     flickController.onThrow = (launchVel) {
+      DartsAudio.playThrow();
       aimReticle.visible = false;
       restingDart.visible = false;
       restingDart.startPullBack();
@@ -159,8 +163,17 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
       oldest.startPull();
     }
 
+    if (!hit.isMiss) {
+      DartsAudio.playHit(isBull: hit.isBull);
+    } else {
+      DartsAudio.playMiss();
+    }
+
     final DartTurnResult result = events.dartLanded(hit);
     hitPopup.showHit(hit, isBust: result.bust, isCheckout: result.checkout);
+    if (result.bust) {
+      DartsAudio.playBust();
+    }
 
     if (!result.turnOver && events.isMyTurn) {
       // More darts remaining in player's turn
@@ -239,6 +252,7 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
         DartsK.idealSpeed,
       );
 
+      DartsAudio.playThrow();
       flyingDart.launch(
         launchVel: launchVel,
         playerIndex: 1,
@@ -259,8 +273,17 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
             oldest.startPull();
           }
 
+          if (!hit.isMiss) {
+            DartsAudio.playHit(isBull: hit.isBull);
+          } else {
+            DartsAudio.playMiss();
+          }
+
           final DartTurnResult res = events.dartLanded(hit);
           hitPopup.showHit(hit, isBust: res.bust, isCheckout: res.checkout);
+          if (res.bust) {
+            DartsAudio.playBust();
+          }
 
           botTurnPoints += hit.points;
           landedCompleter.complete(res);
@@ -307,6 +330,7 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
   // ─── Pointer Input Hooks ───────────────────────────────────────────────────
 
   void onPointerDown(int pointerId, double x, double y) {
+    DartsAudio.unlock();
     if (_isBotTurnActive || _turnTransitioning) return;
     flickController.onPointerDown(pointerId, x, y);
   }
@@ -391,6 +415,7 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
     final launchVel =
         FlickSolver.launchFor(targetMmX, targetMmY, DartsK.idealSpeed);
 
+    DartsAudio.playThrow();
     flyingDart.launch(
       launchVel: launchVel,
       playerIndex: player,
@@ -411,8 +436,17 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
           oldest.startPull();
         }
 
+        if (!hit.isMiss) {
+          DartsAudio.playHit(isBull: hit.isBull);
+        } else {
+          DartsAudio.playMiss();
+        }
+
         final DartTurnResult result = events.dartLanded(hit);
         hitPopup.showHit(hit, isBust: result.bust, isCheckout: result.checkout);
+        if (result.bust) {
+          DartsAudio.playBust();
+        }
 
         if (!result.turnOver && events.isMyTurn) {
           restingDart.visible = true;
@@ -428,10 +462,19 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
 
   /// Pulls all currently stuck darts out of the board with a 200 ms fade-out.
   void pullDarts() {
+    if (stuckDarts.isNotEmpty) {
+      DartsAudio.playPull();
+    }
     for (final dart in stuckDarts) {
       dart.startPull();
     }
     stuckDarts.clear();
+  }
+
+  @override
+  void onRemove() {
+    DartsAudio.leave(this);
+    super.onRemove();
   }
 
   // ─── DartsOnlineGame Implementation ────────────────────────────────────────
