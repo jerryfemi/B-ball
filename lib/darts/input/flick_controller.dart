@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'package:vector_math/vector_math_64.dart';
 
 import '../darts_constants.dart';
 import '../physics/flick_solver.dart';
@@ -25,9 +24,9 @@ class FlickController {
   final BoardProjection projection;
 
   // ─── Callbacks ─────────────────────────────────────────────────────────────
-  /// The dart was thrown with this launch velocity, from the finger's
-  /// release point (screen px).
-  void Function(Vector3 launchVel)? onThrow;
+  /// The dart was thrown at this target (board mm). The game launches it
+  /// from wherever the dart in hand is ([FlickSolver.launchFor]).
+  void Function(double targetMmX, double targetMmY)? onThrow;
 
   /// The finger picked the dart up.
   void Function()? onPickUp;
@@ -108,9 +107,8 @@ class FlickController {
 
     // Stamp the release: stopping before lifting the finger means no flick.
     _pushSample(fingerX, fingerY, _now());
-    final Vector3? launch = _launchFromSamples();
-    if (launch != null) {
-      onThrow?.call(launch);
+    if (_targetFromSamples()) {
+      onThrow?.call(lastTargetMmX, lastTargetMmY);
     } else {
       onDrop?.call();
     }
@@ -127,11 +125,11 @@ class FlickController {
   /// Kept for the game loop; swipe timing uses real time, not frames.
   void update(double dt) {}
 
-  /// Turns the last ~60 ms of the swipe into a launch velocity, or null when
-  /// the finger didn't flick up fast enough.
-  Vector3? _launchFromSamples() {
+  /// Turns the last ~60 ms of the swipe into a target ([lastTargetMmX],
+  /// [lastTargetMmY]); false when the finger didn't flick up fast enough.
+  bool _targetFromSamples() {
     final double screenH = projection.screenHeight;
-    if (_sampleCount < 2 || screenH <= 0.0) return null;
+    if (_sampleCount < 2 || screenH <= 0.0) return false;
 
     final int latestIdx = (_sampleHead - 1 + _sampleCapacity) % _sampleCapacity;
     final _PointerSample latest = _samples[latestIdx];
@@ -145,12 +143,12 @@ class FlickController {
     }
 
     final double dt = latest.time - past.time;
-    if (dt < 0.012) return null;
+    if (dt < 0.012) return false;
 
     final double dx = latest.x - past.x;
     final double dy = latest.y - past.y; // negative = upward on screen
     final double upwardSpeed = -dy / (screenH * dt); // screen heights / s
-    if (upwardSpeed < DartsK.minFlick) return null;
+    if (upwardSpeed < DartsK.minFlick) return false;
 
     final double angleDeg = math.atan2(dx, -dy) * 180.0 / math.pi;
     final double releaseMmX =
@@ -163,6 +161,6 @@ class FlickController {
     );
     lastTargetMmX = target.x;
     lastTargetMmY = target.y;
-    return FlickSolver.launchFor(target.x, target.y, DartsK.idealSpeed);
+    return true;
   }
 }
