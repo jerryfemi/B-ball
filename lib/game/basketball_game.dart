@@ -186,6 +186,7 @@ class BasketballGame extends Forge2DGame {
   /// GlobalKeys to locate scoreboard widgets dynamically for tour spotlight
   final GlobalKey playerAvatarKey = GlobalKey();
   final GlobalKey rightFlankKey = GlobalKey();
+  final GlobalKey playFriendKey = GlobalKey();
 
   final ValueNotifier<GameModeState> gameStateNotifier =
       ValueNotifier<GameModeState>(GameModeState.ready);
