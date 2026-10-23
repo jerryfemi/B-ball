@@ -64,8 +64,8 @@ class _ArcheryTourState extends State<ArcheryTour> {
       _Step(Icons.people_alt_rounded, 'Play a friend',
           'Share a match code, challenge a friend, or join with a code.',
           widget.playFriendKey),
-      _Step(Icons.inbox_rounded, 'Your matches',
-          'Live matches, invites and finished results live here.',
+      _Step(Icons.person_rounded, 'You',
+          'Invites, friends and your matches live here. A red count means something is waiting.',
           widget.matchesKey),
     ];
     // The two buttons only exist when online play is available.
