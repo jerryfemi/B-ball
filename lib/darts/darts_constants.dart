@@ -37,8 +37,9 @@ abstract final class DartsK {
   /// Earth gravity (m/s²).
   static const double gravity = 9.81;
 
-  /// Ideal nominal launch speed for the ballistic solver (m/s).
-  static const double idealSpeed = 7.0;
+  /// Launch speed used by the ballistic solver (m/s). Slow enough that the
+  /// flight is readable (~0.45 s to the board).
+  static const double idealSpeed = 5.5;
 
   /// Fixed physics integration timestep (240 Hz).
   static const double fixedDt = 1.0 / 240.0;
@@ -49,10 +50,32 @@ abstract final class DartsK {
   /// Maximum frame dt passed into the accumulator (clamped to 1/20 s).
   static const double dtClamp = 0.05;
 
-  // ─── Flick & Throw Gesture ─────────────────────────────────────────────────
+  // ─── Flick & Throw Gesture (pure flick, no aim preview) ────────────────────
   /// Minimum upward flick speed required to trigger a throw (screen heights / s).
   /// Releasing below this speed drops the dart back into the hand with no penalty.
-  static const double minFlick = 0.50;
+  static const double minFlick = 0.90;
+
+  /// Upward flick speed (screen heights / s) that sends the dart to bull height.
+  /// Faster goes higher, slower goes lower.
+  static const double flickRefSpeed = 2.4;
+
+  /// Board millimetres of height per 1.0 of flick speed relative to
+  /// [flickRefSpeed] (10% faster ≈ 26 mm higher). Treble 20 needs a
+  /// consistent flick about 40% faster than the bull flick.
+  static const double flickHeightMmPerUnit = 260.0;
+
+  /// Sideways drift: board mm per tan(angle) of the swipe away from straight
+  /// up (5° past the dead zone ≈ 26 mm).
+  static const double flickDriftMmPerTan = 300.0;
+
+  /// A natural thumb arc this close to straight up adds no drift (degrees).
+  static const double flickDeadZoneDeg = 2.0;
+
+  /// Aim is clamped to this radius (board mm); anything past ~226 mm misses.
+  static const double flickMaxAimMm = 420.0;
+
+  /// Touches above this fraction of the screen height don't pick the dart up.
+  static const double flickTouchTopFrac = 0.45;
 
   /// Nominal ideal upward flick speed (screen heights / s).
   static const double idealFlick = 1.60;
@@ -130,8 +153,15 @@ abstract final class DartsK {
   static const int spinFrames = 8;
   static const int stuckFrames = 3;
 
-  /// Resting dart scale as a fraction of screen height during aim.
-  static const double restingDartHeightFrac = 0.38;
+  /// Resting dart height as a fraction of screen height (in hand).
+  static const double restingDartHeightFrac = 0.22;
+
+  /// Stuck dart height as a fraction of the board's diameter.
+  static const double stuckDartBoardFrac = 0.13;
+
+  /// Height of the flight's arc above the straight path, as a fraction of
+  /// screen height (the lob before it drops into the board).
+  static const double flightArcFrac = 0.15;
 
   /// Flight spin rate in revolutions per second (~4.5 turns/s).
   static const double flightSpinRps = 4.5;
