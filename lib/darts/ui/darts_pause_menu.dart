@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../archery/ui/archery_pause_menu.dart';
-import '../components/dart_sprites.dart';
 
 /// Darts pause menu: the same compact menu as archery (music, sound effects
 /// and pub ambience with switches and sliders; resume / how to play /
@@ -35,7 +34,6 @@ class DartsPauseMenu extends StatelessWidget {
       onHowToPlay: onHowToPlay,
       ambienceLabel: 'PUB AMBIENCE',
       ambienceIcon: Icons.sports_bar_rounded,
-      credit: DartSprites.credit,
     );
   }
 }
