@@ -53,6 +53,7 @@ abstract final class DartRenderer {
     double extraRotation = 0.0,
     double opacity = 1.0,
     double scaleMultiplier = 1.0,
+    int? fixedRow,
   }) {
     final double len = DartsK.dartLengthM * scaleMultiplier;
 
@@ -63,18 +64,24 @@ abstract final class DartRenderer {
     final double slx = p.outX;
     final double sly = p.outY;
 
-    // Line of sight from the eye to the middle of the dart.
-    final double mx = tx - ax * len * 0.5;
-    final double my = ty - ay * len * 0.5;
     final double mz = tz - az * len * 0.5;
-    final double vx = mx;
-    final double vy = my - p.eyeHeightM;
-    final double vz = mz - p.eyeZ;
-    final double vl = math.sqrt(vx * vx + vy * vy + vz * vz);
-    double cosT = vl > 1e-9 ? (vx * ax + vy * ay + vz * az) / vl : 1.0;
-    if (cosT > 1.0) cosT = 1.0;
-    if (cosT < -1.0) cosT = -1.0;
-    final int row = s.rowFor(math.acos(cosT) * _radToDeg);
+
+    final int row;
+    if (fixedRow != null) {
+      row = fixedRow.clamp(0, s.angles.length - 1);
+    } else {
+      // Line of sight from the eye to the middle of the dart.
+      final double mx = tx - ax * len * 0.5;
+      final double my = ty - ay * len * 0.5;
+      final double vx = mx;
+      final double vy = my - p.eyeHeightM;
+      final double vz = mz - p.eyeZ;
+      final double vl = math.sqrt(vx * vx + vy * vy + vz * vz);
+      double cosT = vl > 1e-9 ? (vx * ax + vy * ay + vz * az) / vl : 1.0;
+      if (cosT > 1.0) cosT = 1.0;
+      if (cosT < -1.0) cosT = -1.0;
+      row = s.rowFor(math.acos(cosT) * _radToDeg);
+    }
 
     final double dx = stx - slx;
     final double dy = sty - sly;
