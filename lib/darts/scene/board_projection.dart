@@ -33,8 +33,19 @@ class BoardProjection {
   double pxToMm = 0.0;
 
   // ── Hand / Release Anchor (px) ─────────────────────────────────────────────
+  /// Where the resting dart's tip sits when nobody holds it (screen px).
   double handX = 0.0;
   double handY = 0.0;
+
+  // ── Dart Sizes (px) ────────────────────────────────────────────────────────
+  /// Resting dart height in hand.
+  double restDartHeightPx = 0.0;
+
+  /// Stuck dart height on the board (a flying dart shrinks to this).
+  double stuckDartHeightPx = 0.0;
+
+  /// Height of the flight's lob above the straight path.
+  double flightArcPx = 0.0;
 
   // ── Cached Vector2 for Zero-Allocation Projection ──────────────────────────
   final Vector2 _cachedScreenPos = Vector2.zero();
@@ -58,8 +69,14 @@ class BoardProjection {
     mmToPx = boardRadiusPx / DartsK.boardR;
     pxToMm = mmToPx > 0.0 ? (1.0 / mmToPx) : 0.0;
 
+    // Dart sizes follow the screen, so small phones get a small dart.
+    restDartHeightPx = screenHeight * DartsK.restingDartHeightFrac;
+    stuckDartHeightPx = boardDiameterPx * DartsK.stuckDartBoardFrac;
+    flightArcPx = screenHeight * DartsK.flightArcFrac;
+
+    // Resting dart fully on screen, bottom just above the screen edge.
     handX = boardCenterX;
-    handY = screenHeight * (1.0 - DartsK.restingDartHeightFrac * 0.35);
+    handY = screenHeight * 0.985 - restDartHeightPx;
   }
 
   /// Converts board millimeter coordinates `(xMm, yMm)` to screen pixel coordinates `(xPx, yPx)`.
