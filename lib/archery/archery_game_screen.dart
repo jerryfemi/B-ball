@@ -97,7 +97,9 @@ class ArcheryGameScreen extends HookConsumerWidget {
           ));
         }
         online.value = controller;
-        final created = ArcheryGame(events: notifier, online: controller);
+        // Solo: the bot waits for START (and the how-to-play steps).
+        final created = ArcheryGame(events: notifier, online: controller)
+          ..awaitingStart = controller == null;
         audioOwner.value = created;
         game.value = created;
       });
@@ -121,12 +123,24 @@ class ArcheryGameScreen extends HookConsumerWidget {
     final g = game.value;
     final bool isOnline = match != null;
 
-    // How-to-play, once per device, solo only.
+    // How-to-play, once per device, solo only; then START.
     final showTour = useState(false);
+    final started = useState(false);
+    final tourChecked = useState(false);
+    final playFriendKey = useMemoized(GlobalKey.new);
+    final matchesKey = useMemoized(GlobalKey.new);
+    void startSolo() {
+      ArcheryAudio.unlock();
+      g?.startMatch();
+      started.value = true;
+    }
+
     useEffect(() {
       if (!isOnline) {
         ArcheryTour.shouldShow().then((show) {
+          if (!context.mounted) return;
           if (show) showTour.value = true;
+          tourChecked.value = true;
         });
       }
       return null;
@@ -205,6 +219,7 @@ class ArcheryGameScreen extends HookConsumerWidget {
                         if (_firebaseReady) ...[
                           const SizedBox(height: 8.0),
                           ArcheryMatchesButton(
+                            key: matchesKey,
                             onTap: () {
                               openPauseSilently();
                               ArcheryInbox.open(
@@ -233,6 +248,7 @@ class ArcheryGameScreen extends HookConsumerWidget {
                         if (!isOnline && _firebaseReady) ...[
                           const SizedBox(height: 8.0),
                           ArcheryRoundButton(
+                            key: playFriendKey,
                             icon: Icons.people_alt_rounded,
                             tooltip: 'Play a friend',
                             onTap: () => ArcheryChallenge.start(context),
@@ -255,7 +271,13 @@ class ArcheryGameScreen extends HookConsumerWidget {
 
                   // 3b. How-to-play (first archery open on this device)
                   if (showTour.value && !isOnline)
-                    ArcheryTour(onDone: () => showTour.value = false),
+                    ArcheryTour(
+                      playFriendKey: playFriendKey,
+                      matchesKey: matchesKey,
+                      onDone: () => showTour.value = false,
+                    )
+                  else if (!isOnline && tourChecked.value && !started.value && !paused.value)
+                    ArcheryStartButton(onStart: startSolo),
 
                   // 4. Pause menu (music / effects / birdsong)
                   if (paused.value)
@@ -266,6 +288,7 @@ class ArcheryGameScreen extends HookConsumerWidget {
                           ? null
                           : () {
                               resume();
+                              startSolo(); // a restart doesn't ask again
                               g.restartMatch();
                             },
                       onLobby: () {
