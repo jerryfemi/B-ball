@@ -92,9 +92,9 @@ const List<LobbyGame> lobbyGames = [
   LobbyGame(
     id: 'darts',
     title: 'Darts',
-    tagline: '501 and Cricket, thrown with a flick.',
-    pitch: '501 and Cricket, thrown with a flick. Still in the workshop.',
-    heroLabel: 'Coming soon',
+    tagline: "301 to zero. Flick, don't fling.",
+    pitch: 'Three darts a turn, down to exactly zero. Go past it and the whole turn counts for nothing.',
+    heroLabel: 'New',
     accent: Color(0xFFEF4444),
     image: 'assets/lobby/darts.webp',
     imageAlignment: Alignment(0, -0.3),
@@ -102,7 +102,6 @@ const List<LobbyGame> lobbyGames = [
     heroAlignment: Alignment.centerRight,
     heroImageNarrow: 'assets/lobby/darts.webp',
     route: '/darts',
-    available: false,
   ),
 ];
 
