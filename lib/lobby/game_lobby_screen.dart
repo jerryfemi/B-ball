@@ -1,8 +1,11 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../archery/archery_game_screen.dart' show ArcheryChallenge;
+import '../notifications/app_notices.dart';
+import '../notifications/notice_stack.dart';
 import 'game_catalog.dart';
 import 'lobby_style.dart';
 import 'widgets/active_matches_banner.dart';
@@ -50,6 +53,27 @@ class GameLobbyScreen extends StatelessWidget {
                   padding: EdgeInsets.fromLTRB(side, 20, side, 0),
                   sliver: const SliverToBoxAdapter(child: LobbyHeader()),
                 ),
+                // Invites and friend requests from any game, right under
+                // the header. Swipe one away to deal with it later.
+                if (_online)
+                  SliverPadding(
+                    padding: EdgeInsets.symmetric(horizontal: side),
+                    sliver: SliverToBoxAdapter(
+                      child: Consumer(
+                        builder: (context, ref, _) {
+                          if (ref.watch(visibleNoticesProvider).isEmpty) {
+                            return const SizedBox.shrink();
+                          }
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 18),
+                            child: NoticeStack(
+                              onOpenMatch: (m) => context.go('/match/${m.id}'),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
                 SliverPadding(
                   padding: EdgeInsets.fromLTRB(side, 24, side, 0),
                   sliver: SliverToBoxAdapter(
