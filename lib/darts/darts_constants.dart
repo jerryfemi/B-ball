@@ -148,7 +148,7 @@ abstract final class DartsK {
   static const double boardFrac = 0.92;
 
   /// Vertical position of the board center as a fraction of screen height.
-  static const double boardCenterYFrac = 0.40;
+  static const double boardCenterYFrac = 0.38;
 
   // ─── Camera (real perspective, DARTS_PLAN §1.5 rebuilt) ────────────────────
   /// The player's eye is this far behind the release point (m). The dart in
@@ -158,18 +158,19 @@ abstract final class DartsK {
 
   /// Where the tip of the dart in hand sits, as a fraction of screen height.
   /// The eye height is solved from this so the board stays where it is.
-  static const double handTipFrac = 0.70;
+  static const double handTipFrac = 0.78;
 
   /// How far the dart in hand lifts with the finger (fraction of screen height).
-  static const double handLiftFrac = 0.06;
+  static const double handLiftFrac = 0.05;
 
-  /// The dart in hand points up at this angle (degrees), so its body shows.
-  static const double handPitchDeg = 28.0;
+  /// The dart in hand points up/forward at this angle (degrees), showing depth
+  /// and receding toward the board.
+  static const double handPitchDeg = 48.0;
 
   // ─── Dart Sprites & Animation ──────────────────────────────────────────────
-  /// Drawn dart length, tip to tail (m). A little shorter than a real dart so
-  /// the oversized flights of the model don't crowd the board.
-  static const double dartLengthM = 0.115;
+  /// Drawn dart length, tip to tail (m). Sized so it sits naturally in hand
+  /// and fits comfortably on the board.
+  static const double dartLengthM = 0.088;
 
   /// The dart's pitch in flight is exaggerated by this much so the rise and
   /// the dip into the board read clearly (1 = exactly along the velocity).
