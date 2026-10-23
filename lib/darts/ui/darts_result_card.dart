@@ -10,15 +10,20 @@ import '../state/darts_players.dart';
 /// Follows DARTS_PLAN.md Step 12:
 /// - Displays winner outcome (VICTORY, DEFEAT, DRAW) and decisive score difference.
 /// - Shows remaining points and turns statistics for both players.
-/// - Provides REMATCH (solo replay) and PLAY A FRIEND buttons.
+/// - Provides REMATCH (solo replay) and PLAY A FRIEND buttons. Online, the
+///   buttons are REMATCH (same opponent) and BACK TO SOLO.
 class DartsResultCard extends ConsumerWidget {
   final VoidCallback onRematch;
   final VoidCallback? onPlayFriend;
+
+  /// Live 1v1: name the opponent instead of "Bot", and relabel the buttons.
+  final bool online;
 
   const DartsResultCard({
     super.key,
     required this.onRematch,
     this.onPlayFriend,
+    this.online = false,
   });
 
   @override
@@ -31,6 +36,8 @@ class DartsResultCard extends ConsumerWidget {
     }
 
     final int winner = match.winner ?? 0;
+    final String opp = online ? players.opponent.name : 'Bot';
+    final bool byForfeit = match.forfeitWinner != null;
     final bool youWon = winner == 1;
     final bool draw = winner == 0;
 
@@ -42,17 +49,21 @@ class DartsResultCard extends ConsumerWidget {
 
     final String outcomeTitle = draw
         ? 'MATCH DRAW! 🤝'
-        : (youWon ? 'VICTORY! 🏆' : 'BOT WINS');
+        : (youWon ? 'VICTORY! 🏆' : '${opp.toUpperCase()} WINS');
 
     // Contextual explanation for the match conclusion
     final String outcomeDesc;
-    if (match.yourRemaining == 0 && match.theirRemaining == 0) {
+    if (byForfeit) {
+      outcomeDesc = youWon
+          ? '$opp left the match. The win is yours.'
+          : 'You left the match.';
+    } else if (match.yourRemaining == 0 && match.theirRemaining == 0) {
       if (match.yourLastDarts < match.theirLastDarts) {
         outcomeDesc =
             'Both checked out in round ${match.round}!\nYou won by dart count (${match.yourLastDarts} vs ${match.theirLastDarts}).';
       } else if (match.theirLastDarts < match.yourLastDarts) {
         outcomeDesc =
-            'Both checked out in round ${match.round}!\nBot won by dart count (${match.theirLastDarts} vs ${match.yourLastDarts}).';
+            'Both checked out in round ${match.round}!\n$opp won by dart count (${match.theirLastDarts} vs ${match.yourLastDarts}).';
       } else {
         outcomeDesc =
             'Both checked out in round ${match.round} with ${match.yourLastDarts} darts each.';
@@ -61,7 +72,7 @@ class DartsResultCard extends ConsumerWidget {
       outcomeDesc = 'Checked out 301 in round ${match.round}!';
     } else if (winner == -1) {
       outcomeDesc = match.theirRemaining == 0
-          ? 'Bot checked out 301 in round ${match.round}.'
+          ? '$opp checked out 301 in round ${match.round}.'
           : 'Round 20 cap reached. Lower remaining score wins.';
     } else {
       outcomeDesc = 'Equal remaining points after 20 rounds.';
@@ -254,9 +265,9 @@ class DartsResultCard extends ConsumerWidget {
                         ),
                       ),
                       onPressed: onPlayFriend ?? () {},
-                      child: const Text(
-                        'PLAY A FRIEND',
-                        style: TextStyle(
+                      child: Text(
+                        online ? 'BACK TO SOLO' : 'PLAY A FRIEND',
+                        style: const TextStyle(
                           fontSize: 12.0,
                           fontWeight: FontWeight.w900,
                           letterSpacing: 0.8,
