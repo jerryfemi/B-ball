@@ -5,69 +5,78 @@ import 'package:flame/components.dart';
 
 import '../darts_constants.dart';
 import '../physics/dart_scoring.dart';
+import '../physics/flick_solver.dart';
 import '../scene/board_projection.dart';
 import 'dart_renderer.dart';
 import 'dart_sprites.dart';
 
-/// Renders a dart stuck into the dartboard face following impact.
+/// A dart stuck in the board, drawn in 3D from the angle-sweep sheet.
 ///
-/// Follows DARTS_PLAN.md Step 10:
-/// - Priority 4 (drawn above board shadows and dartboard, below flying and resting darts).
-/// - Perspective pose selected deterministically by landing coordinate $x$:
-///   - $x < -60$ mm: `stuck_0` (tail splayed left, tip leaning toward center)
-///   - $x > +60$ mm: `stuck_2` (tail splayed right, tip leaning toward center)
-///   - otherwise: `stuck_1` (straight-on perspective)
-/// - Impact wobble: rotates by $3^\circ \times e^{-t / 0.12} \times \sin(t \times 60)$ for 0.35 s.
-/// - Retrieval pull: fades opacity out over 200 ms ([DartsK.dartPullFadeSec]), then removes.
-/// - Zero heap allocations during `update()` and `render()`.
+/// - Its tip sits exactly on the hit point; its axis is the direction it was
+///   flying when it hit (so it points slightly down, the way it dipped in).
+///   Seen from the oche that is almost tail-on: the X of the flights.
+/// - It casts a short shadow below it on the board.
+/// - Impact wobble about the tip for [DartsK.stuckWobbleDurationSec].
+/// - [startPull] fades it out over [DartsK.dartPullFadeSec], then removes it.
+/// - Priority 4: above the board and the flying dart's shadow.
+/// - Zero heap allocations in `update()` and `render()`.
 class StuckDart extends Component {
   final BoardProjection projection;
   final DartSprites sprites;
   final DartHit hit;
 
-  /// Player index: 0 for P1 (you / sky blue), 1 for P2 / bot (amber).
+  /// Kept for callers; both players use the same dart.
   final int playerIndex;
 
-  /// Deterministic perspective frame index (0..2).
-  final int stuckPoseIndex;
+  /// Unit axis (tail → tip) at impact.
+  final double axisX;
+  final double axisY;
+  final double axisZ;
 
-  // ─── Impact Wobble State ───────────────────────────────────────────────────
+  /// Spin frame it stopped on.
+  final int spinColumn;
+
   double _wobbleTime = 0.0;
   static const double _maxWobbleRad = 3.0 * math.pi / 180.0;
 
-  // ─── Turn End Retrieval / Pull Fade State ───────────────────────────────────
   bool _isPulling = false;
   double _pullTime = 0.0;
   double _opacity = 1.0;
-
-  final ui.Paint _fadePaint = ui.Paint()
-    ..filterQuality = ui.FilterQuality.medium
-    ..isAntiAlias = true;
-
-  final Vector2 _screenPos = Vector2.zero();
 
   StuckDart({
     required this.projection,
     required this.sprites,
     required this.hit,
     this.playerIndex = 0,
-  }) : stuckPoseIndex = poseIndexForX(hit.x),
-       super(priority: 4);
+    double? axisX,
+    double? axisY,
+    double? axisZ,
+    int? spinColumn,
+  })  : axisX = axisX ?? impactAxis(hit.x, hit.y).x,
+        axisY = axisY ?? impactAxis(hit.x, hit.y).y,
+        axisZ = axisZ ?? impactAxis(hit.x, hit.y).z,
+        spinColumn = spinColumn ?? ((hit.x * 7.0 + hit.y * 13.0).abs().floor()),
+        super(priority: 4);
 
-  /// Selects perspective stuck sprite pose based on landing coordinate $x$ in board millimeters.
-  static int poseIndexForX(double xMm) {
-    if (xMm < -60.0) return 0;
-    if (xMm > 60.0) return 2;
-    return 1;
+  /// The axis a dart thrown from the hand at rest would have when it hits
+  /// (board mm). Used for darts that appear without a local flight
+  /// (restored online turns).
+  static ({double x, double y, double z}) impactAxis(double hitXMm, double hitYMm) {
+    final v = FlickSolver.launchFor(hitXMm, hitYMm, DartsK.idealSpeed);
+    final double t = DartsK.throwDistanceM / -v.z;
+    final double vx = v.x;
+    final double vy = (v.y - DartsK.gravity * t) * DartsK.flightPitchGain;
+    final double vz = v.z;
+    final double l = math.sqrt(vx * vx + vy * vy + vz * vz);
+    return (x: vx / l, y: vy / l, z: vz / l);
   }
 
-  /// Initiates retrieval fade-out animation at the end of a turn.
   void startPull() {
     _isPulling = true;
     _pullTime = 0.0;
   }
 
-  /// Wobble rotation angle in radians at current post-impact time.
+  /// Wobble rotation (radians) at the current time after impact.
   double get wobbleAngle {
     if (_wobbleTime >= DartsK.stuckWobbleDurationSec) return 0.0;
     final double t = _wobbleTime;
@@ -87,10 +96,8 @@ class StuckDart extends Component {
 
     if (_isPulling) {
       _pullTime += dt;
-      final double progress = (_pullTime / DartsK.dartPullFadeSec).clamp(
-        0.0,
-        1.0,
-      );
+      final double progress =
+          (_pullTime / DartsK.dartPullFadeSec).clamp(0.0, 1.0).toDouble();
       _opacity = 1.0 - progress;
       if (progress >= 1.0) {
         removeFromParent();
@@ -100,52 +107,38 @@ class StuckDart extends Component {
 
   @override
   void render(ui.Canvas canvas) {
-    if (_opacity <= 0.0) return;
+    if (_opacity <= 0.0 || projection.screenHeight <= 0.0) return;
+    final double tx = hit.x / 1000.0;
+    final double ty = hit.y / 1000.0;
+    final double wobble = wobbleAngle;
 
-    final double screenH = projection.screenHeight;
-    if (screenH <= 0.0) return;
-
-    // 1. Tip lands exactly on the hit millimeter point on the dartboard face
-    projection.boardMmToScreen(hit.x, hit.y, _screenPos);
-
-    // 2. Stuck size scales with the board (a flying dart shrinks to this)
-    final double scale = projection.stuckDartHeightPx / sprites.cellHeight;
-
-    // 3. Perspective pose and impact wobble angle
-    final int pIdx = playerIndex.clamp(0, 1);
-    final ui.Rect src = sprites.stuck[pIdx][stuckPoseIndex.clamp(0, 2)];
-    final double angle = wobbleAngle;
-
-    // 4. Draw with optional pull opacity
-    if (_opacity < 1.0) {
-      _fadePaint.color = ui.Color.fromARGB(
-        (_opacity * 255.0).round(),
-        255,
-        255,
-        255,
-      );
-      DartRenderer.draw(
-        canvas,
-        sprites.atlasImage,
-        src,
-        _screenPos.x,
-        _screenPos.y,
-        scale,
-        angle,
-        sprites.dstAtOrigin,
-        _fadePaint,
-      );
-    } else {
-      DartRenderer.draw(
-        canvas,
-        sprites.atlasImage,
-        src,
-        _screenPos.x,
-        _screenPos.y,
-        scale,
-        angle,
-        sprites.dstAtOrigin,
-      );
-    }
+    DartRenderer.drawShadow(
+      canvas,
+      sprites,
+      projection,
+      tx,
+      ty,
+      0.0,
+      axisX,
+      axisY,
+      axisZ,
+      spinColumn,
+      0.38 * _opacity,
+      extraRotation: wobble * 0.5,
+    );
+    DartRenderer.draw3D(
+      canvas,
+      sprites,
+      projection,
+      tx,
+      ty,
+      0.0,
+      axisX,
+      axisY,
+      axisZ,
+      spinColumn,
+      extraRotation: wobble,
+      opacity: _opacity,
+    );
   }
 }
