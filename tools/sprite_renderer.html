@@ -1,0 +1,858 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+</head>
+<body>
+<title>Sprite Renderer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap">
+<style>
+  :root {
+    --bg: #0A0E1A;
+    --surface: #0F172A;
+    --surface2: #1E2638;
+    --fg: #FFFFFF;
+    --fg2: #94A3B8;
+    --accent: #38BDF8;
+    --gold: #F59E0B;
+    --green: #00FFCC;
+    --red: #EF4444;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 16px;
+    line-height: 1.5;
+    max-width: 1100px;
+    margin-inline: auto;
+  }
+  h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: 4px; }
+  .subtitle { color: var(--fg2); font-size: 0.85rem; margin-bottom: 20px; max-width: 65ch; }
+
+  .drop-zone {
+    border: 2px dashed var(--surface2);
+    border-radius: 12px;
+    padding: 36px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  .drop-zone:hover, .drop-zone.drag-over, .drop-zone:focus-visible {
+    border-color: var(--accent);
+    background: rgba(56, 189, 248, 0.05);
+    outline: none;
+  }
+  .drop-zone input { display: none; }
+  .drop-zone p { color: var(--fg2); font-size: 0.9rem; }
+  .drop-zone .big { color: var(--fg); font-size: 1rem; font-weight: 600; margin-bottom: 6px; }
+  .drop-zone .accent { color: var(--accent); font-weight: 600; }
+
+  .notice {
+    margin-top: 12px;
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 0.85rem;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .notice.error { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.4); color: #FCA5A5; }
+  .notice.info { background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.3); color: var(--fg2); }
+  .notice strong { color: var(--fg); }
+
+  .workspace { display: flex; flex-direction: column; gap: 16px; margin-top: 16px; }
+
+  .viewport-wrap {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 4/3;
+    max-height: 55vh;
+    background: radial-gradient(circle at 50% 40%, #1E2638, #0A0E1A 75%);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .viewport-wrap canvas { width: 100% !important; height: 100% !important; display: block; }
+  .viewport-hint {
+    position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
+    color: var(--fg2); font-size: 0.75rem; background: rgba(0,0,0,0.6);
+    padding: 4px 12px; border-radius: 20px; pointer-events: none; white-space: nowrap;
+  }
+  .frame-guide {
+    position: absolute; inset: 0; margin: auto;
+    height: 86%; aspect-ratio: 1; max-width: 86%;
+    border: 1px dashed rgba(0, 255, 204, 0.35); border-radius: 4px; pointer-events: none;
+  }
+  .credit { font-size: 0.78rem; color: var(--fg2); }
+  .credit strong { color: var(--fg); font-weight: 600; }
+
+  .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  .control-group { background: var(--surface); border-radius: 10px; padding: 14px; min-width: 0; }
+  .control-group h3, .render-section h3 {
+    font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--fg2); margin-bottom: 10px;
+  }
+  .control-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+  .control-row:last-child { margin-bottom: 0; }
+  .control-row label { font-size: 0.82rem; color: var(--fg2); min-width: 70px; }
+  .control-row input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); }
+  .control-row .val { font-size: 0.78rem; min-width: 36px; text-align: right; font-variant-numeric: tabular-nums; }
+  .color-pick { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .color-pick input[type="color"] {
+    width: 32px; height: 32px; border: 2px solid var(--surface2); border-radius: 6px;
+    cursor: pointer; background: none; padding: 0;
+  }
+  .color-pick label { font-size: 0.82rem; }
+  .hint { font-size: 0.75rem; color: var(--fg2); }
+
+  .render-section { background: var(--surface); border-radius: 10px; padding: 14px; }
+  .sprite-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+  .sprite-item { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--fg2); }
+  .sprite-item .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 10px 18px; border: none; border-radius: 8px;
+    font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: opacity 0.15s;
+    font-family: inherit;
+  }
+  .btn:hover { opacity: 0.85; }
+  .btn:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-primary { background: var(--accent); color: var(--bg); flex: 1; }
+  .btn-ghost { background: var(--surface2); color: var(--fg); }
+
+  .progress-bar { height: 4px; background: var(--surface2); border-radius: 2px; margin-top: 10px; overflow: hidden; }
+  .progress-bar .fill { height: 100%; background: var(--green); width: 0%; transition: width 0.2s; }
+  .status { font-size: 0.82rem; color: var(--green); margin-top: 8px; min-height: 1.4em; }
+
+  .output-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; }
+  .output-card { background: var(--surface); border-radius: 8px; padding: 8px; text-align: center; min-width: 0; }
+  .output-card img {
+    width: 100%; height: auto;
+    background: repeating-conic-gradient(#222 0% 25%, #333 0% 50%) 50% / 16px 16px;
+    border-radius: 4px; margin-bottom: 6px;
+  }
+  .output-card .name { font-size: 0.72rem; color: var(--fg2); word-break: break-all; }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  .check-row { display: flex; gap: 8px; align-items: flex-start; font-size: 0.82rem; margin-bottom: 8px; }
+  .check-row input { margin-top: 3px; accent-color: var(--accent); }
+  .check-row span { color: var(--fg); }
+  .check-row small { display: block; color: var(--fg2); font-size: 0.75rem; }
+  .text-input, .select {
+    width: 100%; background: var(--bg); color: var(--fg); border: 1px solid var(--surface2);
+    border-radius: 6px; padding: 7px 9px; font: inherit; font-size: 0.85rem;
+  }
+  .text-input:focus-visible, .select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .field { margin-bottom: 10px; }
+  .field label { display: block; font-size: 0.78rem; color: var(--fg2); margin-bottom: 4px; }
+</style>
+
+<h1>Sprite Renderer</h1>
+<p class="subtitle">Turn any 3D model (.glb or .gltf) into one game-ready sprite sheet: a resting frame, an optional spin strip and optional tilted frames, all cropped to the same box. What you see in the dashed square is what gets rendered.</p>
+
+<div class="drop-zone" id="dropZone" tabindex="0" role="button" aria-label="Choose model files">
+  <p class="big">Drop the model files here, or click to choose</p>
+  <p>A single <span class="accent">.glb</span> file, or <span class="accent">scene.gltf + scene.bin</span> together (plus any texture files)</p>
+  <p style="margin-top:6px;font-size:0.78rem">Tip: open the unzipped folder, press Ctrl+A, and drag everything in at once</p>
+  <input type="file" id="fileInput" accept=".glb,.gltf,.bin,.png,.jpg,.jpeg,.webp,.ktx2" multiple>
+</div>
+<div id="loadNotice" hidden></div>
+
+<div class="workspace" id="workspace" hidden>
+  <div class="viewport-wrap" id="viewportWrap">
+    <div class="frame-guide"></div>
+    <div class="viewport-hint">Drag to orbit · Scroll to zoom · Right-drag to pan</div>
+  </div>
+  <div class="credit" id="credit"></div>
+
+  <div class="controls">
+    <div class="control-group">
+      <h3>Object</h3>
+      <div class="field">
+        <label for="objName">Name (used for the file names)</label>
+        <input class="text-input" id="objName" type="text" value="darts" spellcheck="false" autocomplete="off">
+      </div>
+      <label class="check-row">
+        <input type="checkbox" id="autoOrient" checked>
+        <span>Auto-orient long objects<small>Points the long axis at the target with the wide end toward you. Good for darts and arrows; turn off for bows, trees and props.</small></span>
+      </label>
+      <div class="control-row">
+        <label for="rotXSlider">Pitch</label>
+        <input type="range" id="rotXSlider" min="-180" max="180" step="1" value="0">
+        <span class="val" id="rotXVal">0°</span>
+      </div>
+      <div class="control-row">
+        <label for="rotYSlider">Yaw</label>
+        <input type="range" id="rotYSlider" min="-180" max="180" step="1" value="0">
+        <span class="val" id="rotYVal">0°</span>
+      </div>
+      <div class="control-row">
+        <label for="rotZSlider">Roll</label>
+        <input type="range" id="rotZSlider" min="-180" max="180" step="1" value="45">
+        <span class="val" id="rotZVal">45°</span>
+      </div>
+      <div class="btn-row" style="margin-top:10px">
+        <button class="btn btn-ghost" id="flipBtn" type="button">Flip direction</button>
+        <button class="btn btn-ghost" id="resetViewBtn" type="button">Reset view</button>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <h3>Colors</h3>
+      <label class="check-row">
+        <input type="checkbox" id="recolor">
+        <span>Recolor the widest parts<small>Off: the model keeps its natural colors and textures. On: the parts that stick out furthest (like dart flights) get the colors below.</small></span>
+      </label>
+      <div id="colorBlock" hidden>
+        <div class="field">
+          <label for="variants">Color versions</label>
+          <select class="select" id="variants">
+            <option value="1">One color</option>
+            <option value="2">Two colors (one row each)</option>
+          </select>
+        </div>
+        <div class="color-pick">
+          <input type="color" id="color1" value="#EF4444">
+          <label for="color1">Color 1</label>
+        </div>
+        <div class="color-pick" id="color2Row" hidden>
+          <input type="color" id="color2" value="#38BDF8">
+          <label for="color2">Color 2</label>
+        </div>
+        <p class="hint" id="colorHint"></p>
+      </div>
+      <h3 style="margin-top:14px">Lighting</h3>
+      <div class="control-row">
+        <label for="keyIntensity">Key</label>
+        <input type="range" id="keyIntensity" min="0" max="4" step="0.1" value="2.2">
+        <span class="val" id="keyVal">2.2</span>
+      </div>
+      <div class="control-row">
+        <label for="rimIntensity">Rim</label>
+        <input type="range" id="rimIntensity" min="0" max="4" step="0.1" value="1.4">
+        <span class="val" id="rimVal">1.4</span>
+      </div>
+      <div class="control-row">
+        <label for="ambIntensity">Ambient</label>
+        <input type="range" id="ambIntensity" min="0" max="2" step="0.05" value="0.6">
+        <span class="val" id="ambVal">0.6</span>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <h3>Frames</h3>
+      <div class="control-row">
+        <label for="spinFrames">Spin frames</label>
+        <input type="range" id="spinFrames" min="0" max="16" step="1" value="8">
+        <span class="val" id="spinVal">8</span>
+      </div>
+      <div class="field">
+        <label for="spinRange">Spin covers</label>
+        <select class="select" id="spinRange">
+          <option value="90">90° (four-way symmetric, like dart flights or arrow fletching)</option>
+          <option value="120">120° (three-way symmetric)</option>
+          <option value="360">360° (full turn)</option>
+        </select>
+      </div>
+      <div class="control-row">
+        <label for="tiltFrames">Tilted frames</label>
+        <input type="range" id="tiltFrames" min="0" max="5" step="1" value="3">
+        <span class="val" id="tiltVal">3</span>
+      </div>
+      <p class="hint">Tilted frames lean left, straight and right, like a dart or arrow stuck in a target. 0 turns them off.</p>
+      <h3 style="margin-top:14px">Output</h3>
+      <div class="control-row">
+        <label for="outSize">Render size</label>
+        <input type="range" id="outSize" min="128" max="1024" step="64" value="512">
+        <span class="val" id="outSizeVal">512</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="render-section">
+    <h3>Render</h3>
+    <div class="sprite-list" id="spriteList"></div>
+    <button class="btn btn-primary" id="renderBtn" type="button" style="width:100%">Render sprite sheet</button>
+    <div class="progress-bar" id="progressBar" hidden><div class="fill" id="progressFill"></div></div>
+    <div class="status" id="status"></div>
+    <div id="saveRow" hidden style="margin-top:12px">
+      <button class="btn btn-primary" id="saveBtn" type="button" style="width:100%;background:var(--green)">Save sprites (.zip)</button>
+      <p class="hint" id="saveNote" style="margin-top:6px"></p>
+    </div>
+  </div>
+
+  <div class="output-grid" id="outputGrid"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  const $ = id => document.getElementById(id);
+  const dropZone = $('dropZone'), fileInput = $('fileInput'), loadNotice = $('loadNotice');
+  const workspace = $('workspace'), viewportWrap = $('viewportWrap');
+  const renderBtn = $('renderBtn'), progressBar = $('progressBar'), progressFill = $('progressFill');
+  const statusEl = $('status'), outputGrid = $('outputGrid');
+  const saveRow = $('saveRow'), saveBtn = $('saveBtn'), saveNote = $('saveNote');
+
+  function notice(kind, html) {
+    loadNotice.className = 'notice ' + kind;
+    loadNotice.innerHTML = '<div>' + html + '</div>';
+    loadNotice.hidden = false;
+  }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+  const fileName = () => ($('objName').value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') || 'sprite');
+
+  if (typeof THREE === 'undefined' || !THREE.GLTFLoader) {
+    notice('error', '<strong>The 3D engine did not load.</strong> Check your internet connection and reload the page.');
+    return;
+  }
+
+  // Scene graph: pivot (pose sliders) > spin (frame roll) > fit (scale) > align (auto orient) > model
+  let scene, camera, renderer, controls, keyLight, rimLight, ambLight;
+  let pivot, spin, fit, align, model = null, currentGltf = null;
+  let flightMats = [];
+  const originals = new Map();   // material -> { color, map } so natural colors can always come back
+  let objectUrls = [];
+  const DEFAULT_CAM = new THREE.Vector3(1.1, 0.9, 2.6);
+  const v = new THREE.Vector3();
+
+  // ---------- Controls ----------
+  [
+    ['rotXSlider', 'rotXVal', x => x + '°'],
+    ['rotYSlider', 'rotYVal', x => x + '°'],
+    ['rotZSlider', 'rotZVal', x => x + '°'],
+    ['keyIntensity', 'keyVal', x => x],
+    ['rimIntensity', 'rimVal', x => x],
+    ['ambIntensity', 'ambVal', x => x],
+    ['outSize', 'outSizeVal', x => x],
+    ['spinFrames', 'spinVal', x => x],
+    ['tiltFrames', 'tiltVal', x => x],
+  ].forEach(([sid, vid, fmt]) => {
+    const s = $(sid);
+    s.addEventListener('input', () => { $(vid).textContent = fmt(s.value); applyPose(); describeOutput(); });
+  });
+  $('recolor').addEventListener('change', () => { $('colorBlock').hidden = !$('recolor').checked; applyColor(0); describeOutput(); });
+  $('variants').addEventListener('change', () => { $('color2Row').hidden = $('variants').value !== '2'; describeOutput(); });
+  $('color1').addEventListener('input', () => applyColor(0));
+  $('spinRange').addEventListener('change', describeOutput);
+  $('objName').addEventListener('input', describeOutput);
+  $('autoOrient').addEventListener('change', () => { if (currentGltf) { setupModel(currentGltf); } });
+
+  function describeOutput() {
+    const spinN = +$('spinFrames').value, tiltN = +$('tiltFrames').value;
+    const rows = $('recolor').checked ? +$('variants').value : 1;
+    const items = ['1 resting frame from the current camera view'];
+    if (spinN) items.push(spinN + ' spin frames across ' + $('spinRange').value + '° (they loop)');
+    if (tiltN) items.push(tiltN + ' tilted frame' + (tiltN > 1 ? 's' : '') + (tiltN > 1 ? ', leaning left to right' : ''));
+    items.push($('recolor').checked ? rows + ' color version' + (rows > 1 ? 's, one row each' : '') : 'Natural colors and textures');
+    $('spriteList').innerHTML = items.map(t => '<div class="sprite-item"><div class="dot"></div> ' + escapeHtml(t) + '</div>').join('');
+    saveNote.textContent = 'Contains ' + fileName() + '_atlas.png (every frame on one sheet) and ' + fileName() + '_atlas.json (where each frame sits).';
+  }
+  describeOutput();
+
+  // ---------- File loading ----------
+  dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); } });
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', async e => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    handleFiles(await collectDropped(e.dataTransfer));
+  });
+  fileInput.addEventListener('change', () => { handleFiles(Array.from(fileInput.files)); fileInput.value = ''; });
+
+  async function collectDropped(dt) {
+    const items = dt.items ? Array.from(dt.items) : [];
+    const entries = items.map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+    if (!entries.length) return Array.from(dt.files);
+    const out = [];
+    async function walk(entry) {
+      if (entry.isFile) {
+        await new Promise(res => entry.file(f => { out.push(f); res(); }, res));
+      } else if (entry.isDirectory) {
+        const reader = entry.createReader();
+        let batch;
+        do {
+          batch = await new Promise(res => reader.readEntries(res, () => res([])));
+          for (const child of batch) await walk(child);
+        } while (batch.length);
+      }
+    }
+    for (const en of entries) await walk(en);
+    return out;
+  }
+
+  const baseName = p => decodeURIComponent(p.split(/[\\/]/).pop().split('?')[0]);
+
+  async function handleFiles(files) {
+    if (!files.length) return;
+    const main = files.find(f => /\.glb$/i.test(f.name)) || files.find(f => /\.gltf$/i.test(f.name));
+    if (!main) {
+      notice('error', '<strong>No model file found.</strong> Choose a <strong>.glb</strong> file, or a <strong>.gltf</strong> file together with its <strong>.bin</strong> file.');
+      return;
+    }
+    objectUrls.forEach(u => URL.revokeObjectURL(u));
+    objectUrls = [];
+    const urlMap = {};
+    files.forEach(f => { const u = URL.createObjectURL(f); objectUrls.push(u); urlMap[f.name] = u; });
+
+    if (/\.gltf$/i.test(main.name)) {
+      let json;
+      try { json = JSON.parse(await main.text()); }
+      catch (err) { notice('error', '<strong>That .gltf file could not be read.</strong> It may be damaged. Download it again.'); return; }
+      const needed = []
+        .concat((json.buffers || []).map(b => b.uri))
+        .concat((json.images || []).map(i => i.uri))
+        .filter(u => u && !u.startsWith('data:'))
+        .map(baseName);
+      const missing = needed.filter(n => !urlMap[n]);
+      if (missing.length) {
+        notice('error',
+          '<strong>Missing ' + missing.length + ' file' + (missing.length > 1 ? 's' : '') + ':</strong> ' + escapeHtml(missing.join(', ')) +
+          '.<br>A .gltf file only describes the model; its shape and textures live in these files next to it in the unzipped folder. Drop them in together with the .gltf, or drop the whole folder.');
+        return;
+      }
+    }
+
+    notice('info', 'Loading model…');
+    const manager = new THREE.LoadingManager();
+    // A .gltf loaded from a blob: URL resolves "scene.bin" to "blob:<origin>/scene.bin",
+    // so always match by file name first.
+    manager.setURLModifier(url => url.startsWith('data:') ? url : (urlMap[baseName(url)] || url));
+    new THREE.GLTFLoader(manager).load(urlMap[main.name], gltf => {
+      try {
+        originals.clear();
+        currentGltf = gltf;
+        const guess = main.name.replace(/\.(glb|gltf)$/i, '');
+        if ($('objName').value === 'darts' && guess && guess !== 'scene') $('objName').value = guess;
+        setupModel(gltf);
+        loadNotice.hidden = true;
+        const ex = (gltf.parser && gltf.parser.json.asset && gltf.parser.json.asset.extras) || {};
+        $('credit').innerHTML = ex.author
+          ? 'Model: <strong>' + escapeHtml(ex.title || 'Untitled') + '</strong> by ' + escapeHtml(ex.author) +
+            ' · ' + escapeHtml(ex.license || 'license unknown') + '. If the license is CC-BY, credit the author in the game.'
+          : '';
+        describeOutput();
+        statusEl.textContent = 'Model loaded. Orbit the camera to the angle you want, then render.';
+      } catch (err) {
+        notice('error', '<strong>The model loaded but could not be set up:</strong> ' + escapeHtml(err.message));
+      }
+    }, undefined, err => {
+      notice('error', '<strong>The model could not be loaded.</strong> ' + escapeHtml((err && err.message) || String(err)) +
+        '<br>If you have a .glb version of the model, try that; it is one self-contained file.');
+    });
+  }
+
+  // ---------- Scene ----------
+  function initScene() {
+    if (scene) return;
+    workspace.hidden = false;
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(30, 4 / 3, 0.05, 100);
+    camera.position.copy(DEFAULT_CAM);
+
+    renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setClearColor(0x000000, 0);
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    viewportWrap.insertBefore(renderer.domElement, viewportWrap.firstChild);
+
+    keyLight = new THREE.DirectionalLight(0xFFE2B8, 2.2);   // warm key
+    keyLight.position.set(2, 4, 3);
+    scene.add(keyLight);
+    rimLight = new THREE.DirectionalLight(0x38BDF8, 1.4);   // sky-blue rim to match the obsidian UI
+    rimLight.position.set(-3, 1, -3);
+    scene.add(rimLight);
+    ambLight = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambLight);
+
+    pivot = new THREE.Group(); spin = new THREE.Group(); fit = new THREE.Group(); align = new THREE.Group();
+    pivot.add(spin); spin.add(fit); fit.add(align); scene.add(pivot);
+
+    controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+
+    const resize = () => {
+      const r = viewportWrap.getBoundingClientRect();
+      if (!r.width) return;
+      camera.aspect = r.width / r.height;
+      camera.updateProjectionMatrix();
+      renderer.setSize(r.width, r.height, false);
+    };
+    window.addEventListener('resize', resize);
+    resize();
+
+    (function loop() {
+      requestAnimationFrame(loop);
+      controls.update();
+      renderer.render(scene, camera);
+    })();
+  }
+
+  function setupModel(gltf) {
+    initScene();
+    if (model) align.remove(model);
+    model = gltf.scene;
+    align.quaternion.identity(); align.position.set(0, 0, 0); fit.scale.setScalar(1);
+    align.add(model);
+    scene.updateMatrixWorld(true);
+
+    const pts = [];
+    model.traverse(o => {
+      if (!o.isMesh) return;
+      const p = o.geometry.attributes.position;
+      for (let i = 0; i < p.count; i++) pts.push(v.fromBufferAttribute(p, i).applyMatrix4(o.matrixWorld).clone());
+    });
+    if (!pts.length) throw new Error('the file has no meshes');
+
+    if ($('autoOrient').checked) {
+      // Long axis -> Z, wide end (flights/fletching) toward the camera (+Z)
+      const size = new THREE.Box3().setFromPoints(pts).getSize(new THREE.Vector3());
+      const axis = size.x >= size.y && size.x >= size.z ? new THREE.Vector3(1, 0, 0)
+                 : size.y >= size.z ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1);
+      const q = new THREE.Quaternion().setFromUnitVectors(axis, new THREE.Vector3(0, 0, 1));
+      const rotated = pts.map(p => p.clone().applyQuaternion(q));
+      const rb = new THREE.Box3().setFromPoints(rotated);
+      const len = rb.max.z - rb.min.z;
+      const c = rb.getCenter(new THREE.Vector3());
+      let lowR = 0, highR = 0;
+      rotated.forEach(p => {
+        const r = Math.hypot(p.x - c.x, p.y - c.y);
+        if (p.z < rb.min.z + len * 0.2) lowR = Math.max(lowR, r);
+        if (p.z > rb.max.z - len * 0.2) highR = Math.max(highR, r);
+      });
+      if (lowR > highR) q.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI));
+      align.quaternion.copy(q);
+      scene.updateMatrixWorld(true);
+      align.position.sub(new THREE.Box3().setFromObject(align).getCenter(new THREE.Vector3()));
+      fit.scale.setScalar(2 / len);
+    } else {
+      // Keep the model's own orientation; just center it and fit its largest side to 2 units
+      const box = new THREE.Box3().setFromPoints(pts);
+      const size = box.getSize(new THREE.Vector3());
+      align.position.sub(box.getCenter(new THREE.Vector3()));
+      fit.scale.setScalar(2 / Math.max(size.x, size.y, size.z));
+    }
+
+    // Clone materials once per load and remember the natural look
+    if (!model.userData.__cloned) {
+      model.traverse(o => {
+        if (!o.isMesh) return;
+        o.material = Array.isArray(o.material) ? o.material.map(m => m.clone()) : o.material.clone();
+        (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => {
+          if (m.color) originals.set(m, { color: m.color.clone(), map: m.map || null });
+        });
+      });
+      model.userData.__cloned = true;
+    }
+
+    // Recolor targets: the parts that reach furthest from the center line (dart flights, fletching).
+    // Shape-based, so it also works when the colors are baked into a texture.
+    flightMats = [];
+    scene.updateMatrixWorld(true);
+    const inv = new THREE.Matrix4().copy(fit.matrixWorld).invert();
+    const parts = [];
+    model.traverse(o => {
+      if (!o.isMesh) return;
+      const m4 = new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld);
+      const pos = o.geometry.attributes.position;
+      let r = 0;
+      for (let i = 0; i < pos.count; i++) {
+        v.fromBufferAttribute(pos, i).applyMatrix4(m4);
+        r = Math.max(r, Math.hypot(v.x, v.y));
+      }
+      parts.push({ o, r });
+    });
+    const maxR = Math.max(...parts.map(p => p.r));
+    const mats = o => Array.isArray(o.material) ? o.material : [o.material];
+    if (parts.length > 1) {
+      parts.filter(p => p.r > maxR * 0.6).forEach(p => mats(p.o).forEach(m => { if (m.color && !flightMats.includes(m)) flightMats.push(m); }));
+    } else {
+      parts.forEach(p => mats(p.o).forEach(m => {
+        if (!m.color) return;
+        const hsl = {}; originals.get(m).color.getHSL(hsl);
+        if (hsl.s > 0.35 && hsl.l > 0.08) flightMats.push(m);
+      }));
+    }
+    $('colorHint').textContent = flightMats.length
+      ? flightMats.length + ' part' + (flightMats.length > 1 ? 's' : '') + ' will be recolored. The preview shows color 1.'
+      : 'No separate wide parts were found in this model, so recoloring has nothing to change.';
+
+    applyColor(0);
+    resetView();
+    applyPose();
+  }
+
+  // variant 0 = color 1, variant 1 = color 2. With recolor off, restore the natural look.
+  function applyColor(variant) {
+    const on = $('recolor').checked;
+    const hex = variant === 1 ? $('color2').value : $('color1').value;
+    flightMats.forEach(m => {
+      const o = originals.get(m);
+      if (on) {
+        m.color.set(hex).convertSRGBToLinear();   // picker colors are sRGB; the renderer works in linear
+        m.map = null;                              // a texture would hide the new color
+      } else if (o) {
+        m.color.copy(o.color);
+        m.map = o.map;
+      }
+      m.needsUpdate = true;
+    });
+  }
+
+  function applyPose() {
+    if (!pivot) return;
+    const d = Math.PI / 180;
+    pivot.rotation.set($('rotXSlider').value * d, $('rotYSlider').value * d, 0);
+    spin.rotation.set(0, 0, $('rotZSlider').value * d);
+    keyLight.intensity = +$('keyIntensity').value;
+    rimLight.intensity = +$('rimIntensity').value;
+    ambLight.intensity = +$('ambIntensity').value;
+  }
+
+  function resetView() {
+    camera.position.copy(DEFAULT_CAM);
+    controls.target.set(0, 0, 0);
+    controls.update();
+  }
+
+  $('flipBtn').addEventListener('click', () => {
+    if (!model) return;
+    const y = $('rotYSlider');
+    y.value = ((+y.value + 360) % 360) - 180;
+    $('rotYVal').textContent = y.value + '°';
+    applyPose();
+  });
+  $('resetViewBtn').addEventListener('click', () => { if (model) resetView(); });
+
+  // ---------- Rendering ----------
+  let atlasJson = null, atlasBlob = null, atlasName = 'sprite';
+
+  renderBtn.addEventListener('click', async () => {
+    if (!model) return;
+    renderBtn.disabled = true;
+    saveRow.hidden = true;
+    outputGrid.innerHTML = '';
+    try { await renderAll(); }
+    catch (err) { statusEl.textContent = 'Rendering failed: ' + err.message; }
+    renderBtn.disabled = false;
+    progressBar.hidden = true;
+  });
+
+  async function renderAll() {
+    const size = +$('outSize').value;
+    const spinCount = +$('spinFrames').value;
+    const tiltCount = +$('tiltFrames').value;
+    const spinRange = +$('spinRange').value * Math.PI / 180;
+    const recolor = $('recolor').checked;
+    const rows = recolor ? +$('variants').value : 1;
+    const autoOrient = $('autoOrient').checked;
+    atlasName = fileName();
+    const cols = 1 + spinCount + tiltCount;
+    const total = rows * cols;
+    let done = 0;
+
+    progressBar.hidden = false;
+    progressFill.style.width = '0%';
+
+    const off = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true });
+    off.setPixelRatio(1);
+    off.setClearColor(0x000000, 0);
+    off.outputEncoding = THREE.sRGBEncoding;
+    off.toneMapping = THREE.ACESFilmicToneMapping;
+    off.setSize(size, size, false);
+    const offCam = new THREE.PerspectiveCamera(camera.fov, 1, 0.05, 100);
+
+    const pose = { px: pivot.rotation.x, py: pivot.rotation.y, roll: spin.rotation.z };
+    // The model fits in a 2-unit box, so a sphere of radius ~1.75 holds it at any spin angle.
+    // A fixed distance keeps every frame at the same scale, so animations don't jitter.
+    const radius = autoOrient ? 1.05 : 1.75;
+    const fitDist = radius / Math.sin((offCam.fov * Math.PI / 180) / 2);
+    const target = controls.target.clone();
+    function placeCamera(dir) {
+      offCam.position.copy(dir).normalize().multiplyScalar(fitDist).add(target);
+      offCam.lookAt(target);
+      offCam.updateProjectionMatrix();
+    }
+    const viewDir = camera.position.clone().sub(controls.target);
+    const wait = () => new Promise(r => requestAnimationFrame(() => r()));
+    const out = [];
+
+    function capture(key) {
+      scene.updateMatrixWorld(true);
+      off.render(scene, offCam);
+      const c = document.createElement('canvas');
+      c.width = c.height = size;
+      c.getContext('2d', { willReadFrequently: true }).drawImage(off.domElement, 0, 0);
+      out.push({ key, canvas: c });
+      done++;
+      progressFill.style.width = Math.round(done / total * 100) + '%';
+      statusEl.textContent = 'Rendering ' + done + ' of ' + total + '…';
+    }
+
+    for (let row = 0; row < rows; row++) {
+      const prefix = 'p' + (row + 1);
+      applyColor(row);
+
+      placeCamera(viewDir);
+      pivot.rotation.set(pose.px, pose.py, 0);
+      spin.rotation.z = pose.roll;
+      capture(prefix + '_rest');
+      await wait();
+
+      for (let i = 0; i < spinCount; i++) {
+        spin.rotation.z = pose.roll + (i / spinCount) * spinRange;
+        capture(prefix + '_spin_' + i);
+        await wait();
+      }
+
+      // Tilted frames: for long objects, seen nearly straight on (as if stuck in a target);
+      // otherwise from the current view.
+      placeCamera(autoOrient ? new THREE.Vector3(0, 0.35, 1) : viewDir);
+      for (let i = 0; i < tiltCount; i++) {
+        const t = tiltCount === 1 ? 0 : (i / (tiltCount - 1)) * 2 - 1;   // -1..1
+        if (autoOrient) {
+          pivot.rotation.set(-0.12 + 0.05 * Math.abs(t), t * 0.3, 0);
+          spin.rotation.z = pose.roll + t * 0.4;
+        } else {
+          pivot.rotation.set(pose.px, pose.py, t * 0.35);
+          spin.rotation.z = pose.roll;
+        }
+        capture(prefix + '_stuck_' + i);
+        await wait();
+      }
+    }
+
+    pivot.rotation.set(pose.px, pose.py, 0);
+    spin.rotation.z = pose.roll;
+    applyColor(0);
+    off.dispose();
+
+    // Crop every frame to ONE shared box so frames stay aligned and the sheet has no empty space
+    let x0 = size, y0 = size, x1 = -1, y1 = -1;
+    out.forEach(f => {
+      const d = f.canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, size, size).data;
+      for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+        if (d[(y * size + x) * 4 + 3] > 4) {
+          if (x < x0) x0 = x; if (x > x1) x1 = x;
+          if (y < y0) y0 = y; if (y > y1) y1 = y;
+        }
+      }
+    });
+    if (x1 < 0) { statusEl.textContent = 'Nothing was rendered. Reset the view and try again.'; return; }
+    const pad = 4;
+    x0 = Math.max(0, x0 - pad); y0 = Math.max(0, y0 - pad);
+    x1 = Math.min(size - 1, x1 + pad); y1 = Math.min(size - 1, y1 + pad);
+    const cw = x1 - x0 + 1, ch = y1 - y0 + 1;
+
+    const sheet = document.createElement('canvas');
+    sheet.width = cw * cols; sheet.height = ch * rows;
+    const sctx = sheet.getContext('2d');
+    const frames = {};
+    out.forEach((f, i) => {
+      const col = i % cols, row = Math.floor(i / cols);
+      sctx.drawImage(f.canvas, x0, y0, cw, ch, col * cw, row * ch, cw, ch);
+      frames[f.key] = { x: col * cw, y: row * ch, w: cw, h: ch };
+    });
+
+    atlasJson = JSON.stringify({
+      name: atlasName,
+      image: atlasName + '_atlas.png',
+      cellWidth: cw, cellHeight: ch, columns: cols, rows,
+      layout: 'Each row is one color version (p1, p2). Columns: rest' +
+        (spinCount ? ', spin_0..spin_' + (spinCount - 1) : '') +
+        (tiltCount ? ', stuck_0..stuck_' + (tiltCount - 1) + ' (leaning left to right)' : ''),
+      spinFrames: spinCount, spinDegrees: spinCount ? +$('spinRange').value : 0,
+      stuckFrames: tiltCount,
+      naturalColors: !recolor,
+      colors: recolor ? [$('color1').value, $('color2').value].slice(0, rows) : [],
+      frames,
+      credit: $('credit').textContent
+    }, null, 2);
+    atlasBlob = await new Promise(r => sheet.toBlob(r, 'image/png'));
+
+    const card = document.createElement('div');
+    card.className = 'output-card';
+    card.style.gridColumn = '1 / -1';
+    const img = document.createElement('img');
+    img.src = URL.createObjectURL(atlasBlob);
+    img.alt = 'Sprite sheet for ' + atlasName;
+    const name = document.createElement('div');
+    name.className = 'name';
+    name.textContent = atlasName + '_atlas.png · ' + sheet.width + '×' + sheet.height + ' · ' + out.length +
+      ' frame' + (out.length > 1 ? 's' : '') + ' of ' + cw + '×' + ch + ' · ' + Math.round(atlasBlob.size / 1024) + ' KB';
+    card.append(img, name);
+    outputGrid.appendChild(card);
+
+    describeOutput();
+    saveRow.hidden = false;
+    statusEl.textContent = 'Done. ' + out.length + ' frame' + (out.length > 1 ? 's' : '') + ' packed into one sprite sheet.';
+  }
+
+  // ---------- Saving ----------
+  // Inside Claude the page saves through the downloads capability; opened as a plain file
+  // in a browser, it falls back to a normal download link.
+  const insideClaude = !!(window.claude && window.claude.use);
+  let downloads = null;
+  if (insideClaude) window.claude.use('downloads').then(d => { downloads = d; }).catch(() => {});
+
+  saveBtn.addEventListener('click', async () => {
+    if (!atlasBlob) return;
+    if (typeof JSZip === 'undefined') {
+      saveNote.textContent = 'The zip tool did not load. Reload the page and render again.';
+      return;
+    }
+    saveBtn.disabled = true;
+    saveNote.textContent = 'Packing…';
+    try {
+      const zip = new JSZip();
+      zip.file(atlasName + '_atlas.png', atlasBlob);
+      zip.file(atlasName + '_atlas.json', atlasJson);
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const zipName = atlasName + '_sprites.zip';
+      if (insideClaude) {
+        if (!downloads) throw { code: 'unavailable' };
+        await downloads.save({ filename: zipName, data: blob });
+      } else {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = zipName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      }
+      saveNote.textContent = 'Saved ' + zipName + '.';
+    } catch (err) {
+      const code = err && err.code;
+      saveNote.textContent =
+        code === 'declined' ? 'Save cancelled.' :
+        code === 'rate_limited' ? 'A save prompt is already open. Finish it, then try again.' :
+        'Saving is not available in this view. Open the page in claude.ai in a browser, or open the downloaded HTML file directly.';
+    }
+    saveBtn.disabled = false;
+  });
+})();
+</script>
+
+</body>
+</html>
