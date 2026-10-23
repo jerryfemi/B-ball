@@ -113,12 +113,27 @@ class _DartsHarnessScreenState extends ConsumerState<DartsHarnessScreen> {
         },
         child: Stack(
           children: [
-            GameWidget<DartsGame>.controlled(
-              gameFactory: () {
-                final game = DartsGame(events: events);
-                _game = game;
-                return game;
-              },
+            Listener(
+              behavior: HitTestBehavior.translucent,
+              onPointerDown: (event) => _game?.onPointerDown(
+                event.pointer,
+                event.position.dx,
+                event.position.dy,
+              ),
+              onPointerMove: (event) => _game?.onPointerMove(
+                event.pointer,
+                event.position.dx,
+                event.position.dy,
+              ),
+              onPointerUp: (event) => _game?.onPointerUp(event.pointer),
+              onPointerCancel: (_) => _game?.onPointerCancel(),
+              child: GameWidget<DartsGame>.controlled(
+                gameFactory: () {
+                  final game = DartsGame(events: events);
+                  _game = game;
+                  return game;
+                },
+              ),
             ),
             // Debug controls overlay at bottom of screen
             Positioned(
