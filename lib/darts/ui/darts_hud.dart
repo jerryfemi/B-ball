@@ -193,30 +193,47 @@ class _RoundAndDartsPill extends StatelessWidget {
                 height: 14.0,
                 color: const Color(0x33FFFFFF),
               ),
-              const SizedBox(width: 10.0),
-              // 3 Darts Indicators
+              const SizedBox(width: 8.0),
+              // Darts remaining number indicator: "3", "2", "1"
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                transitionBuilder: (child, anim) => FadeTransition(
+                  opacity: anim,
+                  child: ScaleTransition(scale: anim, child: child),
+                ),
+                child: Text(
+                  '$dartsRemaining',
+                  key: ValueKey<int>(dartsRemaining),
+                  style: TextStyle(
+                    color: dartsRemaining > 0 ? Colors.white : const Color(DartsK.textMuted),
+                    fontSize: 13.0,
+                    fontWeight: FontWeight.w900,
+                    fontFamily: 'Inter',
+                    fontVariations: const [FontVariation('wght', 900)],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6.0),
+              // 3 Mini Dart Icons that leave/dim per shot
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: List.generate(DartsK.dartsPerTurn, (i) {
                   final bool isAvailable = i < dartsRemaining;
-                  return AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    curve: Curves.easeOutCubic,
-                    margin: const EdgeInsets.only(left: 4.0),
-                    width: 7.0,
-                    height: 16.0,
-                    decoration: BoxDecoration(
-                      color: isAvailable ? activeColor : const Color(0x26FFFFFF),
-                      borderRadius: BorderRadius.circular(3.5),
-                      boxShadow: isAvailable
-                          ? [
-                              BoxShadow(
-                                color: activeColor.withValues(alpha: 0.5),
-                                blurRadius: 6.0,
-                                offset: const Offset(0, 1),
-                              ),
-                            ]
-                          : null,
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 2.0),
+                    child: AnimatedOpacity(
+                      duration: const Duration(milliseconds: 220),
+                      curve: Curves.easeOutCubic,
+                      opacity: isAvailable ? 1.0 : 0.20,
+                      child: AnimatedScale(
+                        duration: const Duration(milliseconds: 220),
+                        curve: Curves.easeOutBack,
+                        scale: isAvailable ? 1.0 : 0.82,
+                        child: _MiniDartIcon(
+                          color: activeColor,
+                          isAvailable: isAvailable,
+                        ),
+                      ),
                     ),
                   );
                 }),
@@ -226,6 +243,130 @@ class _RoundAndDartsPill extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// A precision-rendered mini dart icon for the top HUD shot counter.
+class _MiniDartIcon extends StatelessWidget {
+  final Color color;
+  final bool isAvailable;
+
+  const _MiniDartIcon({
+    required this.color,
+    required this.isAvailable,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: const Size(10.0, 22.0),
+      painter: _MiniDartPainter(
+        color: color,
+        isAvailable: isAvailable,
+      ),
+    );
+  }
+}
+
+class _MiniDartPainter extends CustomPainter {
+  final Color color;
+  final bool isAvailable;
+
+  _MiniDartPainter({
+    required this.color,
+    required this.isAvailable,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final double w = size.width;
+    final double h = size.height;
+    final double cx = w * 0.5;
+
+    final Paint flightPaint = Paint()
+      ..color = isAvailable ? color : const Color(0xFF64748B)
+      ..style = PaintingStyle.fill
+      ..isAntiAlias = true;
+
+    final Paint flightShadePaint = Paint()
+      ..color = isAvailable
+          ? Color.alphaBlend(Colors.black.withValues(alpha: 0.25), color)
+          : const Color(0xFF475569)
+      ..style = PaintingStyle.fill
+      ..isAntiAlias = true;
+
+    final Paint shaftPaint = Paint()
+      ..color = isAvailable ? const Color(0xFFCBD5E1) : const Color(0xFF475569)
+      ..strokeWidth = 1.4
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..isAntiAlias = true;
+
+    final Paint barrelPaint = Paint()
+      ..color = isAvailable ? const Color(0xFFE2E8F0) : const Color(0xFF64748B)
+      ..style = PaintingStyle.fill
+      ..isAntiAlias = true;
+
+    final Paint pointPaint = Paint()
+      ..color = isAvailable ? const Color(0xFF94A3B8) : const Color(0xFF334155)
+      ..style = PaintingStyle.fill
+      ..isAntiAlias = true;
+
+    // 1. Flights at top (y: 0.04h to 0.38h)
+    final Path leftFin = Path()
+      ..moveTo(cx, h * 0.04)
+      ..lineTo(0.0, h * 0.08)
+      ..lineTo(cx * 0.3, h * 0.36)
+      ..lineTo(cx, h * 0.38)
+      ..close();
+    canvas.drawPath(leftFin, flightShadePaint);
+
+    final Path rightFin = Path()
+      ..moveTo(cx, h * 0.04)
+      ..lineTo(w, h * 0.08)
+      ..lineTo(w - cx * 0.3, h * 0.36)
+      ..lineTo(cx, h * 0.38)
+      ..close();
+    canvas.drawPath(rightFin, flightPaint);
+
+    // Center flight rib
+    canvas.drawLine(Offset(cx, h * 0.02), Offset(cx, h * 0.38), shaftPaint);
+
+    // 2. Shaft (y: 0.38h to 0.54h)
+    canvas.drawLine(Offset(cx, h * 0.38), Offset(cx, h * 0.54), shaftPaint);
+
+    // 3. Barrel (y: 0.54h to 0.78h)
+    final RRect barrelRRect = RRect.fromRectAndRadius(
+      Rect.fromCenter(
+        center: Offset(cx, h * 0.66),
+        width: 3.2,
+        height: h * 0.24,
+      ),
+      const Radius.circular(1.0),
+    );
+    canvas.drawRRect(barrelRRect, barrelPaint);
+
+    // Subtle knurling ring on the barrel
+    if (isAvailable) {
+      final Paint knurlPaint = Paint()
+        ..color = const Color(0xFF64748B)
+        ..strokeWidth = 0.8
+        ..style = PaintingStyle.stroke;
+      canvas.drawLine(Offset(cx - 1.6, h * 0.66), Offset(cx + 1.6, h * 0.66), knurlPaint);
+    }
+
+    // 4. Point (tapered needle tip pointing down, y: 0.78h to 0.98h)
+    final Path tipPath = Path()
+      ..moveTo(cx - 0.8, h * 0.78)
+      ..lineTo(cx + 0.8, h * 0.78)
+      ..lineTo(cx, h * 0.98)
+      ..close();
+    canvas.drawPath(tipPath, pointPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _MiniDartPainter oldDelegate) {
+    return oldDelegate.color != color || oldDelegate.isAvailable != isAvailable;
   }
 }
 
