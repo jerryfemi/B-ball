@@ -149,7 +149,8 @@ service cloud.firestore {
             request.resource.data[myKey()].uid == request.auth.uid &&
             request.resource.data[myKey()].roundScores.size() ==
               resource.data[myKey()].roundScores.size() + 1 &&
-            isPlausibleArcherySet()
+            isPlausibleArcherySet() &&
+            isPlausibleDartsTurn()
           ));
       }
 
@@ -162,6 +163,20 @@ service cloud.firestore {
             resource.data[myKey()].roundScores.size()] >= 0 &&
           request.resource.data[myKey()].roundScores[
             resource.data[myKey()].roundScores.size()] <= 30
+        );
+      }
+
+      // Darts: a turn is 3 darts of at most 60 points each (180 max, 0 on a
+      // bust). The exact score is recomputed from the hit positions in the
+      // client transaction; this is the server-side ceiling.
+      function isPlausibleDartsTurn() {
+        return resource.data.get('game', 'basketball') != 'darts' || (
+          request.resource.data[myKey()].roundScores[
+            resource.data[myKey()].roundScores.size()] is int &&
+          request.resource.data[myKey()].roundScores[
+            resource.data[myKey()].roundScores.size()] >= 0 &&
+          request.resource.data[myKey()].roundScores[
+            resource.data[myKey()].roundScores.size()] <= 180
         );
       }
 
@@ -292,11 +307,34 @@ service cloud.firestore {
                 shotId == 'a_' + request.auth.uid + '_' + string(e.round) + '_' + string(e.arrowIndex)));
         }
 
+        // Darts events: same idea. Only your own, only on your turn, only for
+        // the current round, darts 0-2. A dart's id is fixed per (thrower,
+        // round, dart) and its hit position must be a finite number of
+        // millimetres near the board; the score is never sent.
+        function isValidDartsEvent() {
+          let m = get(/databases/$(database)/documents/matches/$(matchId)).data;
+          let e = request.resource.data;
+          return request.auth.uid in m.playerIds &&
+            m.get('game', 'basketball') == 'darts' &&
+            m.activeTurnPlayerUid == request.auth.uid &&
+            e.round == m.currentRound &&
+            e.dartIndex is int && e.dartIndex >= 0 && e.dartIndex < 3 &&
+            ((e.kind == 'aim' &&
+                shotId.matches('p_.*')) ||
+              (e.kind == 'dart' &&
+                e.launched is bool &&
+                e.hitX is number && e.hitX >= -1000 && e.hitX <= 1000 &&
+                e.hitY is number && e.hitY >= -1000 && e.hitY <= 1000 &&
+                shotId == 't_' + request.auth.uid + '_' + string(e.round) + '_' + string(e.dartIndex)));
+        }
+
         allow read: if isAuthenticated();
         allow create: if isAuthenticated() &&
           request.resource.data.shooterUid == request.auth.uid &&
           (request.resource.data.get('game', 'basketball') != 'archery' ||
-            isValidArcheryEvent());
+            isValidArcheryEvent()) &&
+          (request.resource.data.get('game', 'basketball') != 'darts' ||
+            isValidDartsEvent());
         allow update, delete: if false;
       }
 
