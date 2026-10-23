@@ -152,6 +152,7 @@ class AudioEngine {
     if (enabled && _initialized) {
       unawaited(_loadSfx());
       if (_archerySfxWanted) unawaited(loadArcherySfx());
+      if (_dartsSfxWanted) unawaited(loadDartsSfx());
     }
     await _savePref(_prefKeySfxEnabled, enabled);
   }
@@ -171,6 +172,8 @@ class AudioEngine {
   static bool _sfxLoaded = false;
   static bool _archerySfxWanted = false;
   static bool _archerySfxLoaded = false;
+  static bool _dartsSfxWanted = false;
+  static bool _dartsSfxLoaded = false;
 
   // ── Monotonic stopwatch (zero-allocation rate-limiting) ──
   static final Stopwatch _clock = Stopwatch();
@@ -193,6 +196,15 @@ class AudioEngine {
     Sfx.arrowThunk: 'assets/archery/sfx_thunk.wav',
     Sfx.arrowBell: 'assets/archery/sfx_ding.wav',
     Sfx.arrowThud: 'assets/archery/sfx_thud.wav',
+  };
+
+  static const Map<Sfx, String> _dartsSfxAssets = {
+    Sfx.dartThrow: 'assets/archery/sfx_release.wav',
+    Sfx.dartHit: 'assets/archery/sfx_thunk.wav',
+    Sfx.dartBull: 'assets/archery/sfx_ding.wav',
+    Sfx.dartMiss: 'assets/archery/sfx_thud.wav',
+    Sfx.dartBust: 'assets/audio/buzzer.wav',
+    Sfx.dartPull: 'assets/archery/sfx_click.wav',
   };
 
   // ── Available Background Music Tracks ──
@@ -258,6 +270,7 @@ class AudioEngine {
       _initialized = true;
       if (sfxEnabled) unawaited(_loadSfx());
       if (sfxEnabled && _archerySfxWanted) unawaited(loadArcherySfx());
+      if (sfxEnabled && _dartsSfxWanted) unawaited(loadDartsSfx());
       final ambience = _ambienceTrack;
       if (ambience != null) {
         unawaited(_backend
@@ -311,6 +324,20 @@ class AudioEngine {
     } catch (e) {
       _archerySfxLoaded = false;
       debugPrint('[AudioEngine] Archery sounds failed to load: $e');
+    }
+  }
+
+  /// Decodes darts' sounds (only when darts is opened, so other games
+  /// never pay for them). Safe to call repeatedly.
+  static Future<void> loadDartsSfx() async {
+    _dartsSfxWanted = true;
+    if (_dartsSfxLoaded || !_initialized || !sfxEnabled) return;
+    _dartsSfxLoaded = true;
+    try {
+      await _backend.loadSfx(_dartsSfxAssets);
+    } catch (e) {
+      _dartsSfxLoaded = false;
+      debugPrint('[AudioEngine] Darts sounds failed to load: $e');
     }
   }
 
@@ -583,6 +610,48 @@ class AudioEngine {
     }
   }
 
+  // ── Darts Sound Effects ──
+
+  /// Dart flick / release whoosh with light haptic feedback.
+  static void playDartThrow() {
+    if (!_canPlaySfx) return;
+    _safePlay(Sfx.dartThrow, 0.85);
+    _safeHaptic(HapticFeedback.lightImpact);
+  }
+
+  /// Dart impact on board (thunk), with optional ding on bullseye / T20.
+  static void playDartHit({bool isBull = false}) {
+    if (!_canPlaySfx) return;
+    _safePlay(Sfx.dartHit, 0.95);
+    if (isBull) {
+      _safePlay(Sfx.dartBull, 0.6);
+      _safeHaptic(HapticFeedback.mediumImpact);
+    } else {
+      _safeHaptic(HapticFeedback.selectionClick);
+    }
+  }
+
+  /// Dart missed board entirely (wall thud).
+  static void playDartMiss() {
+    if (!_canPlaySfx) return;
+    _safePlay(Sfx.dartMiss, 0.75);
+    _safeHaptic(HapticFeedback.selectionClick);
+  }
+
+  /// Bust buzzer penalty.
+  static void playDartBust() {
+    if (!_canPlaySfx) return;
+    _safePlay(Sfx.dartBust, 0.9);
+    _safeHaptic(HapticFeedback.heavyImpact);
+  }
+
+  /// Tactile pull/removal click when clearing darts from the board.
+  static void playDartPull() {
+    if (!_canPlaySfx) return;
+    _safePlay(Sfx.dartPull, 0.6);
+    _safeHaptic(HapticFeedback.selectionClick);
+  }
+
   static void _safePlay(Sfx sfx, double volume) {
     final effectiveVolume = (volume * masterVolume * sfxVolume).clamp(
       0.0,
@@ -610,6 +679,7 @@ class AudioEngine {
     _musicStarted = false;
     _sfxLoaded = false;
     _archerySfxLoaded = false;
+    _dartsSfxLoaded = false;
     _clock
       ..stop()
       ..reset();

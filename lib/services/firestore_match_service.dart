@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 
 import '../archery/online/archery_live_event.dart';
 import '../archery/state/archery_rules.dart';
+import '../darts/online/darts_live_event.dart';
+import '../darts/state/darts_rules.dart';
 import '../game/match/match_config.dart';
 import '../game/telemetry/shot_telemetry.dart';
 import '../models/cloud_match.dart';
@@ -16,6 +18,13 @@ import 'friends_service.dart';
 import 'update/update_platform.dart';
 
 /// Exception thrown when no match document exists for the requested join code.
+/// [FirestoreMatchService.createMatch] with a fixed code found the room taken.
+class RoomAlreadyExistsException implements Exception {
+  const RoomAlreadyExistsException();
+  @override
+  String toString() => 'That match room already exists.';
+}
+
 class MatchNotFoundException implements Exception {
   final String message;
   const MatchNotFoundException(this.message);
@@ -135,6 +144,7 @@ class FirestoreMatchService {
     RoundTelemetry? initialRoundTelemetry,
     int? initialRoundScore,
     String? initialChatMessage,
+    String? fixedJoinCode,
   }) async {
     if (!isDeviceOnline()) {
       throw const AuthRequiredException(
@@ -145,7 +155,7 @@ class FirestoreMatchService {
     // Ensure the host is authenticated with Firebase before creating a cloud match
     await _effectiveAuthService.ensureAuthenticated();
 
-    final joinCode = generateJoinCode();
+    final joinCode = fixedJoinCode ?? generateJoinCode();
     final docRef = _matchesRef.doc(joinCode);
     final now = DateTime.now().millisecondsSinceEpoch;
 
@@ -193,10 +203,22 @@ class FirestoreMatchService {
       DateTime.now().add(const Duration(days: 7)),
     );
 
-    await docRef.set({
+    final data = {
       ...match.toMap(),
       'expireAt': ttl7Days,
-    });
+    };
+    if (fixedJoinCode == null) {
+      await docRef.set(data);
+    } else {
+      // A shared code (rematch): only create the room if nobody beat us to it.
+      final bool created = await _firestore.runTransaction<bool>((tx) async {
+        final snap = await tx.get(docRef);
+        if (snap.exists) return false;
+        tx.set(docRef, data);
+        return true;
+      });
+      if (!created) throw const RoomAlreadyExistsException();
+    }
 
     // Write initial chat message to lightweight subcollection (decoupled from match telemetry)
     if (initialChatMessage != null && initialChatMessage.trim().isNotEmpty) {
@@ -228,6 +250,64 @@ class FirestoreMatchService {
     }
 
     return match;
+  }
+
+  /// Join code of the rematch of [finishedMatchId]. Both players compute the
+  /// same code, so two REMATCH taps at the same moment meet in one room
+  /// instead of each waiting in their own.
+  static String rematchCodeFor(String finishedMatchId) {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    // Small multipliers only, so the web (JS numbers) gets the same code.
+    int h = 17;
+    for (final int c in 'rematch:${finishedMatchId.trim().toUpperCase()}'.codeUnits) {
+      h = (h * 31 + c) & 0x7FFFFFFF;
+    }
+    final out = StringBuffer();
+    for (int i = 0; i < 6; i++) {
+      out.write(chars[h % chars.length]);
+      h = ((h ~/ chars.length) ^ (h * 7 + i * 131)) & 0x7FFFFFFF;
+    }
+    return out.toString();
+  }
+
+  /// Rematch of [finishedMatchId] against the same opponent.
+  ///
+  /// The first player to tap REMATCH creates the room (and sends the other an
+  /// invite); the second one, even a split second later, joins that room.
+  /// [joined] is true when this player joined the opponent's room, in which
+  /// case the match is already active.
+  Future<({CloudMatch match, bool joined})> createOrJoinRematch({
+    required String finishedMatchId,
+    required MatchConfig config,
+    required UserProfile me,
+  }) async {
+    final code = rematchCodeFor(finishedMatchId);
+    try {
+      final m = await createMatch(config: config, player1Profile: me, fixedJoinCode: code);
+      return (match: m, joined: false);
+    } on RoomAlreadyExistsException {
+      final existing = await getMatch(code);
+      if (existing != null) {
+        // I already made it (double tap, or a retry after a dropped reply).
+        if (existing.player1.uid == me.uid) return (match: existing, joined: false);
+        if (existing.playerIds.contains(me.uid)) return (match: existing, joined: true);
+        if (existing.status == MatchStatus.waitingForOpponent && existing.player2 == null) {
+          // Their invite to me is now answered.
+          try {
+            await _usersRef
+                .doc(me.uid)
+                .collection('match_invites')
+                .doc(code)
+                .update({'status': MatchInviteStatus.accepted.key});
+          } catch (_) {}
+          final joined = await joinMatchByCode(joinCode: code, player2Profile: me);
+          return (match: joined, joined: true);
+        }
+      }
+      // An old, closed room holds the code: fall back to a fresh one.
+      final m = await createMatch(config: config, player1Profile: me);
+      return (match: m, joined: false);
+    }
   }
 
   /// Atomically joins a match via 6-digit code or direct URL code using a transaction.
@@ -1010,7 +1090,8 @@ class FirestoreMatchService {
       final records = <LiveShotRecord>[];
       for (final d in snap.docs) {
         final data = d.data();
-        if (data['game'] == 'archery') continue;
+        // Archery and darts events share this subcollection; skip them.
+        if (data['game'] == 'archery' || data['game'] == 'darts') continue;
         final shotMap = data['shot'] as Map<String, dynamic>?;
         if (shotMap == null) continue;
         records.add(LiveShotRecord(
@@ -1260,6 +1341,199 @@ extension ArcheryMatchService on FirestoreMatchService {
         }
       } else {
         nextTurnUid = opp?.uid ?? '';
+      }
+
+      final isConcluding = nextStatus == MatchStatus.completed;
+      final key = isP1 ? 'player1' : 'player2';
+      transaction.update(docRef, {
+        'currentRound': nextRound,
+        'activeTurnPlayerUid': nextTurnUid,
+        'status': nextStatus.key,
+        'updatedAt': DateTime.now().millisecondsSinceEpoch,
+        // Finished matches are permanent trophy history: no TTL.
+        'expireAt': isConcluding
+            ? FieldValue.delete()
+            : Timestamp.fromDate(DateTime.now().add(const Duration(days: 7))),
+        'liveShooterScore': FieldValue.delete(),
+        'liveShooterUid': FieldValue.delete(),
+        'turnStartedAt': FieldValue.delete(),
+        '$key.roundScores': myScores,
+        '$key.roundSummaries': mySummaries.map((s) => s.toMap()).toList(),
+      });
+    });
+  }
+}
+
+/// Darts live play and turn submission (kept apart from basketball's and
+/// archery's methods; same `live_shots` subcollection and turn rules).
+///
+/// Turn order is FIXED: player 1 throws every round first, player 2 second
+/// (unlike archery, where whoever shot second leads the next set). A rematch
+/// is a new match, so the other player hosts it and throws first.
+extension DartsMatchService on FirestoreMatchService {
+  /// Writes one live darts event (aim ping or landed dart). Darts use a fixed
+  /// document id, so a retry can never write a second, different dart.
+  Future<bool> broadcastDartsEvent({
+    required String matchId,
+    required DartsLiveEvent event,
+  }) async {
+    final cleanId = matchId.trim().toUpperCase();
+    try {
+      await _matchesRef
+          .doc(cleanId)
+          .collection('live_shots')
+          .doc(event.docId)
+          .set({
+        ...event.toMap(),
+        'expireAt': Timestamp.fromDate(
+          DateTime.now().add(const Duration(hours: 24)),
+        ),
+      });
+      return true;
+    } catch (e) {
+      debugPrint('[FirestoreMatchService] broadcastDartsEvent error: $e');
+      return false;
+    }
+  }
+
+  /// Live darts events of one thrower in one round, as batches. The first
+  /// batch ([DartsLiveBatch.initial]) holds what already happened.
+  Stream<DartsLiveBatch> streamDartsEvents(
+    String matchId, {
+    required String shooterUid,
+    required int round,
+  }) {
+    if (matchId.isEmpty || shooterUid.isEmpty) return const Stream.empty();
+    final cleanId = matchId.trim().toUpperCase();
+    bool first = true;
+    return _matchesRef
+        .doc(cleanId)
+        .collection('live_shots')
+        .where('shooterUid', isEqualTo: shooterUid)
+        .where('round', isEqualTo: round)
+        .snapshots()
+        .map((snap) {
+          final events = <DartsLiveEvent>[];
+          for (final change in snap.docChanges) {
+            if (change.type != DocumentChangeType.added) continue;
+            final e = DartsLiveEvent.fromMap(change.doc.data());
+            if (e != null) events.add(e);
+          }
+          final batch = DartsLiveBatch(events, initial: first);
+          first = false;
+          return batch;
+        })
+        .handleError((e) {
+          debugPrint('[FirestoreMatchService] streamDartsEvents error: $e');
+        });
+  }
+
+  /// The landed darts of one thrower in one round, in dart order.
+  Future<List<DartsLiveEvent>> getDartsThrows(
+    String matchId, {
+    required String shooterUid,
+    required int round,
+  }) async {
+    if (matchId.isEmpty || shooterUid.isEmpty) return const [];
+    final cleanId = matchId.trim().toUpperCase();
+    try {
+      final snap = await _matchesRef
+          .doc(cleanId)
+          .collection('live_shots')
+          .where('shooterUid', isEqualTo: shooterUid)
+          .where('round', isEqualTo: round)
+          .get();
+      final darts = snap.docs
+          .map((d) => DartsLiveEvent.fromMap(d.data()))
+          .whereType<DartsLiveEvent>()
+          .where((e) => e.isDart)
+          .toList()
+        ..sort((a, b) => a.dartIndex.compareTo(b.dartIndex));
+      return darts;
+    } catch (e) {
+      debugPrint('[FirestoreMatchService] getDartsThrows error: $e');
+      return const [];
+    }
+  }
+
+  /// Submits the thrower's finished turn atomically.
+  ///
+  /// The turn score is worked out here from where each dart hit (never taken
+  /// as sent), with the 301 bust/checkout rules. Player 1 always throws first
+  /// in a round; the round closes after player 2's turn, and the match ends
+  /// (equal turns) when someone has checked out or round 20 is done.
+  Future<void> submitDartsTurn({
+    required String matchId,
+    required String shooterUid,
+    required int round,
+    required List<DartsLiveEvent> darts,
+  }) async {
+    final docRef = _matchesRef.doc(matchId.trim().toUpperCase());
+
+    await _firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(docRef);
+      if (!snapshot.exists) {
+        throw MatchNotFoundException('Cannot submit turn: match $matchId not found.');
+      }
+      final match = CloudMatch.fromFirestore(snapshot);
+      if (match.status != MatchStatus.active &&
+          match.status != MatchStatus.waitingForOpponent) {
+        throw MatchNotActiveException('Match $matchId is not active.');
+      }
+      if (match.activeTurnPlayerUid != shooterUid) {
+        throw const NotYourTurnException('It is not your turn in this match.');
+      }
+      if (match.currentRound != round) {
+        throw RoundMismatchException(
+          'Round mismatch: expected ${match.currentRound}, submitted $round.',
+        );
+      }
+      final isP1 = match.player1.uid == shooterUid;
+      final me = isP1 ? match.player1 : match.player2;
+      if (me == null) {
+        throw const NotParticipantException('Not a participant in this match.');
+      }
+      if (me.roundScores.length >= round) return; // duplicate submit
+
+      final int remainingAtStart = DartsRules.remaining(me.roundScores);
+      final tally = DartsTurnTally.score(remainingAtStart, darts);
+      final stats = RoundSummaryStats(
+        roundIndex: round,
+        score: tally.total,
+        madeShots: tally.onBoard,
+        totalShots: tally.dartsUsed, // darts used: the checkout tiebreak
+        swishes: tally.trebles,
+        bestStreak: tally.bulls,
+      );
+
+      final myScores = [...me.roundScores, tally.total];
+      final mySummaries = [...me.roundSummaries, stats];
+      final opp = isP1 ? match.player2 : match.player1;
+
+      int nextRound = match.currentRound;
+      String nextTurnUid;
+      MatchStatus nextStatus = match.status;
+      if (isP1) {
+        // Player 2 always answers the round (equal turns), even after a
+        // checkout. Nobody joined yet: the turn waits for them.
+        nextTurnUid = opp?.uid ?? '';
+      } else {
+        final p1Scores = match.player1.roundScores;
+        final int p1LastDarts = match.player1.roundSummaries.isEmpty
+            ? DartsRules.dartsPerTurn
+            : match.player1.roundSummaries.last.totalShots;
+        if (DartsRules.isMatchOver(
+          p1Scores,
+          myScores,
+          p1LastDarts: p1LastDarts,
+          p2LastDarts: tally.dartsUsed,
+        )) {
+          nextStatus = MatchStatus.completed;
+          nextTurnUid = '';
+        } else {
+          nextRound += 1;
+          nextTurnUid = match.player1.uid; // player 1 opens every round
+        }
       }
 
       final isConcluding = nextStatus == MatchStatus.completed;

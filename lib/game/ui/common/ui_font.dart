@@ -1,5 +1,3 @@
-import 'dart:ui' show FontVariation;
-
 import 'package:flutter/painting.dart';
 
 /// Inter, the app's UI text font. It's a variable font, so the weight is set

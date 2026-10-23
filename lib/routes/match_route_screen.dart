@@ -185,7 +185,7 @@ class _MatchRouteScreenState extends ConsumerState<MatchRouteScreen> {
 
     // 2. Darts match
     if (match.isDarts) {
-      return const DartsGameScreen();
+      return DartsGameScreen(match: match);
     }
 
     // 3. Basketball (DunkVerse) match

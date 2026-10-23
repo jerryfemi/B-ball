@@ -83,14 +83,31 @@ class MatchWinnerPodiumOverlay extends HookConsumerWidget {
             avatarEmoji: session.player1.avatar,
           );
 
-      final newMatch = await FirestoreMatchService.instance.createMatch(
-        config: config,
-        player1Profile: userProfile,
-      );
+      // Both players may tap REMATCH at once: they share one room, so the
+      // second tap joins the first instead of opening a second waiting room.
+      final String? finishedId = session.cloudMatchId;
+      final result = finishedId != null
+          ? await FirestoreMatchService.instance.createOrJoinRematch(
+              finishedMatchId: finishedId,
+              config: config,
+              me: userProfile,
+            )
+          : (
+              match: await FirestoreMatchService.instance.createMatch(
+                config: config,
+                player1Profile: userProfile,
+              ),
+              joined: false,
+            );
+      final newMatch = result.match;
 
       if (context.mounted) {
         isRematching.value = false;
         game.exitToSoloMode();
+        if (result.joined) {
+          game.startCloudMatch(newMatch, userProfile.uid);
+          return;
+        }
 
         MatchLobbyDialog.show(
           context: context,
@@ -129,6 +146,28 @@ class MatchWinnerPodiumOverlay extends HookConsumerWidget {
               .where((i) => i.isPending && i.hostUid == opponentId)
               .firstOrNull;
     final isRematching = useState(false);
+
+    // Online podium: if nobody rematches, both players go back to the court
+    // (solo). Shorter when the opponent left. Paused while their rematch
+    // invite is up or while a rematch is being set up.
+    final bool liveEnd = !session.isHistoryView && session.cloudMatchId != null;
+    final bool oppLeft = session.forfeitWinner != null;
+    final backIn = useState<int>(oppLeft ? 10 : 45);
+    final holdCountdown = useRef(false);
+    holdCountdown.value = rematchInvite != null || isRematching.value || rematchError.value != null;
+    useEffect(() {
+      if (!liveEnd) return null;
+      final t = Timer.periodic(const Duration(seconds: 1), (t) {
+        if (holdCountdown.value) return;
+        backIn.value--;
+        if (backIn.value <= 0) {
+          t.cancel();
+          if (context.mounted) _handleCloseOrDismiss(context);
+        }
+      });
+      return t.cancel;
+    }, [liveEnd]);
+
     final winner = session.overallWinner;
     final isTie = session.isTie;
     final isP1Winner = winner == session.player1;
@@ -356,8 +395,10 @@ class MatchWinnerPodiumOverlay extends HookConsumerWidget {
                         child: OutlinedButton.icon(
                           onPressed: () => _handleCloseOrDismiss(context),
                           icon: const Icon(Icons.close_rounded, size: 17),
-                          label: const Text(
-                            'BACK TO COURT',
+                          label: Text(
+                            holdCountdown.value
+                                ? 'BACK TO COURT'
+                                : 'BACK TO COURT · ${backIn.value}s',
                             style: TextStyle(
                               fontSize: 13.0,
                               fontWeight: FontWeight.w800,

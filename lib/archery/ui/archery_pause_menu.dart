@@ -8,11 +8,20 @@ import '../../game/audio/audio_engine.dart';
 ///
 /// Solo play freezes while it is open. Online, the match keeps running (your
 /// opponent isn't paused), so the menu says so and offers no restart.
+///
+/// Shared with darts: the ambience row's name/icon and an optional
+/// "HOW TO PLAY" button are configurable; everything else is identical.
 class ArcheryPauseMenu extends StatelessWidget {
   final bool online;
   final VoidCallback onResume;
   final VoidCallback? onRestart;
   final VoidCallback onLobby;
+  final VoidCallback? onHowToPlay;
+  final String ambienceLabel;
+  final IconData ambienceIcon;
+
+  /// Small attribution line under the buttons (e.g. a CC-BY model credit).
+  final String? credit;
 
   const ArcheryPauseMenu({
     super.key,
@@ -20,6 +29,10 @@ class ArcheryPauseMenu extends StatelessWidget {
     required this.onResume,
     required this.onLobby,
     this.onRestart,
+    this.onHowToPlay,
+    this.ambienceLabel = 'BIRDSONG',
+    this.ambienceIcon = Icons.forest_rounded,
+    this.credit,
   });
 
   @override
@@ -34,6 +47,8 @@ class ArcheryPauseMenu extends StatelessWidget {
           ),
         ),
         Center(
+          child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(vertical: 12),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 380),
             child: Container(
@@ -94,8 +109,8 @@ class ArcheryPauseMenu extends StatelessWidget {
                       onVolume: (v) => AudioEngine.sfxVolume = v,
                     ),
                     _AudioRow(
-                      icon: Icons.forest_rounded,
-                      label: 'BIRDSONG',
+                      icon: ambienceIcon,
+                      label: ambienceLabel,
                       enabled: AudioEngine.ambienceEnabledNotifier,
                       volume: AudioEngine.ambienceVolumeNotifier,
                       onEnabled: AudioEngine.setAmbienceEnabled,
@@ -108,6 +123,14 @@ class ArcheryPauseMenu extends StatelessWidget {
                       primary: true,
                       onTap: onResume,
                     ),
+                    if (onHowToPlay != null) ...[
+                      const SizedBox(height: 8),
+                      _MenuButton(
+                        label: 'HOW TO PLAY',
+                        icon: Icons.help_outline_rounded,
+                        onTap: onHowToPlay!,
+                      ),
+                    ],
                     if (onRestart != null) ...[
                       const SizedBox(height: 8),
                       _MenuButton(
@@ -122,10 +145,19 @@ class ArcheryPauseMenu extends StatelessWidget {
                       icon: Icons.grid_view_rounded,
                       onTap: onLobby,
                     ),
+                    if (credit != null) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        credit!,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Color(0xFF64748B), fontSize: 9.5),
+                      ),
+                    ],
                   ],
                 ),
               ),
             ),
+          ),
           ),
         ),
       ],

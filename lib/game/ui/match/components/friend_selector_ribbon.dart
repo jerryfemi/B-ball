@@ -6,6 +6,7 @@ import '../../../../models/friend_profile.dart';
 import '../../../../providers/app_providers.dart';
 import '../../../../services/auth_service.dart';
 import '../../common/app_avatar.dart';
+import '../../social/add_friend_dialog.dart';
 
 /// Horizontal scrollable ribbon displaying friends for 1v1 match challenges.
 class FriendSelectorRibbon extends ConsumerWidget {
@@ -25,6 +26,17 @@ class FriendSelectorRibbon extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final friends = ref.watch(friendsListProvider).value ?? const <FriendProfile>[];
+
+    // Add someone without leaving Play a friend. They get a friend request;
+    // once they accept, they appear in this row.
+    void addFriend() {
+      HapticFeedback.selectionClick();
+      AddFriendDialog.show(
+        context,
+        existingFriendUids: {for (final f in friends) f.uid},
+      );
+    }
+
         if (friends.isEmpty) {
           return Container(
             padding: const EdgeInsets.all(12.0),
@@ -36,24 +48,46 @@ class FriendSelectorRibbon extends ConsumerWidget {
             child: Column(
               children: [
                 const Text(
-                  'No friends added yet. Add friends via the Friends Hub, or generate an open code!',
+                  'No friends yet. Add one by name or tag, or share a code instead.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Color(0xFF94A3B8),
-                    fontSize: 11.0,
+                    fontSize: 12.0,
+                    fontFamily: 'Inter',
                   ),
                 ),
                 const SizedBox(height: 6.0),
-                TextButton(
-                  onPressed: onUseOpenCode,
-                  child: const Text(
-                    'USE OPEN MATCH CODE',
-                    style: TextStyle(
-                      color: Color(0xFF38BDF8),
-                      fontSize: 11.0,
-                      fontWeight: FontWeight.bold,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    TextButton.icon(
+                      onPressed: addFriend,
+                      icon: const Icon(Icons.person_add_alt_1_rounded, size: 16, color: Color(0xFF00FFCC)),
+                      label: const Text(
+                        'ADD FRIEND',
+                        style: TextStyle(
+                          color: Color(0xFF00FFCC),
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w800,
+                          fontFamily: 'Inter',
+                          fontVariations: [FontVariation('wght', 800)],
+                        ),
+                      ),
                     ),
-                  ),
+                    TextButton(
+                      onPressed: onUseOpenCode,
+                      child: const Text(
+                        'SHARE A CODE',
+                        style: TextStyle(
+                          color: Color(0xFF38BDF8),
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w800,
+                          fontFamily: 'Inter',
+                          fontVariations: [FontVariation('wght', 800)],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -64,9 +98,41 @@ class FriendSelectorRibbon extends ConsumerWidget {
           height: 84.0,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            itemCount: friends.length,
+            itemCount: friends.length + 1,
             separatorBuilder: (context, index) => const SizedBox(width: 8.0),
             itemBuilder: (context, index) {
+              // Last tile: add someone new.
+              if (index == friends.length) {
+                return InkWell(
+                  onTap: addFriend,
+                  borderRadius: BorderRadius.circular(12.0),
+                  child: Container(
+                    width: 72.0,
+                    decoration: BoxDecoration(
+                      color: const Color(0x1400FFCC),
+                      borderRadius: BorderRadius.circular(12.0),
+                      border: Border.all(color: const Color(0x6600FFCC)),
+                    ),
+                    child: const Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.person_add_alt_1_rounded, size: 24, color: Color(0xFF00FFCC)),
+                        SizedBox(height: 6.0),
+                        Text(
+                          'Add',
+                          style: TextStyle(
+                            color: Color(0xFF00FFCC),
+                            fontSize: 11.0,
+                            fontWeight: FontWeight.w700,
+                            fontFamily: 'Inter',
+                            fontVariations: [FontVariation('wght', 700)],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }
               final friend = friends[index];
               final isSelected = selectedFriend?.uid == friend.uid;
               return InkWell(
