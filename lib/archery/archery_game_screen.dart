@@ -22,6 +22,7 @@ import 'state/archery_rules.dart';
 import 'ui/archery_hud.dart';
 import 'ui/archery_match_bar.dart';
 import 'ui/archery_pause_menu.dart';
+import 'ui/archery_tour.dart';
 
 /// Full-screen archery: solo against the bot (`/archery`), or a live online
 /// match when [match] is given (`/match/:id`).
@@ -119,6 +120,17 @@ class ArcheryGameScreen extends HookConsumerWidget {
 
     final g = game.value;
     final bool isOnline = match != null;
+
+    // How-to-play, once per device, solo only.
+    final showTour = useState(false);
+    useEffect(() {
+      if (!isOnline) {
+        ArcheryTour.shouldShow().then((show) {
+          if (show) showTour.value = true;
+        });
+      }
+      return null;
+    }, [isOnline]);
 
     void openPause() {
       if (g == null || paused.value) return;
@@ -240,6 +252,10 @@ class ArcheryGameScreen extends HookConsumerWidget {
                         child: ArcheryChallengePill(onOpen: openPauseSilently),
                       ),
                     ),
+
+                  // 3b. How-to-play (first archery open on this device)
+                  if (showTour.value && !isOnline)
+                    ArcheryTour(onDone: () => showTour.value = false),
 
                   // 4. Pause menu (music / effects / birdsong)
                   if (paused.value)
