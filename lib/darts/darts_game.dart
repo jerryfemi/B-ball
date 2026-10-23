@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flame/game.dart';
 
@@ -14,6 +15,7 @@ import 'input/flick_controller.dart';
 import 'physics/dart_scoring.dart';
 import 'physics/flick_solver.dart';
 import 'scene/board_projection.dart';
+import 'state/darts_bot.dart';
 import 'state/darts_match_notifier.dart';
 import 'state/darts_rules.dart';
 
@@ -41,14 +43,18 @@ abstract interface class DartsOnlineGame {
 
 /// Flame game engine for Darts 301.
 ///
-/// Follows DARTS_PLAN.md:
+/// Follows DARTS_PLAN.md Step 12:
 /// - Screen framing and projection handled by [BoardProjection].
 /// - Component draw priorities:
 ///   Backdrop 0 → Board 1 → Area Flash 2 → Board Shadows 3 → Stuck Darts 4 →
 ///   Flying Dart 5 → Resting Dart 6 → Aim Reticle 7 → Score Popups 8
+/// - Automated solo turn flow:
+///   1. Player throws up to 3 darts (or bust/checkout).
+///   2. 0.8s pause, darts pulled out (fade over 200 ms).
+///   3. Bot throws 3 darts with 0.7s flight gaps via [DartsBot] + inverse ballistic solver.
+///   4. 0.8s pause, bot darts pulled, back to player or match over.
 /// - 240 Hz clamped fixed-step simulation loop to match physics integration.
-/// - Dark obsidian background (#0A0E1A) with zero per-frame heap allocations.
-/// - Game state, match rules, and scoring are owned by [DartsGameEvents].
+/// - Zero per-frame heap allocations during active gameplay.
 class DartsGame extends FlameGame implements DartsOnlineGame {
   final DartsGameEvents events;
 
@@ -65,6 +71,10 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
   late final FlickController flickController;
 
   final List<StuckDart> stuckDarts = [];
+
+  // ─── Turn Flow & Bot State ─────────────────────────────────────────────────
+  bool _turnTransitioning = false;
+  bool _isBotTurnActive = false;
 
   // ─── Fixed-step Accumulator State ──────────────────────────────────────────
   double _accumulator = 0.0;
@@ -128,7 +138,8 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
       round: events.round,
       dartIndex: events.dartIndex,
     );
-    flickController.inputEnabled = events.isMyTurn && !flyingDart.isFlying;
+    flickController.inputEnabled =
+        events.isMyTurn && !flyingDart.isFlying && !_turnTransitioning && !_isBotTurnActive;
   }
 
   void _onLocalDartLanded(DartHit hit) {
@@ -152,25 +163,161 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
     hitPopup.showHit(hit, isBust: result.bust, isCheckout: result.checkout);
 
     if (!result.turnOver && events.isMyTurn) {
+      // More darts remaining in player's turn
       restingDart.resetPullBack();
       restingDart.visible = true;
       _setupCurrentDart();
     } else {
+      // Turn is over (3 darts, bust, or checkout)
       restingDart.visible = false;
+      flickController.inputEnabled = false;
+      _handlePlayerTurnOver();
     }
+  }
+
+  /// Orchestrates the transition when Player 1's turn completes.
+  Future<void> _handlePlayerTurnOver() async {
+    _turnTransitioning = true;
+    flickController.inputEnabled = false;
+
+    // 1. Pause 0.8s after turn ends
+    await Future.delayed(
+      Duration(milliseconds: (DartsK.turnEndPauseSec * 1000).round()),
+    );
+
+    // 2. Darts pulled out (fade over 200 ms)
+    pullDarts();
+    await Future.delayed(const Duration(milliseconds: 250));
+
+    if (events.isMatchOver) {
+      _turnTransitioning = false;
+      return;
+    }
+
+    // 3. Hand turn to bot in solo play
+    if (!events.isMyTurn) {
+      await _runBotTurn();
+    }
+
+    _turnTransitioning = false;
+  }
+
+  /// Executes the bot's turn with physical flights, 0.7s gaps, and inverse solver.
+  Future<void> _runBotTurn() async {
+    _isBotTurnActive = true;
+    restingDart.playerIndex = 1;
+    restingDart.visible = false;
+
+    int botTurnPoints = 0;
+
+    for (int dartIdx = 0; dartIdx < DartsK.dartsPerTurn; dartIdx++) {
+      if (events.isMatchOver || events.isMyTurn) break;
+
+      // 0.7s flight interval between successive bot darts
+      if (dartIdx > 0) {
+        await Future.delayed(
+          Duration(milliseconds: (DartsK.botDartGapSec * 1000).round()),
+        );
+      }
+
+      if (events.isMatchOver || events.isMyTurn) break;
+
+      final int curRem = events.theirRemaining - botTurnPoints;
+      final DartHit targetHit = DartsBot.dart(
+        events.matchSeed,
+        events.round,
+        dartIdx,
+        curRem,
+      );
+
+      final Completer<DartTurnResult> landedCompleter = Completer();
+
+      // Launch dart via closed-form inverse ballistic solver
+      final launchVel = FlickSolver.launchFor(
+        targetHit.x,
+        targetHit.y,
+        DartsK.idealSpeed,
+      );
+
+      flyingDart.launch(
+        launchVel: launchVel,
+        playerIndex: 1,
+        onLanded: (hit) {
+          dartboard.flashArea(hit);
+
+          final stuck = StuckDart(
+            projection: projection,
+            sprites: sprites,
+            hit: hit,
+            playerIndex: 1,
+          );
+          stuckDarts.add(stuck);
+          add(stuck);
+
+          if (stuckDarts.length > 3) {
+            final oldest = stuckDarts.removeAt(0);
+            oldest.startPull();
+          }
+
+          final DartTurnResult res = events.dartLanded(hit);
+          hitPopup.showHit(hit, isBust: res.bust, isCheckout: res.checkout);
+
+          botTurnPoints += hit.points;
+          landedCompleter.complete(res);
+        },
+      );
+
+      final DartTurnResult res = await landedCompleter.future;
+      if (res.turnOver || events.isMatchOver) {
+        break;
+      }
+    }
+
+    // Bot turn complete: pause 0.8s and pull darts
+    await Future.delayed(
+      Duration(milliseconds: (DartsK.turnEndPauseSec * 1000).round()),
+    );
+
+    pullDarts();
+    await Future.delayed(const Duration(milliseconds: 250));
+
+    _isBotTurnActive = false;
+
+    // Switch back to Player 1 if match is still running
+    if (!events.isMatchOver && events.isMyTurn) {
+      restingDart.playerIndex = 0;
+      restingDart.resetPullBack();
+      restingDart.visible = true;
+      _setupCurrentDart();
+    }
+  }
+
+  /// Resets board and restarts a solo match for a rematch.
+  void restartGame() {
+    pullDarts();
+    events.restartMatch();
+    restingDart.playerIndex = 0;
+    restingDart.resetPullBack();
+    restingDart.visible = true;
+    _turnTransitioning = false;
+    _isBotTurnActive = false;
+    _setupCurrentDart();
   }
 
   // ─── Pointer Input Hooks ───────────────────────────────────────────────────
 
   void onPointerDown(int pointerId, double x, double y) {
+    if (_isBotTurnActive || _turnTransitioning) return;
     flickController.onPointerDown(pointerId, x, y);
   }
 
   void onPointerMove(int pointerId, double x, double y) {
+    if (_isBotTurnActive || _turnTransitioning) return;
     flickController.onPointerMove(pointerId, x, y);
   }
 
   void onPointerUp(int pointerId) {
+    if (_isBotTurnActive || _turnTransitioning) return;
     flickController.onPointerUp(pointerId);
   }
 
@@ -235,7 +382,7 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
     double targetMmX = 0.0,
     double targetMmY = 0.0,
   }) {
-    if (flyingDart.isFlying) return;
+    if (flyingDart.isFlying || _turnTransitioning || _isBotTurnActive) return;
 
     restingDart.visible = false;
     restingDart.startPullBack();
@@ -267,9 +414,14 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
         final DartTurnResult result = events.dartLanded(hit);
         hitPopup.showHit(hit, isBust: result.bust, isCheckout: result.checkout);
 
-        restingDart.visible = !result.turnOver;
-        restingDart.resetPullBack();
-        _setupCurrentDart();
+        if (!result.turnOver && events.isMyTurn) {
+          restingDart.visible = true;
+          restingDart.resetPullBack();
+          _setupCurrentDart();
+        } else {
+          restingDart.visible = false;
+          _handlePlayerTurnOver();
+        }
       },
     );
   }
@@ -327,5 +479,6 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
   }
 
   @override
-  bool get isBusy => flyingDart.isFlying;
+  bool get isBusy =>
+      flyingDart.isFlying || _isBotTurnActive || _turnTransitioning;
 }
