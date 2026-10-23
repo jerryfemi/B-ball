@@ -17,7 +17,13 @@ class OnboardingTourOverlay extends StatefulWidget {
 
 class _OnboardingTourOverlayState extends State<OnboardingTourOverlay>
     with SingleTickerProviderStateMixin {
-  int _currentStep = 0;
+  /// Steps: 0 profile, 1 chat, 2 play a friend, 3 swipe to shoot.
+  /// Players who saw the old 3-step tour get only the new step 2.
+  late final List<int> _order =
+      widget.game.tourNewStepsOnly ? const [2] : const [0, 1, 2, 3];
+  int _pos = 0;
+  int get _currentStep => _order[_pos];
+  bool get _isLast => _pos == _order.length - 1;
   bool _ready = false;
   late final AnimationController _pulseController;
   late final Animation<double> _pulseAnimation;
@@ -53,13 +59,14 @@ class _OnboardingTourOverlayState extends State<OnboardingTourOverlay>
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('b_ball_has_seen_tour', true);
+      await prefs.setBool(BasketballGame.tourPeopleStepPref, true);
     } catch (_) {}
   }
 
   void _nextStep() {
     HapticFeedback.selectionClick();
-    if (_currentStep < 2) {
-      setState(() => _currentStep++);
+    if (!_isLast) {
+      setState(() => _pos++);
     } else {
       _completeTour();
     }
@@ -67,8 +74,8 @@ class _OnboardingTourOverlayState extends State<OnboardingTourOverlay>
 
   void _prevStep() {
     HapticFeedback.selectionClick();
-    if (_currentStep > 0) {
-      setState(() => _currentStep--);
+    if (_pos > 0) {
+      setState(() => _pos--);
     }
   }
 
@@ -93,6 +100,17 @@ class _OnboardingTourOverlayState extends State<OnboardingTourOverlay>
         }
       }
       return Offset(size.width * 0.85, topPadding + 42.0);
+    } else if (_currentStep == 2) {
+      final ctx = widget.game.playFriendKey.currentContext;
+      if (ctx != null) {
+        final box = ctx.findRenderObject() as RenderBox?;
+        if (box != null && box.hasSize) {
+          // The round button is the right end (the label may sit left of it).
+          final pos = box.localToGlobal(Offset.zero);
+          return pos + Offset(box.size.width - 20.0, box.size.height / 2.0);
+        }
+      }
+      return Offset(size.width - 32.0, topPadding + 82.0);
     } else {
       // Step 2: Basketball on court floor
       return Offset(
@@ -121,6 +139,8 @@ class _OnboardingTourOverlayState extends State<OnboardingTourOverlay>
         }
       }
       return (size.width * 0.065).clamp(22.0, 30.0);
+    } else if (_currentStep == 2) {
+      return 26.0;
     } else {
       return (size.width * 0.11).clamp(36.0, 48.0);
     }
@@ -204,7 +224,7 @@ class _OnboardingTourOverlayState extends State<OnboardingTourOverlay>
     Offset currentTarget,
     double currentRadius,
   ) {
-    final bool isBottomStep = _currentStep == 2;
+    final bool isBottomStep = _currentStep == 3;
 
     final stepsData = [
       _TourStepData(
@@ -220,7 +240,13 @@ class _OnboardingTourOverlayState extends State<OnboardingTourOverlay>
         desc: 'Tap your opponent\'s avatar during 1v1 online showdowns to send live in-game messages!',
       ),
       _TourStepData(
-        stepNumber: '3 OF 3',
+        stepNumber: '',
+        icon: '👥',
+        title: 'PLAY A FRIEND',
+        desc: 'Tap the people button to share a match code, challenge a friend, or join with a code.',
+      ),
+      _TourStepData(
+        stepNumber: '',
         icon: '🏀',
         title: 'SWIPE UP TO SHOOT',
         desc: 'Flick from the court floor toward the hoop with finger speed and angle. Clean swishes and bank shots score 3 PTS!',
@@ -228,6 +254,7 @@ class _OnboardingTourOverlayState extends State<OnboardingTourOverlay>
     ];
 
     final currentData = stepsData[_currentStep];
+    final stepLabel = '${_pos + 1} OF ${_order.length}';
 
     return Positioned(
       left: 20.0,
@@ -235,7 +262,9 @@ class _OnboardingTourOverlayState extends State<OnboardingTourOverlay>
       top: isBottomStep ? null : topPadding + 88.0,
       bottom: isBottomStep ? 160.0 : null,
       // Capped so the card stays card-sized on tablets and desktops.
-      child: Align(
+      child: DefaultTextStyle.merge(
+        style: const TextStyle(fontFamily: 'Inter'),
+        child: Align(
         alignment: Alignment.topCenter,
         heightFactor: 1.0,
         child: ConstrainedBox(
@@ -275,11 +304,12 @@ class _OnboardingTourOverlayState extends State<OnboardingTourOverlay>
                     ),
                   ),
                   child: Text(
-                    currentData.stepNumber,
+                    stepLabel,
                     style: const TextStyle(
                       color: Color(0xFF38BDF8),
                       fontSize: 10.5,
                       fontWeight: FontWeight.w900,
+                fontVariations: const [FontVariation('wght', 900)],
                       letterSpacing: 1.0,
                     ),
                   ),
@@ -297,6 +327,7 @@ class _OnboardingTourOverlayState extends State<OnboardingTourOverlay>
                 color: Colors.white,
                 fontSize: 16.0,
                 fontWeight: FontWeight.w900,
+                fontVariations: const [FontVariation('wght', 900)],
                 letterSpacing: 0.8,
               ),
             ),
@@ -310,6 +341,7 @@ class _OnboardingTourOverlayState extends State<OnboardingTourOverlay>
                 fontSize: 13.0,
                 height: 1.4,
                 fontWeight: FontWeight.w500,
+                fontVariations: const [FontVariation('wght', 500)],
               ),
             ),
             const SizedBox(height: 18.0),
@@ -317,7 +349,7 @@ class _OnboardingTourOverlayState extends State<OnboardingTourOverlay>
             // Action row: Skip, Back, Next / Finish
             Row(
               children: [
-                if (_currentStep < 2)
+                if (!_isLast)
                   TextButton(
                     onPressed: _completeTour,
                     style: TextButton.styleFrom(
@@ -328,11 +360,12 @@ class _OnboardingTourOverlayState extends State<OnboardingTourOverlay>
                       style: TextStyle(
                         fontSize: 12.0,
                         fontWeight: FontWeight.w800,
+                fontVariations: const [FontVariation('wght', 800)],
                         letterSpacing: 1.0,
                       ),
                     ),
                   ),
-                if (_currentStep > 0 && _currentStep < 2)
+                if (_pos > 0 && !_isLast)
                   TextButton(
                     onPressed: _prevStep,
                     style: TextButton.styleFrom(
@@ -343,6 +376,7 @@ class _OnboardingTourOverlayState extends State<OnboardingTourOverlay>
                       style: TextStyle(
                         fontSize: 12.0,
                         fontWeight: FontWeight.w800,
+                fontVariations: const [FontVariation('wght', 800)],
                         letterSpacing: 1.0,
                       ),
                     ),
@@ -351,7 +385,7 @@ class _OnboardingTourOverlayState extends State<OnboardingTourOverlay>
                 ElevatedButton(
                   onPressed: _nextStep,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: _currentStep == 2
+                    backgroundColor: _isLast
                         ? const Color(0xFF22C55E)
                         : const Color(0xFF0284C7),
                     foregroundColor: Colors.white,
@@ -368,14 +402,15 @@ class _OnboardingTourOverlayState extends State<OnboardingTourOverlay>
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        _currentStep == 2 ? "LET'S HOOP! 🏀" : 'NEXT',
+                        _isLast ? "LET'S HOOP! 🏀" : 'NEXT',
                         style: const TextStyle(
                           fontSize: 12.5,
                           fontWeight: FontWeight.w900,
+                fontVariations: const [FontVariation('wght', 900)],
                           letterSpacing: 1.0,
                         ),
                       ),
-                      if (_currentStep < 2) ...[
+                      if (!_isLast) ...[
                         const SizedBox(width: 4.0),
                         const Icon(Icons.arrow_forward_rounded, size: 14.0),
                       ],
@@ -388,6 +423,7 @@ class _OnboardingTourOverlayState extends State<OnboardingTourOverlay>
         ),
       ),
         ),
+      ),
       ),
     );
   }
