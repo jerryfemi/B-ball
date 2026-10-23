@@ -13,34 +13,14 @@ import 'components/resting_dart.dart';
 import 'components/stuck_dart.dart';
 import 'darts_constants.dart';
 import 'input/flick_controller.dart';
+import 'online/darts_live_event.dart';
+import 'online/darts_online_controller.dart';
 import 'physics/dart_scoring.dart';
 import 'physics/flick_solver.dart';
 import 'scene/board_projection.dart';
 import 'state/darts_bot.dart';
 import 'state/darts_match_notifier.dart';
 import 'state/darts_rules.dart';
-
-/// Online game interface for controlling live match turns and sync from Firestore.
-abstract interface class DartsOnlineGame {
-  /// Prepares the board for an online turn: sets round, who throws, and already landed darts.
-  void beginOnlineTurn({
-    required int round,
-    required bool mine,
-    required List<DartHit> turnDarts,
-  });
-
-  /// Remote player is aiming: coordinates in board millimeters.
-  void remoteAim(double aimX, double aimY);
-
-  /// Remote player threw a dart: fly and land it on this screen.
-  void playRemoteDart(DartHit hit);
-
-  /// Shot clock expired: force a miss.
-  void forceMiss();
-
-  /// True while a dart is flying or animations are playing.
-  bool get isBusy;
-}
 
 /// Flame game engine for Darts 301.
 ///
@@ -58,6 +38,9 @@ abstract interface class DartsOnlineGame {
 /// - Zero per-frame heap allocations during active gameplay.
 class DartsGame extends FlameGame implements DartsOnlineGame {
   final DartsGameEvents events;
+
+  /// Set for a live online match; null in solo play against the bot.
+  final DartsOnlineController? online;
 
   /// Global camera & coordinate projection between board millimeters and screen pixels.
   final BoardProjection projection = BoardProjection();
@@ -77,10 +60,18 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
   bool _turnTransitioning = false;
   bool _isBotTurnActive = false;
 
+  // ─── Online State ──────────────────────────────────────────────────────────
+  /// Opponent darts waiting to be flown on this screen (in order).
+  final List<DartHit> _remoteQueue = [];
+
+  /// Your online turn ended here; input stays off until Firestore hands you
+  /// the next turn ([beginOnlineTurn]).
+  bool _awaitingOnlineTurn = false;
+
   // ─── Fixed-step Accumulator State ──────────────────────────────────────────
   double _accumulator = 0.0;
 
-  DartsGame({required this.events});
+  DartsGame({required this.events, this.online});
 
   @override
   Future<void> onLoad() async {
@@ -102,6 +93,7 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
     flickController.onAimStart = () {
       aimReticle.visible = true;
       restingDart.visible = true;
+      online?.onMyAim(flickController.shownMmX, flickController.shownMmY);
     };
 
     flickController.onAimCancel = () {
@@ -132,7 +124,16 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
     await add(aimReticle); // Priority 7
     await add(hitPopup); // Priority 8
 
-    _setupCurrentDart();
+    final o = online;
+    if (o != null) {
+      // Online: nothing is thrown until Firestore says whose turn it is.
+      flickController.inputEnabled = false;
+      restingDart.visible = false;
+      _awaitingOnlineTurn = true;
+      o.attach(this); // after loading: turns touch the board and sprites
+    } else {
+      _setupCurrentDart();
+    }
   }
 
   /// Configures seeds and enables input for the current player's dart.
@@ -146,21 +147,25 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
         events.isMyTurn && !flyingDart.isFlying && !_turnTransitioning && !_isBotTurnActive;
   }
 
-  void _onLocalDartLanded(DartHit hit) {
+  /// [launched] is false for a shot-clock timeout: the dart counts as a miss
+  /// but was never thrown, so nothing sticks in the wall.
+  void _onLocalDartLanded(DartHit hit, {bool launched = true}) {
     dartboard.flashArea(hit);
 
-    final stuck = StuckDart(
-      projection: projection,
-      sprites: sprites,
-      hit: hit,
-      playerIndex: 0,
-    );
-    stuckDarts.add(stuck);
-    add(stuck);
+    if (launched) {
+      final stuck = StuckDart(
+        projection: projection,
+        sprites: sprites,
+        hit: hit,
+        playerIndex: 0,
+      );
+      stuckDarts.add(stuck);
+      add(stuck);
 
-    if (stuckDarts.length > 3) {
-      final oldest = stuckDarts.removeAt(0);
-      oldest.startPull();
+      if (stuckDarts.length > 3) {
+        final oldest = stuckDarts.removeAt(0);
+        oldest.startPull();
+      }
     }
 
     if (!hit.isMiss) {
@@ -170,6 +175,7 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
     }
 
     final DartTurnResult result = events.dartLanded(hit);
+    online?.onMyDart(hit, launched: launched);
     hitPopup.showHit(hit, isBust: result.bust, isCheckout: result.checkout);
     if (result.bust) {
       DartsAudio.playBust();
@@ -184,6 +190,7 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
       // Turn is over (3 darts, bust, or checkout)
       restingDart.visible = false;
       flickController.inputEnabled = false;
+      if (online != null) _awaitingOnlineTurn = true;
       _handlePlayerTurnOver();
     }
   }
@@ -204,6 +211,20 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
 
     if (events.isMatchOver) {
       _turnTransitioning = false;
+      return;
+    }
+
+    // Online: Firestore hands out the next turn (see [beginOnlineTurn]). If
+    // it already handed this phone a fresh turn while the darts were being
+    // pulled, enable the throw now.
+    if (online != null) {
+      _turnTransitioning = false;
+      if (events.isMyTurn && !_awaitingOnlineTurn) {
+        restingDart.playerIndex = 0;
+        restingDart.resetPullBack();
+        restingDart.visible = true;
+        _setupCurrentDart();
+      }
       return;
     }
 
@@ -378,6 +399,12 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
     // Clamp frame dt to avoid spiral of death on lag spikes (50 ms max)
     final double clampedDt =
         dt > DartsK.dtClamp ? DartsK.dtClamp : (dt < 0.0 ? 0.0 : dt);
+
+    // Online: shot clocks, then the opponent's next dart once the board is free.
+    online?.update(clampedDt);
+    if (_remoteQueue.isNotEmpty && !flyingDart.isFlying && !_turnTransitioning) {
+      _launchRemoteDart(_remoteQueue.removeAt(0));
+    }
     _accumulator += clampedDt;
 
     int substeps = 0;
@@ -485,11 +512,11 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
     required bool mine,
     required List<DartHit> turnDarts,
   }) {
+    _remoteQueue.clear();
+    _awaitingOnlineTurn = false;
     pullDarts();
-    final pIdx = mine ? 0 : 1;
-    restingDart.playerIndex = pIdx;
-    restingDart.visible = mine;
-    flickController.inputEnabled = mine;
+    aimReticle.visible = false;
+    final int pIdx = mine ? 0 : 1;
 
     for (final hit in turnDarts) {
       final stuck = StuckDart(
@@ -501,27 +528,99 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
       stuckDarts.add(stuck);
       add(stuck);
     }
+
+    if (mine) {
+      restingDart.playerIndex = 0;
+      restingDart.resetPullBack();
+      restingDart.visible = true;
+      _setupCurrentDart();
+    } else {
+      flickController.onPointerCancel();
+      flickController.inputEnabled = false;
+      restingDart.visible = false;
+    }
   }
 
   @override
   void remoteAim(double aimX, double aimY) {
     aimReticle.visible = true;
     aimReticle.setAim(mmX: aimX, mmY: aimY, holdSec: 0.6);
-    restingDart.setAimOffset(aimX / DartsK.boardR);
   }
 
   @override
   void playRemoteDart(DartHit hit) {
+    _remoteQueue.add(hit);
+  }
+
+  /// Flies the opponent's dart and lands it exactly where their phone said
+  /// it landed (the flight is only for show; [hit] is authoritative).
+  void _launchRemoteDart(DartHit hit) {
     aimReticle.visible = false;
-    throwDebugDart(player: 1, targetMmX: hit.x, targetMmY: hit.y);
+    // Their shot clock ran out: a miss that was never thrown (nothing flies).
+    if (hit.x == DartsLiveEvent.missX && hit.y == 0.0) {
+      _onRemoteDartLanded(hit, launched: false);
+      return;
+    }
+    final launchVel = FlickSolver.launchFor(hit.x, hit.y, DartsK.idealSpeed);
+    DartsAudio.playThrow();
+    flyingDart.launch(
+      launchVel: launchVel,
+      playerIndex: 1,
+      onLanded: (_) => _onRemoteDartLanded(hit),
+    );
+  }
+
+  void _onRemoteDartLanded(DartHit hit, {bool launched = true}) {
+    dartboard.flashArea(hit);
+
+    if (launched) {
+      final stuck = StuckDart(
+        projection: projection,
+        sprites: sprites,
+        hit: hit,
+        playerIndex: 1,
+      );
+      stuckDarts.add(stuck);
+      add(stuck);
+      if (stuckDarts.length > 3) {
+        final oldest = stuckDarts.removeAt(0);
+        oldest.startPull();
+      }
+    }
+
+    if (!hit.isMiss) {
+      DartsAudio.playHit(isBull: hit.isBull);
+    } else {
+      DartsAudio.playMiss();
+    }
+
+    final DartTurnResult res = events.dartLanded(hit);
+    hitPopup.showHit(hit, isBust: res.bust, isCheckout: res.checkout);
+    if (res.bust) {
+      DartsAudio.playBust();
+    }
+    if (res.turnOver) {
+      _handlePlayerTurnOver();
+    }
   }
 
   @override
   void forceMiss() {
-    events.dartLanded(DartScoring.score(DartsK.boardR + 10.0, 0.0));
+    if (!events.isMyTurn || flyingDart.isFlying || _awaitingOnlineTurn) return;
+    flickController.onPointerCancel();
+    flickController.inputEnabled = false;
+    aimReticle.visible = false;
+    restingDart.visible = false;
+    _onLocalDartLanded(
+      DartScoring.score(DartsLiveEvent.missX, 0.0),
+      launched: false,
+    );
   }
 
   @override
   bool get isBusy =>
-      flyingDart.isFlying || _isBotTurnActive || _turnTransitioning;
+      flyingDart.isFlying ||
+      _remoteQueue.isNotEmpty ||
+      _isBotTurnActive ||
+      _turnTransitioning;
 }
