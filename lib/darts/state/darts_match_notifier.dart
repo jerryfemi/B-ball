@@ -99,6 +99,33 @@ class DartsMatchNotifier extends Notifier<DartsMatchState>
 
     final List<DartHit> newTurnDarts = [...state.turnDarts, hit];
 
+    // Online: Firestore decides whose turn and which round comes next (the
+    // online controller calls [beginOnlineTurn]); here we only record the
+    // turn on this phone so the HUD is right while the turn is submitted.
+    if (state.online) {
+      if (!res.turnOver) {
+        state = state.copyWith(turnDarts: newTurnDarts, turnOver: false);
+        return res;
+      }
+      final int total = res.bust ? 0 : res.newTurnTotal;
+      state = isYou
+          ? state.copyWith(
+              yourTurns: [...state.yourTurns, total],
+              yourLastDarts: res.dartsUsed,
+              turnDarts: const [],
+              turnOver: true,
+              bustFlash: res.bust ? state.bustFlash + 1 : state.bustFlash,
+            )
+          : state.copyWith(
+              theirTurns: [...state.theirTurns, total],
+              theirLastDarts: res.dartsUsed,
+              turnDarts: const [],
+              turnOver: true,
+              bustFlash: res.bust ? state.bustFlash + 1 : state.bustFlash,
+            );
+      return res;
+    }
+
     if (res.bust) {
       // Bust: turn scores 0, ends turn immediately
       if (isYou) {
@@ -249,10 +276,16 @@ class DartsMatchNotifier extends Notifier<DartsMatchState>
   // ── Online Play ──────────────────────────────────────────────────────────
 
   /// Switches to an online match using the match seed and room code.
-  void startOnline({required int seed, required String joinCode}) {
+  /// [youThrowFirst] is true for player 1 (the host), who opens every round.
+  void startOnline({
+    required int seed,
+    required String joinCode,
+    bool youThrowFirst = true,
+  }) {
     state = DartsMatchState.initial(seed: seed).copyWith(
       online: true,
       joinCode: joinCode,
+      youThrowFirst: youThrowFirst,
     );
   }
 
@@ -263,6 +296,9 @@ class DartsMatchNotifier extends Notifier<DartsMatchState>
     required List<DartHit> turnDarts,
     required List<int> yourTurns,
     required List<int> theirTurns,
+    int? yourLastDarts,
+    int? theirLastDarts,
+    bool showBanner = true,
   }) {
     state = state.copyWith(
       round: round,
@@ -270,8 +306,10 @@ class DartsMatchNotifier extends Notifier<DartsMatchState>
       turnDarts: turnDarts,
       yourTurns: yourTurns,
       theirTurns: theirTurns,
+      yourLastDarts: yourLastDarts,
+      theirLastDarts: theirLastDarts,
       turnOver: false,
-      bannerId: state.bannerId + 1,
+      bannerId: showBanner ? state.bannerId + 1 : state.bannerId,
     );
   }
 
@@ -280,10 +318,15 @@ class DartsMatchNotifier extends Notifier<DartsMatchState>
     required List<int> yourTurns,
     required List<int> theirTurns,
     required bool matchOver,
+    int? yourLastDarts,
+    int? theirLastDarts,
   }) {
     state = state.copyWith(
       yourTurns: yourTurns,
       theirTurns: theirTurns,
+      yourLastDarts: yourLastDarts,
+      theirLastDarts: theirLastDarts,
+      turnDarts: const [],
       turnOver: true,
       matchOver: matchOver,
       liveStatus: DartsLiveStatus.none,
