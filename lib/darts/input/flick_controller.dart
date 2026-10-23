@@ -151,8 +151,8 @@ class FlickController {
     if (upwardSpeed < DartsK.minFlick) return false;
 
     final double angleDeg = math.atan2(dx, -dy) * 180.0 / math.pi;
-    final double releaseMmX =
-        (latest.x - projection.boardCenterX) * projection.pxToMm;
+    // Pure flick (GamePigeon): release starts from center; horizontal aim is driven by flick angle
+    const double releaseMmX = 0.0;
 
     final target = FlickSolver.targetForFlick(
       releaseMmX: releaseMmX,
