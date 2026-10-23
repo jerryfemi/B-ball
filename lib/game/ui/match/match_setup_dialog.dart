@@ -425,6 +425,8 @@ class _CodeReveal extends StatelessWidget {
             color: CleanUi.accent,
             fontSize: 34.0,
             fontWeight: FontWeight.w900,
+            fontFamily: 'Inter',
+            fontVariations: [FontVariation('wght', 900)],
             letterSpacing: 8.0,
           ),
         ),
@@ -438,6 +440,8 @@ class _CodeReveal extends StatelessWidget {
               color: copied ? CleanUi.accent : CleanUi.muted,
               fontSize: 11.5,
               fontWeight: copied ? FontWeight.w900 : FontWeight.w500,
+              fontFamily: 'Inter',
+              fontVariations: [FontVariation('wght', copied ? 900 : 500)],
               letterSpacing: copied ? 0.8 : 0.0,
               shadows: copied
                   ? const [Shadow(color: Color(0x8800FFCC), blurRadius: 10.0)]
