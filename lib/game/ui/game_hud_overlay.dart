@@ -21,6 +21,7 @@ import 'replay_hud_overlay.dart';
 import 'inbox/match_inbox_sheet.dart';
 import 'stadium_scoreboard.dart';
 import 'tour/onboarding_tour_overlay.dart';
+import 'play_friend_button.dart';
 import 'match/live_spectator_status_pill.dart';
 import 'match/live_turn_transition_overlay.dart';
 import 'reactions/live_floating_reactions_overlay.dart';
@@ -261,6 +262,21 @@ class GameHudOverlay extends StatelessWidget {
             }
             return const SizedBox.shrink();
           },
+        ),
+
+        // 5b. "Play a friend" button under the sound button (solo only)
+        Positioned(
+          top: MediaQuery.of(context).padding.top + 62.0,
+          right: 12.0,
+          child: ValueListenableBuilder<MatchSession?>(
+            valueListenable: game.matchSessionNotifier,
+            builder: (context, session, _) => session != null
+                ? const SizedBox.shrink()
+                : PlayFriendButton(
+                    key: game.playFriendKey,
+                    onTap: () => MatchInboxSheet.playAFriend(context, game: game),
+                  ),
+          ),
         ),
 
         // 6. First-Launch / Replay Onboarding Tour Overlay
