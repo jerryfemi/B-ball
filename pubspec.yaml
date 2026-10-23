@@ -89,6 +89,7 @@ flutter:
     - assets/archery/park/
     - assets/lobby/
     - assets/darts/sprites/
+    - assets/darts/
 
   # Shot callout lettering (SWISH! / BANK! / +3). Poppins Bold Italic
   # (SIL Open Font License), subset to basic Latin: ~9 KB.
