@@ -20,9 +20,6 @@ abstract interface class DartsOnlineGame {
     required List<DartHit> turnDarts,
   });
 
-  /// The opponent pressed to aim at (board mm).
-  void remoteAim(double aimX, double aimY);
-
   /// The opponent's dart: fly it and land it exactly at [hit].
   void playRemoteDart(DartHit hit);
 
@@ -99,7 +96,6 @@ class DartsOnlineController {
   /// so coming back continues it instead of starting a fresh one.
   static final Map<String, _SavedClock> _savedClocks = {};
   double _idle = 0.0; // since the opponent last did anything
-  double _aimingFor = -1.0; // since their aim ping, −1 = not aiming
 
   String get _opponentUid {
     final m = match.value;
@@ -244,7 +240,6 @@ class DartsOnlineController {
     _clock = DartsRules.shotClockSeconds.toDouble();
     _overrun = 0.0;
     _idle = 0.0;
-    _aimingFor = -1.0;
 
     if (myTurn) {
       _myRemainingAtStart = shooterRemaining;
@@ -317,19 +312,11 @@ class DartsOnlineController {
       ..sort((a, b) => a.dartIndex.compareTo(b.dartIndex));
     for (final e in events) {
       if (e.shooterUid != _turnShooter || e.round != _turnRound) continue;
-      if (e.isAim) {
-        if (batch.initial || e.dartIndex < _opponentDartsSeen) continue;
-        _idle = 0.0;
-        _aimingFor = 0.0;
-        _setStatus(DartsLiveStatus.opponentAiming);
-        _game?.remoteAim(e.aimX, e.aimY);
-        continue;
-      }
+      if (!e.isDart) continue;
       // Dart: in order, once each.
       if (e.dartIndex != _opponentDartsSeen) continue;
       _opponentDartsSeen++;
       _idle = 0.0;
-      _aimingFor = -1.0;
       _clock = DartsRules.shotClockSeconds.toDouble();
       _setStatus(DartsLiveStatus.waitingForShot);
       _game?.playRemoteDart(e.hit);
@@ -337,31 +324,6 @@ class DartsOnlineController {
   }
 
   // ── Your darts ──────────────────────────────────────────────────────────
-
-  /// Dart index the last aim ping was sent for (one ping per dart).
-  int _aimPingFor = -1;
-  int _aimPingRound = -1;
-
-  /// You pressed to aim. Only the first press per dart is sent: pressing and
-  /// letting go again doesn't cost another write (and a read for the
-  /// opponent).
-  void onMyAim(double aimX, double aimY) {
-    if (!_myTurn || _turnDone || _submitting) return;
-    if (_aimPingRound == _turnRound && _aimPingFor == _myDarts.length) return;
-    _aimPingRound = _turnRound;
-    _aimPingFor = _myDarts.length;
-    _pendingBroadcast = service.broadcastDartsEvent(
-      matchId: matchId,
-      event: DartsLiveEvent(
-        kind: DartsLiveEvent.kindAim,
-        shooterUid: myUid,
-        round: _turnRound,
-        dartIndex: _myDarts.length,
-        aimX: aimX.isFinite ? aimX : 0.0,
-        aimY: aimY.isFinite ? aimY : 0.0,
-      ),
-    );
-  }
 
   /// Your dart landed (or the shot clock made it a miss with [launched]
   /// false). Returns true when this dart ended your turn.
@@ -467,10 +429,7 @@ class DartsOnlineController {
 
     // Opponent's turn: estimate their clock and watch for silence.
     _idle += dt;
-    if (_aimingFor >= 0.0) {
-      _aimingFor += dt;
-      if (_aimingFor > 10.0) _aimingFor = -1.0; // they let go without throwing
-    } else if (!game.isBusy) {
+    if (!game.isBusy) {
       _clock = (_clock - dt).clamp(0.0, DartsRules.shotClockSeconds.toDouble());
     }
     _publishClock(_clock);
@@ -487,10 +446,8 @@ class DartsOnlineController {
       final next =
           claimable ? DartsLiveStatus.opponentGone : DartsLiveStatus.reconnecting;
       if (status != next) _setStatus(next);
-    } else if (_aimingFor < 0.0 &&
-        (status == DartsLiveStatus.reconnecting ||
-            status == DartsLiveStatus.opponentGone ||
-            status == DartsLiveStatus.opponentAiming)) {
+    } else if (status == DartsLiveStatus.reconnecting ||
+        status == DartsLiveStatus.opponentGone) {
       _setStatus(DartsLiveStatus.waitingForShot);
     }
   }
