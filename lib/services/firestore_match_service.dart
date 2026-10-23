@@ -16,6 +16,13 @@ import 'friends_service.dart';
 import 'update/update_platform.dart';
 
 /// Exception thrown when no match document exists for the requested join code.
+/// [FirestoreMatchService.createMatch] with a fixed code found the room taken.
+class RoomAlreadyExistsException implements Exception {
+  const RoomAlreadyExistsException();
+  @override
+  String toString() => 'That match room already exists.';
+}
+
 class MatchNotFoundException implements Exception {
   final String message;
   const MatchNotFoundException(this.message);
@@ -135,6 +142,7 @@ class FirestoreMatchService {
     RoundTelemetry? initialRoundTelemetry,
     int? initialRoundScore,
     String? initialChatMessage,
+    String? fixedJoinCode,
   }) async {
     if (!isDeviceOnline()) {
       throw const AuthRequiredException(
@@ -145,7 +153,7 @@ class FirestoreMatchService {
     // Ensure the host is authenticated with Firebase before creating a cloud match
     await _effectiveAuthService.ensureAuthenticated();
 
-    final joinCode = generateJoinCode();
+    final joinCode = fixedJoinCode ?? generateJoinCode();
     final docRef = _matchesRef.doc(joinCode);
     final now = DateTime.now().millisecondsSinceEpoch;
 
@@ -193,10 +201,22 @@ class FirestoreMatchService {
       DateTime.now().add(const Duration(days: 7)),
     );
 
-    await docRef.set({
+    final data = {
       ...match.toMap(),
       'expireAt': ttl7Days,
-    });
+    };
+    if (fixedJoinCode == null) {
+      await docRef.set(data);
+    } else {
+      // A shared code (rematch): only create the room if nobody beat us to it.
+      final bool created = await _firestore.runTransaction<bool>((tx) async {
+        final snap = await tx.get(docRef);
+        if (snap.exists) return false;
+        tx.set(docRef, data);
+        return true;
+      });
+      if (!created) throw const RoomAlreadyExistsException();
+    }
 
     // Write initial chat message to lightweight subcollection (decoupled from match telemetry)
     if (initialChatMessage != null && initialChatMessage.trim().isNotEmpty) {
@@ -228,6 +248,64 @@ class FirestoreMatchService {
     }
 
     return match;
+  }
+
+  /// Join code of the rematch of [finishedMatchId]. Both players compute the
+  /// same code, so two REMATCH taps at the same moment meet in one room
+  /// instead of each waiting in their own.
+  static String rematchCodeFor(String finishedMatchId) {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    // Small multipliers only, so the web (JS numbers) gets the same code.
+    int h = 17;
+    for (final int c in 'rematch:${finishedMatchId.trim().toUpperCase()}'.codeUnits) {
+      h = (h * 31 + c) & 0x7FFFFFFF;
+    }
+    final out = StringBuffer();
+    for (int i = 0; i < 6; i++) {
+      out.write(chars[h % chars.length]);
+      h = ((h ~/ chars.length) ^ (h * 7 + i * 131)) & 0x7FFFFFFF;
+    }
+    return out.toString();
+  }
+
+  /// Rematch of [finishedMatchId] against the same opponent.
+  ///
+  /// The first player to tap REMATCH creates the room (and sends the other an
+  /// invite); the second one, even a split second later, joins that room.
+  /// [joined] is true when this player joined the opponent's room, in which
+  /// case the match is already active.
+  Future<({CloudMatch match, bool joined})> createOrJoinRematch({
+    required String finishedMatchId,
+    required MatchConfig config,
+    required UserProfile me,
+  }) async {
+    final code = rematchCodeFor(finishedMatchId);
+    try {
+      final m = await createMatch(config: config, player1Profile: me, fixedJoinCode: code);
+      return (match: m, joined: false);
+    } on RoomAlreadyExistsException {
+      final existing = await getMatch(code);
+      if (existing != null) {
+        // I already made it (double tap, or a retry after a dropped reply).
+        if (existing.player1.uid == me.uid) return (match: existing, joined: false);
+        if (existing.playerIds.contains(me.uid)) return (match: existing, joined: true);
+        if (existing.status == MatchStatus.waitingForOpponent && existing.player2 == null) {
+          // Their invite to me is now answered.
+          try {
+            await _usersRef
+                .doc(me.uid)
+                .collection('match_invites')
+                .doc(code)
+                .update({'status': MatchInviteStatus.accepted.key});
+          } catch (_) {}
+          final joined = await joinMatchByCode(joinCode: code, player2Profile: me);
+          return (match: joined, joined: true);
+        }
+      }
+      // An old, closed room holds the code: fall back to a fresh one.
+      final m = await createMatch(config: config, player1Profile: me);
+      return (match: m, joined: false);
+    }
   }
 
   /// Atomically joins a match via 6-digit code or direct URL code using a transaction.
