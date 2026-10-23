@@ -8,7 +8,10 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'darts/darts_constants.dart';
 import 'darts/darts_game.dart';
 import 'darts/state/darts_match_notifier.dart';
+import 'darts/ui/darts_hud.dart';
+import 'darts/ui/darts_pause_menu.dart';
 import 'darts/ui/darts_result_card.dart';
+import 'darts/ui/darts_tour.dart';
 import 'darts/ui/darts_turn_banner.dart';
 import 'game/audio/audio_engine.dart';
 
@@ -66,6 +69,18 @@ class DartsHarnessScreen extends ConsumerStatefulWidget {
 class _DartsHarnessScreenState extends ConsumerState<DartsHarnessScreen> {
   DartsGame? _game;
   final FocusNode _focusNode = FocusNode();
+  bool _isPaused = false;
+  bool _showTour = false;
+
+  @override
+  void initState() {
+    super.initState();
+    DartsTour.shouldShow().then((show) {
+      if (mounted && show) {
+        setState(() => _showTour = true);
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -137,6 +152,15 @@ class _DartsHarnessScreenState extends ConsumerState<DartsHarnessScreen> {
                 },
               ),
             ),
+            // Full Darts HUD (Remaining scores, Round, Darts Left, Pause Button)
+            Positioned.fill(
+              child: DartsHud(
+                onOpenPause: () {
+                  _game?.flickController.onPointerCancel();
+                  setState(() => _isPaused = true);
+                },
+              ),
+            ),
             // Turn transition banner (Round N / Bot's Turn / Last Chance)
             const Positioned.fill(
               child: DartsTurnBanner(),
@@ -147,6 +171,30 @@ class _DartsHarnessScreenState extends ConsumerState<DartsHarnessScreen> {
                 onRematch: () => _game?.restartGame(),
               ),
             ),
+            // Pause Menu Modal Sheet
+            if (_isPaused)
+              Positioned.fill(
+                child: DartsPauseMenu(
+                  online: false,
+                  onResume: () => setState(() => _isPaused = false),
+                  onHowToPlay: () => setState(() {
+                    _isPaused = false;
+                    _showTour = true;
+                  }),
+                  onRestart: () {
+                    setState(() => _isPaused = false);
+                    _game?.restartGame();
+                  },
+                  onLobby: () => setState(() => _isPaused = false),
+                ),
+              ),
+            // How To Play Walkthrough Tour
+            if (_showTour)
+              Positioned.fill(
+                child: DartsTour(
+                  onDone: () => setState(() => _showTour = false),
+                ),
+              ),
             // Debug controls overlay at bottom of screen
             Positioned(
               left: 12,
