@@ -13,7 +13,6 @@ import '../../basketball_game.dart';
 import '../../match/match_session.dart';
 import '../match/match_lobby_dialog.dart';
 import '../match/match_setup_dialog.dart';
-import 'join_match_dialog.dart';
 import 'match_inbox_card.dart';
 import 'match_thread_dialog.dart';
 import '../common/app_avatar.dart';
@@ -230,72 +229,12 @@ class MatchInboxSheet extends HookConsumerWidget {
             children: [
               const SizedBox(height: 14),
 
-                // Quick Actions: "+ CREATE MATCH", "JOIN MATCH", and "FRIENDS"
+                // Friends (invites and requests). Starting or joining a
+                // match lives on the people button in each game now.
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Row(
                     children: [
-                      Expanded(
-                        flex: 11,
-                        child: ElevatedButton.icon(
-                          onPressed: () {
-                            Navigator.of(context).pop();
-                            onCreateMatch();
-                          },
-                          icon: const Icon(Icons.add_rounded, size: 16),
-                          label: const Text(
-                            'CREATE MATCH',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0.4,
-                            ),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF2563EB),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            elevation: 4,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        flex: 10,
-                        child: OutlinedButton.icon(
-                          onPressed: () async {
-                            final match = await JoinMatchDialog.show(context);
-                            if (match != null && context.mounted) {
-                              Navigator.of(context).pop();
-                              onPlayMatch(match);
-                            }
-                          },
-                          icon: const Icon(Icons.dialpad_rounded, size: 14),
-                          label: const Text(
-                            'JOIN MATCH',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0.4,
-                            ),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: const Color(0xFF00FFCC),
-                            side: const BorderSide(
-                              color: Color(0xFF00FFCC),
-                              width: 1.2,
-                            ),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
                       Consumer(
                         builder: (context, ref, _) {
                           final friendsBadgeCount =
@@ -659,7 +598,7 @@ class MatchInboxSheet extends HookConsumerWidget {
             const SizedBox(height: 4),
             Text(
               isLiveTab
-                  ? 'Tap "+ NEW MATCH" or join a friend\'s code to play!'
+                  ? 'Tap the people button in a game to play a friend.'
                   : 'Finished games and winner podiums will appear here.',
               textAlign: TextAlign.center,
               style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
