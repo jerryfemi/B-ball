@@ -81,6 +81,10 @@ class DartsMatchState {
   /// Set when the match ended by forfeit: +1 you won, -1 opponent won.
   final int? forfeitWinner;
 
+  /// True when you open every round (solo, or player 1 / host online).
+  /// Online, the guest (player 2) throws second.
+  final bool youThrowFirst;
+
   const DartsMatchState({
     required this.round,
     required this.thrower,
@@ -98,6 +102,7 @@ class DartsMatchState {
     this.joinCode = '',
     this.bannerId = 0,
     this.forfeitWinner,
+    this.youThrowFirst = true,
   });
 
   factory DartsMatchState.initial({required int seed}) => DartsMatchState(
@@ -142,6 +147,19 @@ class DartsMatchState {
   /// True if it is currently your turn to throw.
   bool get isMyTurn => thrower == DartsThrower.you;
 
+  /// The player who throws second in every round (equal turns).
+  DartsThrower get secondThrower =>
+      youThrowFirst ? DartsThrower.opponent : DartsThrower.you;
+
+  /// The second thrower is up and the first thrower has already checked
+  /// out this round: they must check out too to tie.
+  bool get isLastChance {
+    if (thrower != secondThrower) return false;
+    final int firstRemaining =
+        thrower == DartsThrower.you ? theirRemaining : yourRemaining;
+    return firstRemaining == 0;
+  }
+
   /// +1 if Player 1 won, -1 if Player 2 won, 0 for draw; null while running.
   int? get winner {
     if (!matchOver) return null;
@@ -171,6 +189,7 @@ class DartsMatchState {
     String? joinCode,
     int? bannerId,
     int? forfeitWinner,
+    bool? youThrowFirst,
   }) {
     return DartsMatchState(
       round: round ?? this.round,
@@ -189,6 +208,7 @@ class DartsMatchState {
       joinCode: joinCode ?? this.joinCode,
       bannerId: bannerId ?? this.bannerId,
       forfeitWinner: forfeitWinner ?? this.forfeitWinner,
+      youThrowFirst: youThrowFirst ?? this.youThrowFirst,
     );
   }
 }
