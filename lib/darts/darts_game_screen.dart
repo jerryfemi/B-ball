@@ -1,278 +1,398 @@
-import 'dart:math' as math;
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// Teaser & upcoming game screen for regulation 501 / Cricket Darts.
-class DartsGameScreen extends StatelessWidget {
-  const DartsGameScreen({super.key});
+import '../game/match/match_config.dart';
+import '../game/ui/common/clean_ui.dart';
+import '../game/ui/common/lobby_pill.dart';
+import '../game/ui/match/match_lobby_dialog.dart';
+import '../game/ui/match/match_setup_dialog.dart';
+import '../models/cloud_match.dart';
+import '../models/friend_profile.dart';
+import '../models/player_descriptor.dart';
+import '../services/auth_service.dart';
+import '../services/firestore_match_service.dart';
+import 'audio/darts_audio.dart';
+import 'darts_constants.dart';
+import 'darts_game.dart';
+import 'state/darts_match_notifier.dart';
+import 'state/darts_players.dart';
+import 'state/darts_rules.dart';
+import 'ui/darts_hud.dart';
+import 'ui/darts_pause_menu.dart';
+import 'ui/darts_result_card.dart';
+import 'ui/darts_tour.dart';
+import 'ui/darts_turn_banner.dart';
+
+/// Full-screen Darts 301: solo vs bot (`/darts`), or live online 1v1 (`/match/:id`).
+///
+/// Implements DARTS_PLAN.md Step 15:
+/// - Riverpod state setup and lifecycle cleanup.
+/// - Apple Design frosted glass overlays and gesture tracking.
+/// - Integrated how-to-play tour, pause menu, and match results.
+class DartsGameScreen extends HookConsumerWidget {
+  final CloudMatch? match;
+
+  const DartsGameScreen({super.key, this.match});
+
+  static bool get _firebaseReady => Firebase.apps.isNotEmpty;
 
   @override
-  Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-    final boardSize = math.min(size.width * 0.72, 320.0);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final game = useState<DartsGame?>(null);
+    final paused = useState(false);
+    final showTour = useState(false);
+    final audioOwner = useRef<Object?>(null);
+
+    final bool isOnline = match != null;
+
+    // Set up game and match state after first frame (prevent state modification during build)
+    useEffect(() {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!context.mounted) return;
+
+        final m = match;
+        UserProfile? me = _firebaseReady ? AuthService.instance.currentUser : null;
+        if (m != null && me == null && _firebaseReady) {
+          try {
+            me = await AuthService.instance.initialize();
+          } catch (_) {}
+          if (!context.mounted) return;
+        }
+
+        final notifier = ref.read(dartsMatchProvider.notifier);
+        final players = ref.read(dartsPlayersProvider.notifier);
+
+        if (m != null && me != null && m.isParticipant(me.uid)) {
+          // Online match setup
+          final mine = m.myPlayer(me.uid);
+          final theirs = m.opponentPlayer(me.uid);
+
+          players.set(DartsPlayers(
+            you: DartsPlayer(
+              name: mine?.displayName ?? me.displayName,
+              avatar: mine?.avatarEmoji ?? me.avatarEmoji,
+            ),
+            opponent: theirs == null
+                ? const DartsPlayer(name: 'Opponent', avatar: '⏳')
+                : DartsPlayer(
+                    name: theirs.displayName,
+                    avatar: theirs.avatarEmoji,
+                  ),
+          ));
+
+          notifier.startOnline(
+            seed: DartsRules.seedFromMatchId(m.id),
+            joinCode: m.joinCode,
+          );
+        } else {
+          // Solo play setup
+          notifier.restartMatch();
+          players.set(DartsPlayers(
+            you: me == null
+                ? DartsPlayers.defaultYou
+                : DartsPlayer(name: me.displayName, avatar: me.avatarEmoji),
+            opponent: DartsPlayers.bot,
+          ));
+        }
+
+        final created = DartsGame(events: notifier);
+        audioOwner.value = created;
+        game.value = created;
+      });
+
+      return () {
+        final owner = audioOwner.value;
+        if (owner != null) DartsAudio.leave(owner);
+      };
+    }, const []);
+
+    // Tour display check on solo open
+    useEffect(() {
+      if (!isOnline) {
+        DartsTour.shouldShow().then((show) {
+          if (!context.mounted) return;
+          if (show) showTour.value = true;
+        });
+      }
+      return null;
+    }, [isOnline]);
+
+    void leaveScreen() {
+      final router = GoRouter.maybeOf(context);
+      if (router == null) return;
+      if (router.canPop()) {
+        router.pop();
+      } else {
+        router.go('/');
+      }
+    }
+
+    Future<void> goToLobbyAsync() async {
+      final g = game.value;
+      if (g != null && isOnline && match != null) {
+        final myUid = AuthService.instance.currentUser?.uid ?? '';
+        final opp = match!.opponentPlayer(myUid);
+        final bool? leave = await CleanUi.show<bool>(
+          context,
+          (c) => CleanDialog(
+            title: 'LEAVE MATCH?',
+            subtitle: "You'll forfeit and ${opp?.displayName ?? 'your opponent'} wins.",
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                CleanButton(
+                  label: 'LEAVE AND FORFEIT',
+                  primary: true,
+                  accent: const Color(DartsK.accentRed),
+                  onTap: () => Navigator.of(c).pop(true),
+                ),
+                const SizedBox(height: 10.0),
+                CleanButton(
+                  label: 'KEEP PLAYING',
+                  onTap: () => Navigator.of(c).pop(false),
+                ),
+              ],
+            ),
+          ),
+        );
+        if (leave != true || !context.mounted) return;
+        await FirestoreMatchService.instance.forfeitMatch(
+          matchId: match!.id,
+          forfeiterUid: myUid,
+          winnerUid: opp?.uid ?? '',
+        );
+        if (!context.mounted) return;
+      }
+      leaveScreen();
+    }
+
+    void openPause() {
+      final g = game.value;
+      if (g == null || paused.value) return;
+      g.flickController.onPointerCancel();
+      if (!isOnline) g.pauseEngine();
+      paused.value = true;
+    }
+
+    void resume() {
+      final g = game.value;
+      if (g == null) return;
+      if (!isOnline) g.resumeEngine();
+      paused.value = false;
+    }
+
+    final g = game.value;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF070A12),
+      backgroundColor: const Color(DartsK.surfaceDark),
       body: SafeArea(
-        child: Column(
-          children: [
-            // Top Navigation Bar
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-              child: Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 20),
-                    onPressed: () {
-                      if (context.canPop()) {
-                        context.pop();
-                      } else {
-                        context.go('/games');
-                      }
-                    },
-                    tooltip: 'Back to Lobby',
-                  ),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'GAMEVERSE',
-                    style: TextStyle(
-                      color: Color(0xFF94A3B8),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1.5,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  const Text('•', style: TextStyle(color: Color(0xFF475569))),
-                  const SizedBox(width: 6),
-                  const Text(
-                    'DARTS',
-                    style: TextStyle(
-                      color: Color(0xFFA855F7),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1.5,
-                    ),
-                  ),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: const Color(0x33A855F7),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0x88A855F7), width: 1),
-                    ),
-                    child: const Text(
-                      'COMING SOON',
-                      style: TextStyle(
-                        color: Color(0xFFE9D5FF),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            Expanded(
-              child: Center(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 480),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        // Glowing Dartboard Canvas
-                        Container(
-                          width: boardSize,
-                          height: boardSize,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(0xFFA855F7).withValues(alpha: 0.25),
-                                blurRadius: 40,
-                                spreadRadius: 4,
-                              ),
-                            ],
-                          ),
-                          child: CustomPaint(
-                            size: Size(boardSize, boardSize),
-                            painter: const _DartboardPainter(),
-                          ),
-                        ),
-                        const SizedBox(height: 32),
-
-                        // Title
-                        const Text(
-                          'Precision Darts',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 28,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: -0.5,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'Authentic regulation English darts. Flick-throw physics, double-out checkouts, and strategic Cricket 1v1 battles.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Color(0xFF94A3B8),
-                            fontSize: 14,
-                            height: 1.5,
-                          ),
-                        ),
-                        const SizedBox(height: 28),
-
-                        // Feature badges
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          alignment: WrapAlignment.center,
-                          children: const [
-                            _FeaturePill(label: '🎯 501 & 301 Checkout'),
-                            _FeaturePill(label: '🏏 Tactical Cricket'),
-                            _FeaturePill(label: '⚡ Real-time 1v1'),
-                          ],
-                        ),
-                        const SizedBox(height: 36),
-
-                        // Action button back to lobby
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            onPressed: () => context.go('/games'),
-                            icon: const Icon(Icons.grid_view_rounded, size: 18),
-                            label: const Text(
-                              'EXPLORE GAMEVERSE LOBBY',
-                              style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.8),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFFA855F7),
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              elevation: 8,
-                              shadowColor: const Color(0x66A855F7),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+        child: g == null
+            ? const Center(
+                child: SizedBox(
+                  width: 36.0,
+                  height: 36.0,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    color: Color(DartsK.accentP1),
                   ),
                 ),
+              )
+            : Stack(
+                fit: StackFit.expand,
+                children: [
+                  // 1. Flame Game Canvas with Direct Touch Tracking
+                  Listener(
+                    behavior: HitTestBehavior.opaque,
+                    onPointerDown: (event) {
+                      DartsAudio.unlock();
+                      g.onPointerDown(
+                        event.pointer,
+                        event.localPosition.dx,
+                        event.localPosition.dy,
+                      );
+                    },
+                    onPointerMove: (event) {
+                      g.onPointerMove(
+                        event.pointer,
+                        event.localPosition.dx,
+                        event.localPosition.dy,
+                      );
+                    },
+                    onPointerUp: (event) {
+                      DartsAudio.unlock();
+                      g.onPointerUp(event.pointer);
+                    },
+                    onPointerCancel: (_) => g.onPointerCancel(),
+                    child: GameWidget(game: g),
+                  ),
+
+                  // 2. Translucent Glass HUD (Remaining scores, Round, Darts Left, Pause Button)
+                  DartsHud(onOpenPause: openPause),
+
+                  // 3. Quick Lobby Navigation Pill under Top Bar
+                  Positioned(
+                    top: 56.0,
+                    left: 16.0,
+                    child: LobbyPill(onTap: goToLobbyAsync),
+                  ),
+
+                  // 4. Turn Banner Overlay (YOUR TURN / BOT'S TURN / LAST CHANCE)
+                  const Positioned.fill(
+                    child: DartsTurnBanner(),
+                  ),
+
+                  // 5. Match Result Card (Victory / Defeat / Draw with Rematch)
+                  Positioned.fill(
+                    child: DartsResultCard(
+                      onRematch: () => g.restartGame(),
+                      onPlayFriend: () => DartsChallenge.start(context),
+                    ),
+                  ),
+
+                  // 6. How-to-play Guided Walkthrough Tour
+                  if (showTour.value && !isOnline)
+                    Positioned.fill(
+                      child: DartsTour(
+                        onDone: () => showTour.value = false,
+                      ),
+                    ),
+
+                  // 7. Frosted Glass Pause Menu Sheet
+                  if (paused.value)
+                    Positioned.fill(
+                      child: DartsPauseMenu(
+                        online: isOnline,
+                        onResume: resume,
+                        onHowToPlay: () {
+                          paused.value = false;
+                          showTour.value = true;
+                        },
+                        onRestart: isOnline
+                            ? null
+                            : () {
+                                resume();
+                                g.restartGame();
+                              },
+                        onLobby: () {
+                          paused.value = false;
+                          goToLobbyAsync();
+                        },
+                      ),
+                    ),
+                ],
               ),
-            ),
-          ],
-        ),
       ),
     );
   }
 }
 
-class _FeaturePill extends StatelessWidget {
-  final String label;
-  const _FeaturePill({required this.label});
+/// Orchestrates online Darts match creation, friend challenges, and rematches.
+abstract final class DartsChallenge {
+  static const MatchConfig config = MatchConfig(
+    game: 'darts',
+    totalRounds: DartsRules.maxRounds,
+    roundDurationSeconds: DartsRules.onlineTurnSeconds,
+  );
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: const Color(0xFF131826),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF1E283D)),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: Color(0xFFCBD5E1),
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
+  static Future<void> start(
+    BuildContext context, {
+    bool showGamePicker = false,
+  }) async {
+    final chosen = await MatchSetupDialog.show(
+      context,
+      initialConfig: config,
+      showGamePicker: showGamePicker,
+    );
+    if (chosen == null || !context.mounted) return;
+
+    final joined = chosen.joinedMatch;
+    if (joined != null) {
+      GoRouter.maybeOf(context)?.go('/match/${joined.id}');
+      return;
+    }
+
+    await _createAndEnter(context, chosen);
+  }
+
+  static Future<void> rematch(
+    BuildContext context, {
+    required CloudMatch finished,
+    required String myUid,
+  }) async {
+    final opp = finished.opponentPlayer(myUid);
+    if (opp == null || opp.uid.isEmpty) {
+      await start(context);
+      return;
+    }
+    final friend = FriendProfile(
+      uid: opp.uid,
+      displayName: opp.displayName,
+      avatarEmoji: opp.avatarEmoji,
+      addedAt: DateTime.now().millisecondsSinceEpoch,
+    );
+    final profile = await _me();
+    final cfg = config.copyWith(
+      player1Name: profile.displayName,
+      player1Avatar: profile.avatarEmoji,
+      player2Name: opp.displayName,
+      player2Avatar: opp.avatarEmoji,
+      player2Uid: opp.uid,
+      opponentFriend: friend,
+    );
+
+    final result = await FirestoreMatchService.instance.createOrJoinRematch(
+      finishedMatchId: finished.id,
+      config: cfg,
+      me: profile,
+    );
+    if (!context.mounted) return;
+    if (result.joined) {
+      GoRouter.maybeOf(context)?.go('/match/${result.match.id}');
+      return;
+    }
+    await _createAndEnter(context, cfg.copyWith(precreatedMatch: result.match));
+  }
+
+  static Future<UserProfile> _me() async {
+    final user = await AuthService.instance.ensureAuthenticated();
+    return AuthService.instance.currentUser ??
+        UserProfile(
+          uid: user.uid,
+          displayName: user.displayName ?? 'Player',
+          avatarEmoji: PlayerDescriptor.defaultAvatar,
+        );
+  }
+
+  static Future<void> _createAndEnter(
+    BuildContext context,
+    MatchConfig chosen,
+  ) async {
+    final profile = await _me();
+    final CloudMatch match = chosen.precreatedMatch ??
+        await FirestoreMatchService.instance.createMatch(
+          config: chosen.copyWith(
+            player1Name: profile.displayName,
+            player1Avatar: profile.avatarEmoji,
+          ),
+          player1Profile: profile,
+        );
+    if (!context.mounted) return;
+
+    void enter(CloudMatch m) {
+      if (context.mounted) GoRouter.maybeOf(context)?.go('/match/${m.id}');
+    }
+
+    await MatchLobbyDialog.show(
+      context: context,
+      match: match,
+      challengedFriend: chosen.opponentFriend,
+      onPlaySoloWhileWaiting: () => enter(match),
+      onEnterArena: enter,
     );
   }
-}
-
-/// Custom painter for an authentic regulation London dartboard.
-class _DartboardPainter extends CustomPainter {
-  const _DartboardPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final r = size.width / 2;
-
-    // Dark surround
-    final surroundPaint = Paint()..color = const Color(0xFF111827);
-    canvas.drawCircle(center, r, surroundPaint);
-
-    // Outer rim wire
-    final wirePaint = Paint()
-      ..color = const Color(0xFF94A3B8)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.0;
-    canvas.drawCircle(center, r * 0.98, wirePaint);
-
-    final blackPaint = Paint()..color = const Color(0xFF0F172A);
-    final creamPaint = Paint()..color = const Color(0xFFF1F5F9);
-    final redPaint = Paint()..color = const Color(0xFFDC2626);
-    final greenPaint = Paint()..color = const Color(0xFF16A34A);
-
-    // 20 sectors
-    final sectorAngle = 2 * math.pi / 20;
-    for (int i = 0; i < 20; i++) {
-      final startAngle = -math.pi / 2 - sectorAngle / 2 + i * sectorAngle;
-      final sweep = sectorAngle;
-
-      final isEven = i % 2 == 0;
-      final bedPaint = isEven ? blackPaint : creamPaint;
-      final ringPaint1 = isEven ? redPaint : greenPaint;
-
-      // Single bed (outer)
-      canvas.drawArc(Rect.fromCircle(center: center, radius: r * 0.78), startAngle, sweep, true, bedPaint);
-      // Double ring
-      canvas.drawArc(Rect.fromCircle(center: center, radius: r * 0.78), startAngle, sweep, true, ringPaint1);
-      canvas.drawArc(Rect.fromCircle(center: center, radius: r * 0.72), startAngle, sweep, true, bedPaint);
-      // Treble ring
-      canvas.drawArc(Rect.fromCircle(center: center, radius: r * 0.48), startAngle, sweep, true, ringPaint1);
-      canvas.drawArc(Rect.fromCircle(center: center, radius: r * 0.42), startAngle, sweep, true, bedPaint);
-    }
-
-    // Outer bull (Green)
-    canvas.drawCircle(center, r * 0.12, greenPaint);
-    // Inner bull (Red)
-    canvas.drawCircle(center, r * 0.05, redPaint);
-
-    // Wires (radial lines)
-    for (int i = 0; i < 20; i++) {
-      final angle = -math.pi / 2 - sectorAngle / 2 + i * sectorAngle;
-      final dx = math.cos(angle);
-      final dy = math.sin(angle);
-      canvas.drawLine(
-        Offset(center.dx + dx * r * 0.12, center.dy + dy * r * 0.12),
-        Offset(center.dx + dx * r * 0.78, center.dy + dy * r * 0.78),
-        wirePaint..strokeWidth = 1.0,
-      );
-    }
-
-    // Ring wires
-    wirePaint.strokeWidth = 1.2;
-    canvas.drawCircle(center, r * 0.78, wirePaint);
-    canvas.drawCircle(center, r * 0.72, wirePaint);
-    canvas.drawCircle(center, r * 0.48, wirePaint);
-    canvas.drawCircle(center, r * 0.42, wirePaint);
-    canvas.drawCircle(center, r * 0.12, wirePaint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
