@@ -8,9 +8,10 @@ import '../scene/board_projection.dart';
 
 /// Renders score callout pops and BUST / CHECKOUT banners upon dart impact.
 ///
-/// Follows DARTS_PLAN.md §1.5 & Step 11:
 /// - Priority 8 (topmost visual layer).
-/// - Score pop rises from the hit point (`T20`, `D16`, `BULL`, `MISS`, etc.) over 0.8s.
+/// - Score pop, GamePigeon style: the points as a big white number with a
+///   dark outline ("60", "25", "MISS"), popping up over the dart then
+///   floating up and fading.
 /// - Prominent red BUST or mint CHECKOUT banner triggered on turn-ending events.
 /// - Paragraph layouts generated on hit event; zero heap allocations per frame in `render()`.
 class HitPopupCanvas extends Component {
@@ -19,11 +20,12 @@ class HitPopupCanvas extends Component {
   // ─── Score Pop State ───────────────────────────────────────────────────────
   bool _popActive = false;
   double _popTimer = 0.0;
-  static const double _popDuration = 0.85;
+  static const double _popDuration = 1.0;
 
   double _popBasePxX = 0.0;
   double _popBasePxY = 0.0;
   ui.Paragraph? _popParagraph;
+  ui.Paragraph? _popOutline;
   double _popWidth = 0.0;
   double _popHeight = 0.0;
 
@@ -40,41 +42,52 @@ class HitPopupCanvas extends Component {
   final Vector2 _screenPos = Vector2.zero();
 
   final ui.Paint _bannerBgPaint = ui.Paint()..style = ui.PaintingStyle.fill;
-  final ui.Paint _popBgPaint = ui.Paint()
-    ..style = ui.PaintingStyle.fill
-    ..color = const ui.Color(0xD90A0E1A);
+  final ui.Paint _fadePaint = ui.Paint();
 
   HitPopupCanvas({required this.projection}) : super(priority: 8);
 
-  /// Shows floating score popup at landed dart coordinates.
+  /// Shows the floating score over the landed dart.
   void showHit(DartHit hit, {bool isBust = false, bool isCheckout = false}) {
-    projection.boardMmToScreen(hit.x, hit.y, _screenPos);
+    if (hit.isMiss) {
+      // Off the board: show it just inside the edge, nearest the dart.
+      final double r = DartsK.boardR * 0.9;
+      final double d = hit.r > 1e-6 ? hit.r : 1.0;
+      projection.boardMmToScreen(hit.x / d * r, hit.y / d * r, _screenPos);
+    } else {
+      projection.boardMmToScreen(hit.x, hit.y, _screenPos);
+    }
     _popBasePxX = _screenPos.x;
-    _popBasePxY = _screenPos.y - 14.0; // slightly above tip
-
+    _popBasePxY = _screenPos.y - projection.boardRadiusPx * 0.16;
     _popTimer = 0.0;
     _popActive = true;
 
-    // Pick callout color by hit significance
-    final ui.Color textColor;
-    if (hit.isInnerBull || hit.isBull) {
-      textColor = const ui.Color(DartsK.accentMint);
-    } else if (hit.isTreble) {
-      textColor = const ui.Color(DartsK.accentP1);
-    } else if (hit.isDouble) {
-      textColor = const ui.Color(DartsK.accentP2);
-    } else if (hit.isMiss) {
-      textColor = const ui.Color(DartsK.accentRed);
-    } else {
-      textColor = const ui.Color(DartsK.textPrimary);
-    }
+    final String label = hit.isMiss ? 'MISS' : '${hit.points}';
+    final double size = (projection.boardRadiusPx * (hit.isMiss ? 0.17 : 0.24))
+        .clamp(20.0, 72.0)
+        .toDouble();
+    final ui.Color fill = hit.isMiss
+        ? const ui.Color(0xFFFFB4B4)
+        : const ui.Color(0xFFFFFFFF);
 
-    final String label = hit.isMiss ? 'MISS' : '${hit.label} (+${hit.points})';
+    _popParagraph?.dispose();
+    _popOutline?.dispose();
+    _popOutline = _buildText(
+      text: label,
+      fontSize: size,
+      fontWeight: ui.FontWeight.w900,
+      letterSpacing: 0.0,
+      foreground: ui.Paint()
+        ..style = ui.PaintingStyle.stroke
+        ..strokeWidth = size * 0.16
+        ..strokeJoin = ui.StrokeJoin.round
+        ..color = const ui.Color(0xFF0A0E1A),
+    );
     _popParagraph = _buildText(
       text: label,
-      color: textColor,
-      fontSize: 14.0,
+      color: fill,
+      fontSize: size,
       fontWeight: ui.FontWeight.w900,
+      letterSpacing: 0.0,
     );
     _popWidth = _popParagraph!.maxIntrinsicWidth;
     _popHeight = _popParagraph!.height;
@@ -106,10 +119,11 @@ class HitPopupCanvas extends Component {
 
   ui.Paragraph _buildText({
     required String text,
-    required ui.Color color,
+    ui.Color color = const ui.Color(0xFFFFFFFF),
     required double fontSize,
     required ui.FontWeight fontWeight,
     double letterSpacing = 0.5,
+    ui.Paint? foreground,
   }) {
     final builder =
         ui.ParagraphBuilder(
@@ -122,7 +136,8 @@ class HitPopupCanvas extends Component {
           )
           ..pushStyle(
             ui.TextStyle(
-              color: color,
+              color: foreground == null ? color : null,
+              foreground: foreground,
               fontSize: fontSize,
               fontWeight: fontWeight,
               letterSpacing: letterSpacing,
@@ -131,7 +146,13 @@ class HitPopupCanvas extends Component {
           ..addText(text);
 
     final paragraph = builder.build();
-    paragraph.layout(const ui.ParagraphConstraints(width: 320.0));
+    // Lay out once to measure, then again at the text's own width: centred
+    // text in a wider box was drawn off to the side of where it was placed
+    // (the old score pill sat to the left of its text).
+    paragraph.layout(const ui.ParagraphConstraints(width: 1000.0));
+    paragraph.layout(
+      ui.ParagraphConstraints(width: paragraph.maxIntrinsicWidth.ceilToDouble() + 1.0),
+    );
     return paragraph;
   }
 
@@ -145,6 +166,8 @@ class HitPopupCanvas extends Component {
         _popActive = false;
         _popParagraph?.dispose();
         _popParagraph = null;
+        _popOutline?.dispose();
+        _popOutline = null;
       }
     }
 
@@ -164,39 +187,30 @@ class HitPopupCanvas extends Component {
     final double screenH = projection.screenHeight;
     if (screenW <= 0.0 || screenH <= 0.0) return;
 
-    // 1. Render rising score popup
-    if (_popActive && _popParagraph != null) {
-      final double progress = (_popTimer / _popDuration).clamp(0.0, 1.0);
-      final double riseY = 26.0 * progress;
-      final double currentY = _popBasePxY - riseY;
-
-      final double alpha = progress < 0.65
-          ? 1.0
-          : ((1.0 - progress) / 0.35).clamp(0.0, 1.0);
+    // 1. Score pop: overshoot in, float up, fade out.
+    if (_popActive && _popParagraph != null && _popOutline != null) {
+      final double t = _popTimer;
+      final double progress = (t / _popDuration).clamp(0.0, 1.0).toDouble();
+      final double scale = t < 0.09
+          ? 0.35 + 0.90 * (t / 0.09)
+          : (t < 0.20 ? 1.25 - 0.25 * ((t - 0.09) / 0.11) : 1.0);
+      final double ease = 1.0 - (1.0 - progress) * (1.0 - progress);
+      final double y = _popBasePxY - projection.boardRadiusPx * 0.22 * ease;
+      final double alpha =
+          progress < 0.7 ? 1.0 : ((1.0 - progress) / 0.3).clamp(0.0, 1.0).toDouble();
 
       if (alpha > 0.0) {
-        final double px = _popBasePxX - (_popWidth * 0.5);
-        final double py = currentY - (_popHeight * 0.5);
-
-        // Pill background
-        const double padX = 8.0;
-        const double padY = 3.0;
-        final rect = ui.RRect.fromLTRBR(
-          px - padX,
-          py - padY,
-          px + _popWidth + padX,
-          py + _popHeight + padY,
-          const ui.Radius.circular(6.0),
-        );
-        _popBgPaint.color = ui.Color.fromARGB(
-          (alpha * 215.0).round(),
-          10,
-          14,
-          26,
-        );
-        canvas.drawRRect(rect, _popBgPaint);
-
-        canvas.drawParagraph(_popParagraph!, ui.Offset(px, py));
+        canvas.save();
+        canvas.translate(_popBasePxX, y);
+        canvas.scale(scale);
+        final ui.Offset at = ui.Offset(-_popWidth * 0.5, -_popHeight * 0.5);
+        if (alpha < 1.0) {
+          canvas.saveLayer(null, _fadePaint..color = ui.Color.fromARGB((alpha * 255).round(), 0, 0, 0));
+        }
+        canvas.drawParagraph(_popOutline!, at);
+        canvas.drawParagraph(_popParagraph!, at);
+        if (alpha < 1.0) canvas.restore();
+        canvas.restore();
       }
     }
 
@@ -233,6 +247,7 @@ class HitPopupCanvas extends Component {
   @override
   void onRemove() {
     _popParagraph?.dispose();
+    _popOutline?.dispose();
     _bannerParagraph?.dispose();
     super.onRemove();
   }
