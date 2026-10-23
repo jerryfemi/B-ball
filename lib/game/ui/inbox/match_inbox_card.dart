@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../darts/state/darts_rules.dart';
 import '../../../models/cloud_match.dart';
 import '../../../services/chat_read_receipt_service.dart';
 import '../common/app_avatar.dart';
@@ -37,8 +38,14 @@ class MatchInboxCard extends StatelessWidget {
 
     final opponentName = opponent?.displayName ?? 'Waiting...';
     final opponentAvatar = opponent?.avatarEmoji ?? '⏳';
-    final myScore = myPlayer?.totalScore ?? 0;
-    final opponentScore = opponent?.totalScore ?? 0;
+    // Darts counts DOWN from 301: show what each player has left (a bust
+    // scores 0, so the total scored can't go past 301).
+    final myScore = match.isDarts
+        ? DartsRules.remaining(myPlayer?.roundScores ?? const [])
+        : (myPlayer?.totalScore ?? 0);
+    final opponentScore = match.isDarts
+        ? DartsRules.remaining(opponent?.roundScores ?? const [])
+        : (opponent?.totalScore ?? 0);
 
     final hasRootChat = match.lastChatText != null && match.lastChatText!.isNotEmpty;
     final latestChat = match.chat.isNotEmpty ? match.chat.last : null;
@@ -114,7 +121,7 @@ class MatchInboxCard extends StatelessWidget {
                             color: match.isArchery
                                 ? const Color(0xFF10B981)
                                 : (match.isDarts
-                                    ? const Color(0xFFA855F7)
+                                    ? const Color(0xFFEF4444)
                                     : const Color(0xFFFF8A00)),
                           ),
                           const SizedBox(width: 5),
@@ -123,7 +130,9 @@ class MatchInboxCard extends StatelessWidget {
                                 ? '${CloudMatch.gameTitle(match.game).toUpperCase()} • FINISHED'
                                 : (match.isArchery
                                     ? 'ARCHERY • SET ${match.currentRound} OF ${match.totalRounds}'
-                                    : 'HOOPS • R${match.currentRound}/${match.totalRounds} • ${match.roundDurationSeconds}S'),
+                                    : match.isDarts
+                                        ? 'DARTS 301 • ROUND ${match.currentRound} OF ${match.totalRounds}'
+                                        : 'HOOPS • R${match.currentRound}/${match.totalRounds} • ${match.roundDurationSeconds}S'),
                             style: const TextStyle(
                               color: Color(0xFF94A3B8),
                               fontSize: 10,
