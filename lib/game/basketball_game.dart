@@ -183,6 +183,11 @@ class BasketballGame extends Forge2DGame {
   final ValueNotifier<int> bestScoreNotifier = ValueNotifier<int>(0);
   final ValueNotifier<bool> isTourActiveNotifier = ValueNotifier<bool>(false);
 
+  /// True when the tour should show only steps added since the player last
+  /// saw it. The "how to play" replay sets it back to false.
+  bool tourNewStepsOnly = false;
+  static const String tourPeopleStepPref = 'b_ball_tour_people_seen_v1';
+
   /// GlobalKeys to locate scoreboard widgets dynamically for tour spotlight
   final GlobalKey playerAvatarKey = GlobalKey();
   final GlobalKey rightFlankKey = GlobalKey();
@@ -1842,7 +1847,13 @@ class BasketballGame extends Forge2DGame {
         }
 
         final hasSeenTour = prefs.getBool('b_ball_has_seen_tour') ?? false;
+        final hasSeenPeople = prefs.getBool(tourPeopleStepPref) ?? false;
         if (!hasSeenTour) {
+          tourNewStepsOnly = false;
+          isTourActiveNotifier.value = true;
+        } else if (!hasSeenPeople) {
+          // Existing players: show only the new "Play a friend" step, once.
+          tourNewStepsOnly = true;
           isTourActiveNotifier.value = true;
         }
 
