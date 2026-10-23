@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
+
 import 'package:flame/components.dart';
 
 import '../darts_constants.dart';
@@ -126,20 +127,28 @@ class AimReticle extends Component {
     );
 
     // 3. Steady ring: shrinks from 38 px settling radius to 12 px steady radius
-    final double settleFrac = (holdTime / DartsK.wobbleSettleTau).clamp(0.0, 1.0);
-    double ringRadius = 12.0 + 26.0 * math.exp(-holdTime / DartsK.wobbleSettleTau);
+    final double settleFrac = (holdTime / DartsK.wobbleSettleTau).clamp(
+      0.0,
+      1.0,
+    );
+    double ringRadius =
+        12.0 + 26.0 * math.exp(-holdTime / DartsK.wobbleSettleTau);
 
     // If fatigued (hold > 3.0s), steady ring pulses slightly
     if (holdTime > DartsK.fatigueStart) {
-      final double fatigueFrac = ((holdTime - DartsK.fatigueStart) /
-              (DartsK.fatigueFull - DartsK.fatigueStart))
-          .clamp(0.0, 1.0);
+      final double fatigueFrac =
+          ((holdTime - DartsK.fatigueStart) /
+                  (DartsK.fatigueFull - DartsK.fatigueStart))
+              .clamp(0.0, 1.0);
       ringRadius += (math.sin(holdTime * 12.0) * 2.5) * fatigueFrac;
     }
 
-    final double ringAlpha = (0.30 + 0.35 * (1.0 - settleFrac)).clamp(0.15, 0.65);
-    _steadyRingPaint.color =
-        const ui.Color(DartsK.accentP1).withValues(alpha: ringAlpha);
+    final double ringAlpha = (0.30 + 0.35 * (1.0 - settleFrac)).clamp(
+      0.15,
+      0.65,
+    );
+    _steadyRingPaint.color = const ui.Color(DartsK.accentP1)
+        .withValues(alpha: ringAlpha);
 
     canvas.drawCircle(ui.Offset(cx, cy), ringRadius, _steadyRingPaint);
   }
