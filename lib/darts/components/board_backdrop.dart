@@ -62,18 +62,43 @@ class BoardBackdrop extends Component {
 
     final ui.Image? wood = _wood;
     if (wood != null) {
-      // Cover: fill the screen, keep the texture's proportions.
       final double iw = wood.width.toDouble();
       final double ih = wood.height.toDouble();
-      final double s = math.max(width / iw, height / ih);
-      final double sw = width / s;
-      final double sh = height / s;
-      c.drawImageRect(
-        wood,
-        Rect.fromLTWH((iw - sw) * 0.5, (ih - sh) * 0.5, sw, sh),
-        screen,
-        Paint()..filterQuality = FilterQuality.medium,
-      );
+      // Keep plank width constant regardless of aspect ratio by scaling to height:
+      final double s = height / ih;
+      final double tileW = iw * s;
+
+      // Center the primary tile directly behind the dartboard:
+      final double centerTileLeft = projection.boardCenterX - tileW * 0.5;
+      final int leftTiles = ((centerTileLeft) / tileW).ceil();
+      final double startX = centerTileLeft - leftTiles * tileW;
+
+      final Paint tilePaint = Paint()..filterQuality = FilterQuality.medium;
+
+      // Draw seamlessly mirrored tiles horizontally across the screen width:
+      int tileIndex = leftTiles;
+      for (double x = startX; x < width + tileW; x += tileW, tileIndex++) {
+        final bool mirror = tileIndex.isOdd;
+        if (mirror) {
+          c.save();
+          c.translate(x + tileW, 0.0);
+          c.scale(-1.0, 1.0);
+          c.drawImageRect(
+            wood,
+            Rect.fromLTWH(0, 0, iw, ih),
+            Rect.fromLTWH(0, 0, tileW, height),
+            tilePaint,
+          );
+          c.restore();
+        } else {
+          c.drawImageRect(
+            wood,
+            Rect.fromLTWH(0, 0, iw, ih),
+            Rect.fromLTWH(x, 0, tileW, height),
+            tilePaint,
+          );
+        }
+      }
     } else {
       _paintPlanks(c, width, height);
     }
