@@ -129,6 +129,7 @@ class RestingDart extends Component {
       math.sin(p),
       -math.cos(_lean) * cp,
       spinColumn,
+      scaleMultiplier: DartsK.handDartScale,
     );
   }
 }

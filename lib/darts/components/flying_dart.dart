@@ -44,6 +44,7 @@ class FlyingDartShadow extends Component {
       d.axisZ,
       d.spinColumn,
       0.16 + 0.32 * near,
+      scaleMultiplier: d.currentScaleMultiplier,
     );
   }
 }
@@ -182,6 +183,13 @@ class FlyingDart extends Component {
     spinColumn = (_spinStart + steps.floor()) % sprites.spinColumns;
   }
 
+  /// Smoothly eases from in-hand scale to true 1.0 physical scale over early flight.
+  double get currentScaleMultiplier {
+    final double progress = (1.0 - (physics.pos.z / DartsK.throwDistanceM)).clamp(0.0, 1.0).toDouble();
+    if (progress >= 0.35) return 1.0;
+    return DartsK.handDartScale + (1.0 - DartsK.handDartScale) * (progress / 0.35);
+  }
+
   @override
   void render(ui.Canvas canvas) {
     if (!isFlying || projection.screenHeight <= 0.0) return;
@@ -197,6 +205,7 @@ class FlyingDart extends Component {
       axisY,
       axisZ,
       spinColumn,
+      scaleMultiplier: currentScaleMultiplier,
     );
   }
 }
