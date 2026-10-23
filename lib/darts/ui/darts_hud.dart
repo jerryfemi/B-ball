@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -26,41 +27,70 @@ class DartsHud extends ConsumerWidget {
     required this.onOpenPause,
   });
 
+  /// HUD scale for this screen: 1.0 on a ~420×860 phone, smaller on small
+  /// screens so the badges never crowd the board or the dart. Never larger.
+  static double scaleFor(Size size) =>
+      math.min(size.width / 420.0, size.height / 860.0).clamp(0.68, 1.0).toDouble();
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(dartsMatchProvider);
     final players = ref.watch(dartsPlayersProvider);
+    final double s = scaleFor(MediaQuery.sizeOf(context));
+    final double pad = 16.0 * s;
 
-    return IgnorePointer(
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              // ── Top Bar: Round & Darts Left | Pause Button ──────────────────
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  _RoundAndDartsPill(
-                    round: state.round,
-                    dartsThrown: state.turnDarts.length,
-                    activeColor: state.thrower == DartsThrower.you
-                        ? const Color(DartsK.accentP1)
-                        : const Color(DartsK.accentP2),
+    // Only the pills and badges ignore touches (so throws pass through);
+    // the pause button stays tappable. Wrapping the whole HUD in one
+    // IgnorePointer made the pause button dead.
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: pad, vertical: 8.0 * s),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            // ── Top Bar: Round & Darts Left | Pause Button ──────────────────
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                IgnorePointer(
+                  child: Transform.scale(
+                    scale: s,
+                    alignment: Alignment.centerLeft,
+                    child: _RoundAndDartsPill(
+                      round: state.round,
+                      dartsThrown: state.turnDarts.length,
+                      activeColor: state.thrower == DartsThrower.you
+                          ? const Color(DartsK.accentP1)
+                          : const Color(DartsK.accentP2),
+                    ),
                   ),
-                  _PauseButton(onTap: onOpenPause),
-                ],
-              ),
+                ),
+                Transform.scale(
+                  scale: s,
+                  alignment: Alignment.centerRight,
+                  child: _PauseButton(onTap: onOpenPause),
+                ),
+              ],
+            ),
 
-              // ── Bottom Bar: P1 and Opponent Remaining Score Badges ───────────
-              Row(
+            // ── Bottom Bar: P1 and Opponent Remaining Score Badges ───────────
+            IgnorePointer(
+              child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  // Player 1 (You) Badge
-                  _ScoreBadge(
+                  // Player 1 (You) Badge. Sizes are scaled for real (so the
+                  // layout shrinks too); FittedBox is a last guard for long
+                  // names on tiny screens.
+                  Flexible(
+                    child: Align(
+                      alignment: Alignment.bottomLeft,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.bottomLeft,
+                        child: _ScoreBadge(
+                    scale: s,
                     player: players.you,
                     remaining: state.yourRemaining,
                     turnScore: state.thrower == DartsThrower.you
@@ -70,9 +100,20 @@ class DartsHud extends ConsumerWidget {
                     glowColor: const Color(DartsK.accentP1),
                     isLeft: true,
                   ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(width: 12.0 * s),
 
                   // Opponent Badge
-                  _ScoreBadge(
+                  Flexible(
+                    child: Align(
+                      alignment: Alignment.bottomRight,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.bottomRight,
+                        child: _ScoreBadge(
+                    scale: s,
                     player: players.opponent,
                     remaining: state.theirRemaining,
                     turnScore: state.thrower == DartsThrower.opponent
@@ -82,10 +123,13 @@ class DartsHud extends ConsumerWidget {
                     glowColor: const Color(DartsK.accentP2),
                     isLeft: false,
                   ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -200,9 +244,7 @@ class _PauseButtonState extends State<_PauseButton> {
 
   @override
   Widget build(BuildContext context) {
-    return IgnorePointer(
-      ignoring: false,
-      child: GestureDetector(
+    return GestureDetector(
         onTapDown: (_) {
           HapticFeedback.lightImpact();
           setState(() => _pressed = true);
@@ -253,13 +295,14 @@ class _PauseButtonState extends State<_PauseButton> {
             ),
           ),
         ),
-      ),
     );
   }
 }
 
 /// GamePigeon-style Player Remaining Score Badge in the lower corners.
 class _ScoreBadge extends StatelessWidget {
+  /// Size factor for this screen (see [DartsHud.scaleFor]).
+  final double scale;
   final DartsPlayer player;
   final int remaining;
   final int turnScore;
@@ -268,6 +311,7 @@ class _ScoreBadge extends StatelessWidget {
   final bool isLeft;
 
   const _ScoreBadge({
+    required this.scale,
     required this.player,
     required this.remaining,
     required this.turnScore,
@@ -287,12 +331,12 @@ class _ScoreBadge extends StatelessWidget {
           duration: const Duration(milliseconds: 250),
           curve: Curves.easeOutCubic,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20.0),
+            borderRadius: BorderRadius.circular(20.0 * scale),
             boxShadow: isActive
                 ? [
                     BoxShadow(
                       color: glowColor.withValues(alpha: 0.35),
-                      blurRadius: 20.0,
+                      blurRadius: 20.0 * scale,
                       offset: const Offset(0, 6),
                     ),
                   ]
@@ -305,18 +349,21 @@ class _ScoreBadge extends StatelessWidget {
                   ],
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(20.0),
+            borderRadius: BorderRadius.circular(20.0 * scale),
             child: BackdropFilter(
               filter: ui.ImageFilter.blur(sigmaX: 18.0, sigmaY: 18.0),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 250),
                 curve: Curves.easeOutCubic,
-                padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 10.0),
+                padding: EdgeInsets.symmetric(
+                  horizontal: 12.0 * scale,
+                  vertical: 8.0 * scale,
+                ),
                 decoration: BoxDecoration(
                   color: isActive
                       ? const Color(0xD90F172A)
                       : const Color(0x990F172A),
-                  borderRadius: BorderRadius.circular(20.0),
+                  borderRadius: BorderRadius.circular(20.0 * scale),
                   border: Border.all(
                     color: isActive
                         ? glowColor.withValues(alpha: 0.8)
@@ -329,12 +376,12 @@ class _ScoreBadge extends StatelessWidget {
                   children: isLeft
                       ? [
                           _buildAvatar(),
-                          const SizedBox(width: 10.0),
+                          SizedBox(width: 9.0 * scale),
                           _buildNameAndScore(),
                         ]
                       : [
                           _buildNameAndScore(),
-                          const SizedBox(width: 10.0),
+                          SizedBox(width: 9.0 * scale),
                           _buildAvatar(),
                         ],
                 ),
@@ -349,9 +396,9 @@ class _ScoreBadge extends StatelessWidget {
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeOutCubic,
           child: Padding(
-            padding: const EdgeInsets.only(top: 6.0, left: 8.0, right: 8.0),
+            padding: EdgeInsets.only(top: 6.0 * scale, left: 8.0 * scale, right: 8.0 * scale),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 3.0),
+              padding: EdgeInsets.symmetric(horizontal: 10.0 * scale, vertical: 3.0 * scale),
               decoration: BoxDecoration(
                 color: glowColor.withValues(alpha: 0.18),
                 borderRadius: BorderRadius.circular(12.0),
@@ -364,7 +411,7 @@ class _ScoreBadge extends StatelessWidget {
                 '+$turnScore',
                 style: TextStyle(
                   color: glowColor,
-                  fontSize: 13.0,
+                  fontSize: 13.0 * scale,
                   fontWeight: FontWeight.w900,
                   fontFamily: 'Inter',
                   fontVariations: const [FontVariation('wght', 900)],
@@ -381,7 +428,7 @@ class _ScoreBadge extends StatelessWidget {
   Widget _buildAvatar() {
     return AppAvatar(
       avatar: player.avatar,
-      size: 40.0,
+      size: 36.0 * scale,
     );
   }
 
@@ -390,25 +437,29 @@ class _ScoreBadge extends StatelessWidget {
       crossAxisAlignment: isLeft ? CrossAxisAlignment.start : CrossAxisAlignment.end,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
+        ConstrainedBox(
+          // Long names end in "…" instead of widening the badge.
+          constraints: BoxConstraints(maxWidth: 104.0 * scale),
+          child: Text(
           player.name.toUpperCase(),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             color: isActive ? Colors.white : const Color(DartsK.textMuted),
-            fontSize: 10.5,
+            fontSize: 10.5 * scale,
             fontWeight: FontWeight.w800,
             fontFamily: 'Inter',
             fontVariations: const [FontVariation('wght', 800)],
             letterSpacing: 0.8,
           ),
         ),
-        const SizedBox(height: 2.0),
+        ),
+        SizedBox(height: 2.0 * scale),
         Text(
           '$remaining',
           style: TextStyle(
             color: isActive ? Colors.white : const Color(0xFFE2E8F0),
-            fontSize: 24.0,
+            fontSize: 22.0 * scale,
             fontWeight: FontWeight.w900,
             fontFamily: 'Inter',
             fontVariations: const [FontVariation('wght', 900)],
