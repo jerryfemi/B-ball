@@ -8,20 +8,13 @@ import 'package:b_ball/darts/scene/board_projection.dart';
 
 void main() {
   group('Step 10 - Dart Rendering Logic & Formulas', () {
-    test('Stuck pose index matches perspective by landing X mm', () {
-      // Left of center (x < -60 mm) -> stuck_0 (tail splayed left)
-      expect(StuckDart.poseIndexForX(-60.1), equals(0));
-      expect(StuckDart.poseIndexForX(-150.0), equals(0));
-
-      // Right of center (x > 60 mm) -> stuck_2 (tail splayed right)
-      expect(StuckDart.poseIndexForX(60.1), equals(2));
-      expect(StuckDart.poseIndexForX(120.0), equals(2));
-
-      // Central corridor (-60 mm <= x <= 60 mm) -> stuck_1 (straight-on)
-      expect(StuckDart.poseIndexForX(0.0), equals(1));
-      expect(StuckDart.poseIndexForX(-60.0), equals(1));
-      expect(StuckDart.poseIndexForX(60.0), equals(1));
-      expect(StuckDart.poseIndexForX(15.0), equals(1));
+    test('A stuck dart points into the board and slightly down (it dipped in)', () {
+      for (final (x, y) in [(0.0, 0.0), (0.0, 103.0), (-120.0, -60.0)]) {
+        final a = StuckDart.impactAxis(x, y);
+        expect(math.sqrt(a.x * a.x + a.y * a.y + a.z * a.z), closeTo(1.0, 1e-9));
+        expect(a.z, lessThan(-0.9)); // toward the board
+        expect(a.y, lessThan(0.0)); // nose down
+      }
     });
 
     test('Stuck impact wobble formula decays exponentially within 0.35s', () {
@@ -83,22 +76,17 @@ void main() {
       expect(pitchLate, lessThan(0.0)); // Tilting nose down
     });
 
-    test('Depth scale factor correctly scales between release (~1.0) and board (~0.15)', () {
+    test('Seen from the oche, a stuck dart is nearly tail-on (the X of the flights)', () {
       final projection = BoardProjection();
       projection.resize(Vector2(400, 800));
-
-      // At release (z = 2.37 m)
-      final double releaseScale = projection.depthScale(DartsK.throwDistanceM);
-      expect(releaseScale, closeTo(1.0, 0.05));
-
-      // At board plane (z = 0.0 m)
-      final double boardScale = projection.depthScale(0.0);
-      expect(boardScale, closeTo(0.15, 0.02));
-
-      // Monotonically decreases as distance to board decreases
-      expect(boardScale, lessThan(releaseScale));
-      expect(projection.depthScale(1.0), lessThan(releaseScale));
-      expect(projection.depthScale(1.0), greaterThan(boardScale));
+      final a = StuckDart.impactAxis(0.0, 0.0);
+      const double l = DartsK.dartLengthM;
+      final double vx = -a.x * l * 0.5;
+      final double vy = -a.y * l * 0.5 - projection.eyeHeightM;
+      final double vz = -a.z * l * 0.5 - projection.eyeZ;
+      final double vl = math.sqrt(vx * vx + vy * vy + vz * vz);
+      final double deg = math.acos((vx * a.x + vy * a.y + vz * a.z) / vl) * 180 / math.pi;
+      expect(deg, lessThan(20.0));
     });
   });
 }
