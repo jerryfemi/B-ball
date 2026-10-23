@@ -13,16 +13,19 @@ abstract final class FlickSolver {
   /// Solves the closed-form low-arc launch velocity `Vector3(vx, vy, vz)` that lands
   /// on target `(aimX, aimY)` in board millimeters at the given launch [speed] (m/s).
   ///
-  /// - Launch origin is $(0, 0, D)$ where $D = 2.37$ m.
+  /// - Launch origin is `(startXm, startYm, D)` in metres, `D = 2.37` m
+  ///   (defaults to straight in front of the bull).
   /// - Board plane is at $z = 0$.
   /// - Returns velocity with $v_z < 0$.
   static Vector3 launchFor(
     double aimX,
     double aimY, [
     double speed = DartsK.idealSpeed,
+    double startXm = 0.0,
+    double startYm = 0.0,
   ]) {
-    final double targetX = aimX / 1000.0; // meters
-    final double targetY = aimY / 1000.0; // meters
+    final double targetX = aimX / 1000.0 - startXm; // metres, relative to the hand
+    final double targetY = aimY / 1000.0 - startYm;
     const double d = DartsK.throwDistanceM; // 2.37 m
     const double g = DartsK.gravity; // 9.81 m/s²
     final double v2 = speed * speed;
