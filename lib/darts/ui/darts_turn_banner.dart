@@ -11,7 +11,7 @@ import '../state/darts_players.dart';
 /// Animated turn transition banner.
 ///
 /// Follows DARTS_PLAN.md Step 12:
-/// - Displays "ROUND N · YOUR TURN" or "BOT'S TURN".
+/// - Online only: "ROUND N · YOUR TURN" or "NAME'S TURN" (no banners in solo).
 /// - Displays "LAST CHANCE" when Player 1 has checked out and the bot can still tie
 ///   under the equal-turns rule.
 /// - Sleek dark glassmorphism card with glowing accent border.
@@ -50,7 +50,9 @@ class _DartsTurnBannerState extends ConsumerState<DartsTurnBanner> {
       });
     }
 
-    if (match.matchOver) {
+    // Solo has no turn banners: you throw, then the bot throws straight
+    // away; the glowing score badge shows who is up. Online only.
+    if (match.matchOver || !match.online) {
       return const SizedBox.shrink();
     }
 
