@@ -52,8 +52,9 @@ abstract final class DartRenderer {
     int column, {
     double extraRotation = 0.0,
     double opacity = 1.0,
+    double scaleMultiplier = 1.0,
   }) {
-    const double len = DartsK.dartLengthM;
+    final double len = DartsK.dartLengthM * scaleMultiplier;
 
     p.project(tx, ty, tz);
     final double stx = p.outX;
@@ -113,9 +114,10 @@ abstract final class DartRenderer {
     int column,
     double alpha, {
     double extraRotation = 0.0,
+    double scaleMultiplier = 1.0,
   }) {
     if (alpha <= 0.0) return;
-    const double len = DartsK.dartLengthM;
+    final double len = DartsK.dartLengthM * scaleMultiplier;
     const double lx = DartsK.shadowLightX;
     const double ly = DartsK.shadowLightY;
     final double k = p.mmToPx * 1000.0;
