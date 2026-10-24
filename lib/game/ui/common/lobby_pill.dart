@@ -1,4 +1,3 @@
-import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -43,15 +42,15 @@ class _LobbyPillState extends State<LobbyPill> {
           duration: const Duration(milliseconds: 100),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(999),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+            child: SizedBox(
+              // No backdrop blur here: over the live game it re-blurs every frame.
               child: Container(
                 height: widget.compact ? 32 : 40,
                 padding: widget.compact
                     ? const EdgeInsets.fromLTRB(6, 0, 10, 0)
                     : const EdgeInsets.fromLTRB(8, 0, 14, 0),
                 decoration: BoxDecoration(
-                  color: const Color(0xCC0F172A),
+                  color: const Color(0xE80F172A),
                   borderRadius: BorderRadius.circular(999),
                   border: Border.all(color: const Color(0x2EFFFFFF)),
                 ),
