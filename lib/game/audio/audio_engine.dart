@@ -199,10 +199,11 @@ class AudioEngine {
   };
 
   static const Map<Sfx, String> _dartsSfxAssets = {
-    Sfx.dartThrow: 'assets/archery/sfx_release.wav',
-    Sfx.dartHit: 'assets/archery/sfx_thunk.wav',
-    Sfx.dartBull: 'assets/archery/sfx_ding.wav',
-    Sfx.dartMiss: 'assets/archery/sfx_thud.wav',
+    Sfx.dartThrow: 'assets/darts/sfx_swipe.wav',
+    Sfx.dartHit: 'assets/darts/sfx_board_hit.wav',
+    Sfx.dartBull: 'assets/darts/sfx_bullseye.wav',
+    Sfx.dartMiss: 'assets/darts/sfx_miss.wav',
+    Sfx.dartTick: 'assets/darts/sfx_tick.wav',
     Sfx.dartBust: 'assets/audio/buzzer.wav',
     Sfx.dartPull: 'assets/archery/sfx_click.wav',
   };
@@ -619,16 +620,23 @@ class AudioEngine {
     _safeHaptic(HapticFeedback.lightImpact);
   }
 
-  /// Dart impact on board (thunk), with optional ding on bullseye / T20.
+  /// Dart impact on the board: the board thunk, or on a bullseye the
+  /// bullseye sound (which has its own thunk and a rising chime).
   static void playDartHit({bool isBull = false}) {
     if (!_canPlaySfx) return;
-    _safePlay(Sfx.dartHit, 0.95);
     if (isBull) {
-      _safePlay(Sfx.dartBull, 0.6);
+      _safePlay(Sfx.dartBull, 0.95);
       _safeHaptic(HapticFeedback.mediumImpact);
     } else {
+      _safePlay(Sfx.dartHit, 0.95);
       _safeHaptic(HapticFeedback.selectionClick);
     }
+  }
+
+  /// One "ting" of the score count-up. [rate] raises the pitch.
+  static void playDartTick({double rate = 1.0}) {
+    if (!_canPlaySfx) return;
+    _safePlay(Sfx.dartTick, 0.5, rate: rate);
   }
 
   /// Dart missed board entirely (wall thud).
@@ -652,14 +660,14 @@ class AudioEngine {
     _safeHaptic(HapticFeedback.selectionClick);
   }
 
-  static void _safePlay(Sfx sfx, double volume) {
+  static void _safePlay(Sfx sfx, double volume, {double rate = 1.0}) {
     final effectiveVolume = (volume * masterVolume * sfxVolume).clamp(
       0.0,
       1.0,
     );
     if (effectiveVolume <= 0.001) return;
     try {
-      _backend.playSfx(sfx, effectiveVolume);
+      _backend.playSfx(sfx, effectiveVolume, rate: rate);
     } catch (e) {
       debugPrint('[AudioEngine] Playback error: $e');
     }
