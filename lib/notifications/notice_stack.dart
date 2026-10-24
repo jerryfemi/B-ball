@@ -18,12 +18,14 @@ import 'app_notices.dart';
 abstract final class NoticeStyle {
   static Color accent(NoticeSource s) => switch (s) {
         NoticeSource.archery => const Color(0xFF00FFCC),
+        NoticeSource.darts => const Color(0xFFEF4444),
         NoticeSource.basketball => const Color(0xFFF59E0B),
         NoticeSource.friends => const Color(0xFF38BDF8),
       };
 
   static String emoji(NoticeSource s) => switch (s) {
         NoticeSource.archery => '🏹',
+        NoticeSource.darts => '🎯',
         NoticeSource.basketball => '🏀',
         NoticeSource.friends => '👥',
       };
@@ -482,6 +484,7 @@ class _Bubble extends StatelessWidget {
       button: true,
       label: switch (source) {
         NoticeSource.archery => 'Archery invite',
+        NoticeSource.darts => 'Darts invite',
         NoticeSource.basketball => 'Hoops invite',
         NoticeSource.friends => 'Friend request',
       },
