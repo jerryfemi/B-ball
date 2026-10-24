@@ -1,0 +1,26 @@
+{
+  "name": "cool_bow",
+  "image": "cool_bow_atlas.png",
+  "cellWidth": 148,
+  "cellHeight": 578,
+  "columns": 1,
+  "rows": 1,
+  "layout": "Each row is one color version (p1, p2). Columns: rest",
+  "spinFrames": 0,
+  "spinDegrees": 0,
+  "stuckFrames": 0,
+  "animFrames": 0,
+  "animClip": null,
+  "animSeconds": 0,
+  "naturalColors": true,
+  "colors": [],
+  "frames": {
+    "p1_rest": {
+      "x": 0,
+      "y": 0,
+      "w": 148,
+      "h": 578
+    }
+  },
+  "credit": "Model: Cool Bow by Incg5764 (https://sketchfab.com/incg5764) · CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). If the license is CC-BY, credit the author in the game."
+}
