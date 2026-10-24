@@ -68,7 +68,10 @@ final GoRouter appRouter = GoRouter(
       path: '/match/:id',
       builder: (context, state) {
         final matchId = state.pathParameters['id'] ?? '';
-        return MatchRouteScreen(matchId: matchId);
+        return MatchRouteScreen(
+          key: ValueKey(matchId),
+          matchId: matchId,
+        );
       },
     ),
   ],
