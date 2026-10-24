@@ -37,6 +37,14 @@ class _MatchRouteScreenState extends ConsumerState<MatchRouteScreen> {
     _loadMatch();
   }
 
+  @override
+  void didUpdateWidget(covariant MatchRouteScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.matchId != widget.matchId) {
+      _loadMatch();
+    }
+  }
+
   Future<void> _loadMatch() async {
     setState(() {
       _isLoading = true;
@@ -180,23 +188,32 @@ class _MatchRouteScreenState extends ConsumerState<MatchRouteScreen> {
 
     // 1. Archery match
     if (match.isArchery) {
-      return ArcheryGameScreen(match: match);
+      return ArcheryGameScreen(
+        key: ValueKey(match.id),
+        match: match,
+      );
     }
 
     // 2. Darts match
     if (match.isDarts) {
-      return DartsGameScreen(match: match);
+      return DartsGameScreen(
+        key: ValueKey(match.id),
+        match: match,
+      );
     }
 
     // 3. Basketball (DunkVerse) match
-    return _BasketballMatchHarness(match: match);
+    return _BasketballMatchHarness(
+      key: ValueKey(match.id),
+      match: match,
+    );
   }
 }
 
 class _BasketballMatchHarness extends StatefulWidget {
   final CloudMatch match;
 
-  const _BasketballMatchHarness({required this.match});
+  const _BasketballMatchHarness({super.key, required this.match});
 
   @override
   State<_BasketballMatchHarness> createState() => _BasketballMatchHarnessState();
