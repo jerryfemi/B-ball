@@ -70,9 +70,57 @@ class BackboardVisual extends PositionComponent
   }
 
   /// The backboard, pole and wall shadows never change, so they are recorded
-  /// once into a [ui.Picture] (vector commands, resolution-independent) and
-  /// replayed every frame: zero Paint/Rect/Path allocations in the render loop.
+  /// once into a [ui.Picture] and then rasterised into a [ui.Image] at the
+  /// screen's resolution. Replaying the picture every frame re-ran its three
+  /// MaskFilter blurs on the GPU every frame; drawing the image is one blit.
+  /// Re-rasterised only when the screen size (pixels per metre) changes.
   ui.Picture? _staticPicture;
+  ui.Image? _staticImage;
+  double _imagePxPerUnit = 0.0;
+  double _dpr = 1.0;
+  Rect _imageSrc = Rect.zero;
+  Rect _imageDst = Rect.zero;
+  final Paint _imagePaint = Paint()..filterQuality = FilterQuality.medium;
+
+  /// World units of margin around the component box that are rasterised too
+  /// (the soft shadows reach slightly outside it).
+  static const double _imagePad = 1.0;
+
+  @override
+  void onGameResize(Vector2 size) {
+    super.onGameResize(size);
+    // Read once per resize, never per frame.
+    _dpr = WidgetsBinding.instance.platformDispatcher.views.first.devicePixelRatio;
+  }
+
+  /// Screen pixels per world metre at the current size (camera zoom is 1).
+  double get _pxPerUnit =>
+      game.size.y / BasketballGame.worldHeightInMeters * _dpr;
+
+  void _rasterise(double pxPerUnit) {
+    final ui.Picture picture = _staticPicture ??= _recordStaticPicture();
+    final double w = size.x + _imagePad * 2;
+    final double h = size.y + _imagePad * 2;
+    final int pw = (w * pxPerUnit).ceil().clamp(1, 4096);
+    final int ph = (h * pxPerUnit).ceil().clamp(1, 4096);
+    try {
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      canvas.scale(pw / w, ph / h);
+      canvas.translate(_imagePad, _imagePad);
+      canvas.drawPicture(picture);
+      final ui.Picture scaled = recorder.endRecording();
+      _staticImage?.dispose();
+      _staticImage = scaled.toImageSync(pw, ph);
+      scaled.dispose();
+      _imagePxPerUnit = pxPerUnit;
+      _imageSrc = Rect.fromLTWH(0, 0, pw.toDouble(), ph.toDouble());
+      _imageDst = Rect.fromLTWH(-_imagePad, -_imagePad, w, h);
+    } catch (_) {
+      _staticImage = null; // fall back to replaying the picture
+      _imagePxPerUnit = pxPerUnit;
+    }
+  }
 
   ui.Picture _recordStaticPicture() {
     final recorder = ui.PictureRecorder();
@@ -94,7 +142,14 @@ class BackboardVisual extends PositionComponent
       canvas.save();
       canvas.translate(fx.boardOffsetX, fx.boardOffsetY);
     }
-    canvas.drawPicture(_staticPicture ??= _recordStaticPicture());
+    final double pxPerUnit = _pxPerUnit;
+    if ((pxPerUnit - _imagePxPerUnit).abs() > 0.5) _rasterise(pxPerUnit);
+    final ui.Image? image = _staticImage;
+    if (image != null) {
+      canvas.drawImageRect(image, _imageSrc, _imageDst, _imagePaint);
+    } else {
+      canvas.drawPicture(_staticPicture ??= _recordStaticPicture());
+    }
     if (shaking) canvas.restore();
   }
 
@@ -102,6 +157,8 @@ class BackboardVisual extends PositionComponent
   void onRemove() {
     _staticPicture?.dispose();
     _staticPicture = null;
+    _staticImage?.dispose();
+    _staticImage = null;
     super.onRemove();
   }
 
