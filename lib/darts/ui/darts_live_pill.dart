@@ -74,17 +74,17 @@ class DartsLivePill extends ConsumerWidget {
           duration: const Duration(milliseconds: 200),
           child: Container(
             key: ValueKey(status),
-            padding: const EdgeInsets.fromLTRB(12.0, 6.0, 6.0, 6.0),
+            padding: const EdgeInsets.fromLTRB(10.0, 5.0, 6.0, 5.0),
             decoration: BoxDecoration(
-              color: const Color(0xD90A0E1A),
-              borderRadius: BorderRadius.circular(20.0),
+              color: const Color(0xE60A0E1A),
+              borderRadius: BorderRadius.circular(16.0),
               border: Border.all(color: color.withValues(alpha: 0.55)),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Pulse(enabled: pulse, child: Icon(icon, size: 13.0, color: color)),
-                const SizedBox(width: 7.0),
+                Pulse(enabled: pulse, child: Icon(icon, size: 12.0, color: color)),
+                const SizedBox(width: 6.0),
                 Flexible(
                   child: Text(
                     text,
@@ -92,9 +92,9 @@ class DartsLivePill extends ConsumerWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: color,
-                      fontSize: 10.5,
+                      fontSize: 10.0,
                       fontWeight: FontWeight.w900,
-                      letterSpacing: 0.7,
+                      letterSpacing: 0.6,
                       fontFeatures: const [FontFeature.tabularFigures()],
                     ),
                   ),
