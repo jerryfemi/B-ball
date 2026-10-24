@@ -38,9 +38,9 @@ abstract final class DartsK {
   /// Earth gravity (m/s²).
   static const double gravity = 9.81;
 
-  /// Launch speed used by the ballistic solver (m/s). About 0.27 s to the
-  /// board: quick like a real throw, with a small rise and a visible dip.
-  static const double idealSpeed = 9.0;
+  /// Launch speed used by the ballistic solver (m/s). About 0.20 s to the
+  /// board, matching GamePigeon's throw.
+  static const double idealSpeed = 12.0;
 
   /// Fixed physics integration timestep (240 Hz).
   static const double fixedDt = 1.0 / 240.0;
