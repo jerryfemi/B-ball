@@ -29,20 +29,19 @@ class BowOverlay {
 
   BowOverlay({required this.camera, required this.cameraRig});
 
-  // ── Bow sprite (`sprites/bow_fp_atlas.png`) ─────────────────────────────
+  // ── Bow sprite (`sprites/cool_bow_atlas.png`) ────────────────────────────
   // Rendered from the "Cool Bow" model (Incg5764, CC-BY 4.0) in glb2sprite:
-  // upright and nearly edge-on. Measured in the 43x534 image: the rope grip
-  // is centred at (13, 310). `bow_fp_wood.png` is the same render with the
-  // baked string removed: the string is drawn here instead, from tip to tip
-  // through the nocked arrow, on top of it.
-  static const String _bowAsset = 'assets/archery/sprites/bow_fp_wood.png';
-  static const double _tipTopImgX = 33.0, _tipTopImgY = 8.0;
-  static const double _tipBotImgX = 34.0, _tipBotImgY = 526.0;
-  static const double _gripImgX = 13.0;
-  static const double _gripImgY = 310.0;
+  // upright with 3D curvature and natural perspective (Yaw -22°, Pitch -6°).
+  // Measured in the 148x578 image: the rope grip is centred at (18, 315).
+  // The string is drawn by the game from tip to tip across the nocked arrow.
+  static const String _bowAsset = 'assets/archery/sprites/cool_bow_atlas.png';
+  static const double _tipTopImgX = 138.0, _tipTopImgY = 16.0;
+  static const double _tipBotImgX = 84.0, _tipBotImgY = 565.0;
+  static const double _gripImgX = 18.0;
+  static const double _gripImgY = 315.0;
 
-  /// Mirrored so the limbs curve away to the right, like GamePigeon's bow.
-  static const bool _mirror = true;
+  /// Rendered in natural first-person orientation, no mirroring needed.
+  static const bool _mirror = false;
 
   /// Whole bow length on screen, in screen heights (before [_scale]). Big
   /// enough that both tips run off the screen like GamePigeon's framing.
@@ -58,8 +57,8 @@ class BowOverlay {
   static const double _anchorY = 0.60; // pivot for the slide-out (screen h)
 
   // ── Arrow (refW units unless noted) ─────────────────────────────────────
-  static const double _tipFromGrip = -0.102; // tip x, from the grip centre
-  static const double _tipY = 0.623; // screen heights
+  static const double _tipFromGrip = -0.095; // tip x, from the grip centre
+  static const double _tipY = 0.588; // rests on the shelf just above the grip wrap
   static const double _shaftAtTip = 0.045; // shaft width at the front end
   static const double _shaftGrowth = 0.053; // extra width per refW of length
   static const double _capRadius = 0.022;
@@ -271,11 +270,10 @@ class BowOverlay {
     canvas.drawCircle(Offset.zero, _capR, _capRing);
     canvas.restore();
 
-    // 3. String: tip → arrow → tip, over the arrow, so it reads as nocked.
+    // 3. String: taut bowstring running from upper tip to lower tip across the nocked arrow.
     _string
       ..reset()
       ..moveTo(_stringTop.dx, _stringTop.dy)
-      ..lineTo(tipX, tipY)
       ..lineTo(_stringBot.dx, _stringBot.dy);
     canvas.drawPath(_string, _stringPaint);
 
