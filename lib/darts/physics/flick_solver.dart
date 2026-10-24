@@ -48,6 +48,27 @@ abstract final class FlickSolver {
     return Vector3(targetX / t, (targetY / t) + 0.5 * g * t, -d / t);
   }
 
+  /// Gentle aim assist (see [DartsK.assistPull]). Only the distance from the
+  /// centre is nudged, so the dart stays in the segment it was heading for.
+  static ({double x, double y}) assist(double x, double y) {
+    final double r = math.sqrt(x * x + y * y);
+    if (r < 1e-6) return (x: x, y: y);
+    double target = r;
+    const double pull = DartsK.assistPull;
+    const double reach = DartsK.assistReachMm;
+    const double tMid = (DartsK.trebleInR + DartsK.trebleOutR) * 0.5;
+    const double dMid = (DartsK.doubleInR + DartsK.doubleOutR) * 0.5;
+    if (r < DartsK.assistBullReachMm) {
+      target = r * (1.0 - pull); // toward the bull
+    } else if (r > DartsK.trebleInR - reach && r < DartsK.trebleOutR + reach) {
+      target = r + (tMid - r) * pull;
+    } else if (r > DartsK.doubleInR - reach && r < DartsK.doubleOutR + reach) {
+      target = r + (dMid - r) * pull;
+    }
+    final double k = target / r;
+    return (x: x * k, y: y * k);
+  }
+
   /// Where a flick sends the dart, in board millimetres (+x right, +y up).
   ///
   /// - [releaseMmX]: the dart's horizontal position when the finger let go,
