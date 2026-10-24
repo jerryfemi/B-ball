@@ -17,8 +17,6 @@ class ArcheryPauseMenu extends StatelessWidget {
   final VoidCallback? onRestart;
   final VoidCallback onLobby;
   final VoidCallback? onHowToPlay;
-  final String ambienceLabel;
-  final IconData ambienceIcon;
 
   /// Small attribution line under the buttons (e.g. a CC-BY model credit).
   final String? credit;
@@ -30,8 +28,6 @@ class ArcheryPauseMenu extends StatelessWidget {
     required this.onLobby,
     this.onRestart,
     this.onHowToPlay,
-    this.ambienceLabel = 'BIRDSONG',
-    this.ambienceIcon = Icons.forest_rounded,
     this.credit,
   });
 
@@ -48,116 +44,118 @@ class ArcheryPauseMenu extends StatelessWidget {
         ),
         Center(
           child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 380),
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 18),
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
-              decoration: BoxDecoration(
-                color: const Color(0xF20F172A),
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: const Color(0xFF1E2638), width: 1.5),
-                boxShadow: const [
-                  BoxShadow(color: Color(0xCC000000), blurRadius: 30, offset: Offset(0, 10)),
-                ],
-              ),
-              child: Material(
-                color: Colors.transparent,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Text(
-                      'PAUSED',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.6,
-                      ),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 380),
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 18),
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+                decoration: BoxDecoration(
+                  color: const Color(0xF20F172A),
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(
+                    color: const Color(0xFF1E2638),
+                    width: 1.5,
+                  ),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0xCC000000),
+                      blurRadius: 30,
+                      offset: Offset(0, 10),
                     ),
-                    if (online) ...[
-                      const SizedBox(height: 4),
+                  ],
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
                       const Text(
-                        'LIVE MATCH · YOUR SHOT CLOCK KEEPS RUNNING',
+                        'PAUSED',
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          color: Color(0xFFF59E0B),
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.6,
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.6,
                         ),
                       ),
-                    ],
-                    const SizedBox(height: 16),
-                    _AudioRow(
-                      icon: Icons.music_note_rounded,
-                      label: 'MUSIC',
-                      enabled: AudioEngine.musicEnabledNotifier,
-                      volume: AudioEngine.musicVolumeNotifier,
-                      onEnabled: AudioEngine.setMusicEnabled,
-                      onVolume: (v) => AudioEngine.musicVolume = v,
-                    ),
-                    _AudioRow(
-                      icon: Icons.graphic_eq_rounded,
-                      label: 'SOUND EFFECTS',
-                      enabled: AudioEngine.sfxEnabledNotifier,
-                      volume: AudioEngine.sfxVolumeNotifier,
-                      onEnabled: AudioEngine.setSfxEnabled,
-                      onVolume: (v) => AudioEngine.sfxVolume = v,
-                    ),
-                    _AudioRow(
-                      icon: ambienceIcon,
-                      label: ambienceLabel,
-                      enabled: AudioEngine.ambienceEnabledNotifier,
-                      volume: AudioEngine.ambienceVolumeNotifier,
-                      onEnabled: AudioEngine.setAmbienceEnabled,
-                      onVolume: (v) => AudioEngine.ambienceVolume = v,
-                    ),
-                    const SizedBox(height: 14),
-                    _MenuButton(
-                      label: 'RESUME',
-                      icon: Icons.play_arrow_rounded,
-                      primary: true,
-                      onTap: onResume,
-                    ),
-                    if (onHowToPlay != null) ...[
+                      if (online) ...[
+                        const SizedBox(height: 4),
+                        const Text(
+                          'LIVE MATCH · YOUR SHOT CLOCK KEEPS RUNNING',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Color(0xFFF59E0B),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.6,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+                      _AudioRow(
+                        icon: Icons.music_note_rounded,
+                        label: 'MUSIC',
+                        enabled: AudioEngine.musicEnabledNotifier,
+                        volume: AudioEngine.musicVolumeNotifier,
+                        onEnabled: AudioEngine.setMusicEnabled,
+                        onVolume: (v) => AudioEngine.musicVolume = v,
+                      ),
+                      _AudioRow(
+                        icon: Icons.graphic_eq_rounded,
+                        label: 'SOUND EFFECTS',
+                        enabled: AudioEngine.sfxEnabledNotifier,
+                        volume: AudioEngine.sfxVolumeNotifier,
+                        onEnabled: AudioEngine.setSfxEnabled,
+                        onVolume: (v) => AudioEngine.sfxVolume = v,
+                      ),
+                      const SizedBox(height: 14),
+                      _MenuButton(
+                        label: 'RESUME',
+                        icon: Icons.play_arrow_rounded,
+                        primary: true,
+                        onTap: onResume,
+                      ),
+                      if (onHowToPlay != null) ...[
+                        const SizedBox(height: 8),
+                        _MenuButton(
+                          label: 'HOW TO PLAY',
+                          icon: Icons.help_outline_rounded,
+                          onTap: onHowToPlay!,
+                        ),
+                      ],
+                      if (onRestart != null) ...[
+                        const SizedBox(height: 8),
+                        _MenuButton(
+                          label: 'RESTART MATCH',
+                          icon: Icons.replay_rounded,
+                          onTap: onRestart!,
+                        ),
+                      ],
                       const SizedBox(height: 8),
                       _MenuButton(
-                        label: 'HOW TO PLAY',
-                        icon: Icons.help_outline_rounded,
-                        onTap: onHowToPlay!,
+                        label: 'LOBBY',
+                        icon: Icons.grid_view_rounded,
+                        onTap: onLobby,
                       ),
+                      if (credit != null) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          credit!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Color(0xFF64748B),
+                            fontSize: 9.5,
+                          ),
+                        ),
+                      ],
                     ],
-                    if (onRestart != null) ...[
-                      const SizedBox(height: 8),
-                      _MenuButton(
-                        label: 'RESTART MATCH',
-                        icon: Icons.replay_rounded,
-                        onTap: onRestart!,
-                      ),
-                    ],
-                    const SizedBox(height: 8),
-                    _MenuButton(
-                      label: 'LOBBY',
-                      icon: Icons.grid_view_rounded,
-                      onTap: onLobby,
-                    ),
-                    if (credit != null) ...[
-                      const SizedBox(height: 10),
-                      Text(
-                        credit!,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(color: Color(0xFF64748B), fontSize: 9.5),
-                      ),
-                    ],
-                  ],
+                  ),
                 ),
               ),
             ),
-          ),
           ),
         ),
       ],
@@ -213,18 +211,19 @@ class _AudioRow extends StatelessWidget {
                 builder: (context, v, _) => SliderTheme(
                   data: SliderTheme.of(context).copyWith(
                     trackHeight: 3,
-                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
-                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+                    thumbShape: const RoundSliderThumbShape(
+                      enabledThumbRadius: 7,
+                    ),
+                    overlayShape: const RoundSliderOverlayShape(
+                      overlayRadius: 14,
+                    ),
                     activeTrackColor: _accent,
                     inactiveTrackColor: const Color(0xFF1E2638),
                     thumbColor: Colors.white,
                     disabledActiveTrackColor: const Color(0xFF334155),
                     disabledThumbColor: const Color(0xFF475569),
                   ),
-                  child: Slider(
-                    value: v,
-                    onChanged: on ? onVolume : null,
-                  ),
+                  child: Slider(value: v, onChanged: on ? onVolume : null),
                 ),
               ),
             ),
@@ -271,13 +270,21 @@ class _MenuButton extends StatelessWidget {
         icon: Icon(icon, size: 18),
         label: Text(
           label,
-          style: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.9, fontSize: 13),
+          style: const TextStyle(
+            fontWeight: FontWeight.w900,
+            letterSpacing: 0.9,
+            fontSize: 13,
+          ),
         ),
         style: ElevatedButton.styleFrom(
           elevation: 0,
-          backgroundColor: primary ? const Color(0xFF00FFCC) : const Color(0xFF1E2638),
+          backgroundColor: primary
+              ? const Color(0xFF00FFCC)
+              : const Color(0xFF1E2638),
           foregroundColor: primary ? const Color(0xFF0A0E1A) : Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
       ),
     );

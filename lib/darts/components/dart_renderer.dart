@@ -36,6 +36,10 @@ abstract final class DartRenderer {
 
   static const double _radToDeg = 180.0 / math.pi;
 
+  /// Alpha currently set on each paint (-1 = not set yet).
+  static int _paintAlpha = -1;
+  static int _shadowAlpha = -1;
+
   /// Draws the dart with its tip at (`tx`, `ty`, `tz`) and unit axis
   /// (`ax`, `ay`, `az`) pointing from tail to tip. [column] is the spin frame.
   /// [extraRotation] (radians) rotates about the tip (impact wobble).
@@ -53,6 +57,7 @@ abstract final class DartRenderer {
     double extraRotation = 0.0,
     double opacity = 1.0,
     double scaleMultiplier = 1.0,
+    int? fixedRow,
   }) {
     final double len = DartsK.dartLengthM * scaleMultiplier;
 
@@ -63,18 +68,24 @@ abstract final class DartRenderer {
     final double slx = p.outX;
     final double sly = p.outY;
 
-    // Line of sight from the eye to the middle of the dart.
-    final double mx = tx - ax * len * 0.5;
-    final double my = ty - ay * len * 0.5;
     final double mz = tz - az * len * 0.5;
-    final double vx = mx;
-    final double vy = my - p.eyeHeightM;
-    final double vz = mz - p.eyeZ;
-    final double vl = math.sqrt(vx * vx + vy * vy + vz * vz);
-    double cosT = vl > 1e-9 ? (vx * ax + vy * ay + vz * az) / vl : 1.0;
-    if (cosT > 1.0) cosT = 1.0;
-    if (cosT < -1.0) cosT = -1.0;
-    final int row = s.rowFor(math.acos(cosT) * _radToDeg);
+
+    final int row;
+    if (fixedRow != null) {
+      row = fixedRow.clamp(0, s.angles.length - 1);
+    } else {
+      // Line of sight from the eye to the middle of the dart.
+      final double mx = tx - ax * len * 0.5;
+      final double my = ty - ay * len * 0.5;
+      final double vx = mx;
+      final double vy = my - p.eyeHeightM;
+      final double vz = mz - p.eyeZ;
+      final double vl = math.sqrt(vx * vx + vy * vy + vz * vz);
+      double cosT = vl > 1e-9 ? (vx * ax + vy * ay + vz * az) / vl : 1.0;
+      if (cosT > 1.0) cosT = 1.0;
+      if (cosT < -1.0) cosT = -1.0;
+      row = s.rowFor(math.acos(cosT) * _radToDeg);
+    }
 
     final double dx = stx - slx;
     final double dy = sty - sly;
@@ -84,7 +95,13 @@ abstract final class DartRenderer {
     if (depth < 0.05) depth = 0.05;
     final double scale = len * p.focalPx / depth / s.fullLengthPx;
 
-    _paint.color = ui.Color.fromARGB((opacity.clamp(0.0, 1.0) * 255.0).round(), 255, 255, 255);
+    // Only build a new Color when the opacity actually changes (stuck darts
+    // fading out); the normal case reuses the paint as it is.
+    final int a = (opacity.clamp(0.0, 1.0) * 255.0).round();
+    if (a != _paintAlpha) {
+      _paintAlpha = a;
+      _paint.color = ui.Color.fromARGB(a, 255, 255, 255);
+    }
     c.save();
     c.translate(stx, sty);
     c.rotate(rot + extraRotation);
@@ -141,8 +158,11 @@ abstract final class DartRenderer {
     final double drawLen = math.max(l, len * k * 0.55);
 
     final int row = s.sideRow;
-    _shadowPaint.color =
-        ui.Color.fromARGB((alpha.clamp(0.0, 1.0) * 255.0).round(), 0, 0, 0);
+    final int sa = (alpha.clamp(0.0, 1.0) * 255.0).round();
+    if (sa != _shadowAlpha) {
+      _shadowAlpha = sa;
+      _shadowPaint.color = ui.Color.fromARGB(sa, 0, 0, 0);
+    }
     c.save();
     c.translate(px, py);
     c.rotate(math.atan2(dx, -dy) + extraRotation);

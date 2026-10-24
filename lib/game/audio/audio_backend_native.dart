@@ -45,11 +45,16 @@ class SoLoudBackend implements AudioBackend {
   }
 
   @override
-  void playSfx(Sfx sfx, double volume) {
+  void playSfx(Sfx sfx, double volume, {double rate = 1.0}) {
     final source = _sources[sfx];
     if (source == null || !_ready) return;
     try {
-      SoLoud.instance.play(source, volume: volume);
+      final handle = SoLoud.instance.play(source, volume: volume);
+      if (rate != 1.0) {
+        try {
+          SoLoud.instance.setRelativePlaySpeed(handle, rate);
+        } catch (_) {}
+      }
     } catch (_) {}
   }
 

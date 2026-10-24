@@ -137,7 +137,62 @@ class GameHudOverlay extends StatelessWidget {
           ),
         ),
 
-        // 3. Pause Overlay (Displayed when game is paused and not gameOver)
+        // 3a. "‹ Lobby" top-left (solo only; hidden when paused, game over, replay, or tour is active)
+        Positioned(
+          top: MediaQuery.of(context).padding.top + 62.0,
+          left: 12.0,
+          child: ListenableBuilder(
+            listenable: Listenable.merge([
+              game.matchSessionNotifier,
+              game.isPausedNotifier,
+              game.gameStateNotifier,
+              game.isTourActiveNotifier,
+            ]),
+            builder: (context, _) {
+              final isModalOrInactive = game.matchSessionNotifier.value != null ||
+                  game.isPausedNotifier.value ||
+                  game.gameStateNotifier.value == GameModeState.gameOver ||
+                  game.gameStateNotifier.value == GameModeState.replay ||
+                  game.isTourActiveNotifier.value;
+
+              if (isModalOrInactive) return const SizedBox.shrink();
+
+              return LobbyPill(
+                onTap: () => GoRouter.maybeOf(context)?.go('/'),
+              );
+            },
+          ),
+        ),
+
+        // 3b. "Play a friend" button under the sound button (solo only; hidden during modals)
+        Positioned(
+          top: MediaQuery.of(context).padding.top + 62.0,
+          right: 12.0,
+          child: ListenableBuilder(
+            listenable: Listenable.merge([
+              game.matchSessionNotifier,
+              game.isPausedNotifier,
+              game.gameStateNotifier,
+              game.isTourActiveNotifier,
+            ]),
+            builder: (context, _) {
+              final isModalOrInactive = game.matchSessionNotifier.value != null ||
+                  game.isPausedNotifier.value ||
+                  game.gameStateNotifier.value == GameModeState.gameOver ||
+                  game.gameStateNotifier.value == GameModeState.replay ||
+                  game.isTourActiveNotifier.value;
+
+              if (isModalOrInactive) return const SizedBox.shrink();
+
+              return PlayFriendButton(
+                key: game.playFriendKey,
+                onTap: () => MatchInboxSheet.playAFriend(context, game: game),
+              );
+            },
+          ),
+        ),
+
+        // 4. Pause Overlay (Displayed when game is paused and not gameOver)
         ValueListenableBuilder<bool>(
           valueListenable: game.isPausedNotifier,
           builder: (context, isPaused, _) {
@@ -149,7 +204,7 @@ class GameHudOverlay extends StatelessWidget {
           },
         ),
 
-        // 4. Game Over / Match Intermission / Match Winner Podium Overlays
+        // 5. Game Over / Match Intermission / Match Winner Podium Overlays
         ValueListenableBuilder<GameModeState>(
           valueListenable: game.gameStateNotifier,
           builder: (context, state, _) {
@@ -178,7 +233,7 @@ class GameHudOverlay extends StatelessWidget {
           },
         ),
 
-        // 5. Replay HUD Overlay (Displayed when watching replay mode)
+        // 6. Replay HUD Overlay (Displayed when watching replay mode)
         ValueListenableBuilder<GameModeState>(
           valueListenable: game.gameStateNotifier,
           builder: (context, state, _) {
@@ -189,35 +244,7 @@ class GameHudOverlay extends StatelessWidget {
           },
         ),
 
-        // 5a. "‹ Lobby" top-left, mirroring the people button (solo only;
-        //     in a 1v1, leaving goes through FORFEIT in the pause menu).
-        Positioned(
-          top: MediaQuery.of(context).padding.top + 62.0,
-          left: 12.0,
-          child: ValueListenableBuilder<MatchSession?>(
-            valueListenable: game.matchSessionNotifier,
-            builder: (context, session, _) => session != null
-                ? const SizedBox.shrink()
-                : LobbyPill(onTap: () => GoRouter.maybeOf(context)?.go('/')),
-          ),
-        ),
-
-        // 5b. "Play a friend" button under the sound button (solo only)
-        Positioned(
-          top: MediaQuery.of(context).padding.top + 62.0,
-          right: 12.0,
-          child: ValueListenableBuilder<MatchSession?>(
-            valueListenable: game.matchSessionNotifier,
-            builder: (context, session, _) => session != null
-                ? const SizedBox.shrink()
-                : PlayFriendButton(
-                    key: game.playFriendKey,
-                    onTap: () => MatchInboxSheet.playAFriend(context, game: game),
-                  ),
-          ),
-        ),
-
-        // 6. First-Launch / Replay Onboarding Tour Overlay
+        // 7. First-Launch / Replay Onboarding Tour Overlay
         ValueListenableBuilder<bool>(
           valueListenable: game.isTourActiveNotifier,
           builder: (context, isTourActive, _) {

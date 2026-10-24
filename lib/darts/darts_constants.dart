@@ -38,9 +38,9 @@ abstract final class DartsK {
   /// Earth gravity (m/s²).
   static const double gravity = 9.81;
 
-  /// Launch speed used by the ballistic solver (m/s). About 0.27 s to the
-  /// board: quick like a real throw, with a small rise and a visible dip.
-  static const double idealSpeed = 9.0;
+  /// Launch speed used by the ballistic solver (m/s). About 0.20 s to the
+  /// board, matching GamePigeon's throw.
+  static const double idealSpeed = 12.0;
 
   /// Fixed physics integration timestep (240 Hz).
   static const double fixedDt = 1.0 / 240.0;
@@ -54,16 +54,16 @@ abstract final class DartsK {
   // ─── Flick & Throw Gesture (pure flick, no aim preview) ────────────────────
   /// Minimum upward flick speed required to trigger a throw (screen heights / s).
   /// Releasing below this speed drops the dart back into the hand with no penalty.
-  static const double minFlick = 0.90;
+  static const double minFlick = 1.20;
 
   /// Upward flick speed (screen heights / s) that sends the dart to bull height.
-  /// Faster goes higher, slower goes lower.
-  static const double flickRefSpeed = 2.4;
+  /// Tuned to GamePigeon so a natural casual flick lands around the center.
+  static const double flickRefSpeed = 4.8;
 
   /// Board millimetres of height per 1.0 of flick speed relative to
-  /// [flickRefSpeed] (10% faster ≈ 26 mm higher). Treble 20 needs a
-  /// consistent flick about 40% faster than the bull flick.
-  static const double flickHeightMmPerUnit = 260.0;
+  /// [flickRefSpeed]. Allows a wide playable range where deliberate hard
+  /// snaps reach Treble/Double 20 without overshooting the board on normal flicks.
+  static const double flickHeightMmPerUnit = 240.0;
 
   /// Sideways drift: board mm per tan(angle) of the swipe away from straight
   /// up (5° past the dead zone ≈ 26 mm).

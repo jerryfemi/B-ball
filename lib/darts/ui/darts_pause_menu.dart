@@ -32,8 +32,6 @@ class DartsPauseMenu extends StatelessWidget {
       onLobby: onLobby,
       onRestart: online ? null : onRestart,
       onHowToPlay: onHowToPlay,
-      ambienceLabel: 'PUB AMBIENCE',
-      ambienceIcon: Icons.sports_bar_rounded,
     );
   }
 }

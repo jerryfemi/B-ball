@@ -42,14 +42,16 @@ void main() {
           ).y;
       expect(y(DartsK.flickRefSpeed * 1.1), greaterThan(0.0));
       expect(y(DartsK.flickRefSpeed * 0.9), lessThan(0.0));
-      // 10% faster ≈ 26 mm higher.
-      expect(y(DartsK.flickRefSpeed * 1.1), closeTo(26.0, 0.5));
+      // 10% faster:
+      expect(y(DartsK.flickRefSpeed * 1.1), closeTo(0.1 * DartsK.flickHeightMmPerUnit, 0.5));
     });
 
-    test('treble 20 needs a flick about 40% harder than the bull flick', () {
+    test('treble 20 needs an intentional flick harder than the bull flick', () {
+      final double trebleSpeed = DartsK.flickRefSpeed *
+          (1.0 + (DartsK.trebleInR + DartsK.trebleOutR) * 0.5 / DartsK.flickHeightMmPerUnit);
       final t = FlickSolver.targetForFlick(
         releaseMmX: 0.0,
-        upwardSpeed: DartsK.flickRefSpeed * 1.4,
+        upwardSpeed: trebleSpeed,
         angleDeg: 0.0,
       );
       expect(t.y, inInclusiveRange(DartsK.trebleInR, DartsK.trebleOutR));

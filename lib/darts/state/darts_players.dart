@@ -33,7 +33,7 @@ class DartsPlayers {
       DartsPlayer(name: 'You', avatar: PlayerDescriptor.defaultAvatar);
 
   static const DartsPlayer bot =
-      DartsPlayer(name: 'DartBot', avatar: 'assets/avatars/dunk_heads (2).webp');
+      DartsPlayer(name: 'Bot', avatar: 'assets/avatars/dunk_heads (2).webp');
 
   @override
   bool operator ==(Object other) =>
@@ -44,7 +44,7 @@ class DartsPlayers {
 }
 
 /// The two players shown on the scoreboard.
-/// Updated when profile loads in solo play (you vs DartBot) or on room join in online play.
+/// Updated when profile loads in solo play (you vs the bot) or on room join in online play.
 class DartsPlayersNotifier extends Notifier<DartsPlayers> {
   @override
   DartsPlayers build() => const DartsPlayers(

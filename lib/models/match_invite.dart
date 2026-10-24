@@ -56,6 +56,7 @@ class MatchInvite {
   });
 
   bool get isArchery => game == 'archery';
+  bool get isDarts => game == 'darts';
 
   bool get isPending => status == MatchInviteStatus.pending;
   bool get isAccepted => status == MatchInviteStatus.accepted;

@@ -1,4 +1,3 @@
-import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -18,12 +17,14 @@ import 'app_notices.dart';
 abstract final class NoticeStyle {
   static Color accent(NoticeSource s) => switch (s) {
         NoticeSource.archery => const Color(0xFF00FFCC),
+        NoticeSource.darts => const Color(0xFFEF4444),
         NoticeSource.basketball => const Color(0xFFF59E0B),
         NoticeSource.friends => const Color(0xFF38BDF8),
       };
 
   static String emoji(NoticeSource s) => switch (s) {
         NoticeSource.archery => '🏹',
+        NoticeSource.darts => '🎯',
         NoticeSource.basketball => '🏀',
         NoticeSource.friends => '👥',
       };
@@ -381,12 +382,12 @@ class NoticeCard extends HookConsumerWidget {
         duration: const Duration(milliseconds: 100),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(18),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+          child: SizedBox(
+            // No backdrop blur here: over the live game it re-blurs every frame.
             child: Container(
               padding: EdgeInsets.fromLTRB(10, compact ? 8 : 10, compact ? 4 : 10, compact ? 8 : 10),
               decoration: BoxDecoration(
-                color: const Color(0xD90F172A),
+                color: const Color(0xF00F172A),
                 borderRadius: BorderRadius.circular(18),
                 border: Border.all(color: accent.withValues(alpha: 0.45), width: 1.2),
               ),
@@ -482,6 +483,7 @@ class _Bubble extends StatelessWidget {
       button: true,
       label: switch (source) {
         NoticeSource.archery => 'Archery invite',
+        NoticeSource.darts => 'Darts invite',
         NoticeSource.basketball => 'Hoops invite',
         NoticeSource.friends => 'Friend request',
       },

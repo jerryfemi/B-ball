@@ -22,6 +22,7 @@ enum Sfx {
   dartMiss,
   dartBust,
   dartPull,
+  dartTick,
 }
 
 /// Low-level sound output used by [AudioEngine].
@@ -41,8 +42,9 @@ abstract class AudioBackend {
   Future<void> loadSfx(Map<Sfx, String> assetKeys);
 
   /// Plays a decoded effect at [volume] (0..1, already fully scaled).
+  /// [rate] is the playback speed (1 = normal; 2 = an octave higher).
   /// Must be cheap and synchronous: it runs from physics callbacks.
-  void playSfx(Sfx sfx, double volume);
+  void playSfx(Sfx sfx, double volume, {double rate = 1.0});
 
   /// Points the music player at [assetKey]. On web this only sets the
   /// source (the browser streams it), so it must be called synchronously

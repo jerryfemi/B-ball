@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
+
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -24,7 +25,8 @@ class BoardBackdrop extends Component {
   double _h = 0.0;
 
   static const List<String> _texturePaths = [
-    'assets/darts/wood.jpg',
+    'assets/darts/wall_walnut.jpg',
+    'assets/darts/floor.jpg',
     'assets/darts/wood.png',
   ];
 
@@ -36,7 +38,9 @@ class BoardBackdrop extends Component {
     for (final path in _texturePaths) {
       try {
         final ByteData data = await rootBundle.load(path);
-        final ui.Codec codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
+        final ui.Codec codec = await ui.instantiateImageCodec(
+          data.buffer.asUint8List(),
+        );
         _wood = (await codec.getNextFrame()).image;
         break;
       } catch (_) {
@@ -104,7 +108,10 @@ class BoardBackdrop extends Component {
     }
 
     // Warm light on the board.
-    final Offset centre = Offset(projection.boardCenterX, projection.boardCenterY);
+    final Offset centre = Offset(
+      projection.boardCenterX,
+      projection.boardCenterY,
+    );
     final double r = math.max(projection.boardRadiusPx * 3.0, height * 0.6);
     c.drawRect(
       screen,
@@ -146,7 +153,8 @@ class BoardBackdrop extends Component {
     ];
     final double plankW = math.max(56.0, projection.boardRadiusPx * 0.62);
     final int count = (width / plankW).ceil() + 1;
-    final double x0 = projection.boardCenterX - plankW * (count / 2).floor() - plankW * 0.5;
+    final double x0 =
+        projection.boardCenterX - plankW * (count / 2).floor() - plankW * 0.5;
     final math.Random rnd = math.Random(7);
     final Paint fill = Paint();
     final Paint grain = Paint()
@@ -193,15 +201,21 @@ class BoardBackdrop extends Component {
       }
       // A knot now and then.
       if (rnd.nextDouble() < 0.35) {
-        final Offset k = Offset(x + plankW * (0.3 + 0.4 * rnd.nextDouble()), height * rnd.nextDouble());
+        final Offset k = Offset(
+          x + plankW * (0.3 + 0.4 * rnd.nextDouble()),
+          height * rnd.nextDouble(),
+        );
         c.drawOval(
-          Rect.fromCenter(center: k, width: plankW * 0.16, height: plankW * 0.30),
+          Rect.fromCenter(
+            center: k,
+            width: plankW * 0.16,
+            height: plankW * 0.30,
+          ),
           Paint()
-            ..shader = ui.Gradient.radial(
-              k,
-              plankW * 0.15,
-              const [Color(0x664A2A12), Color(0x00000000)],
-            ),
+            ..shader = ui.Gradient.radial(k, plankW * 0.15, const [
+              Color(0x664A2A12),
+              Color(0x00000000),
+            ]),
         );
       }
       c.drawLine(Offset(x, 0), Offset(x, height), seam);

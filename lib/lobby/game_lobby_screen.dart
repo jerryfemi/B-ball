@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../archery/archery_game_screen.dart' show ArcheryChallenge;
+import '../game/audio/audio_engine.dart';
 import '../notifications/app_notices.dart';
 import '../notifications/notice_stack.dart';
 import 'game_catalog.dart';
@@ -20,11 +21,26 @@ import 'widgets/made_by_footer.dart';
 ///
 /// The screen itself watches nothing; the account chip and the matches
 /// section each watch only what they show.
-class GameLobbyScreen extends StatelessWidget {
+class GameLobbyScreen extends StatefulWidget {
   const GameLobbyScreen({super.key});
 
+  @override
+  State<GameLobbyScreen> createState() => _GameLobbyScreenState();
+
   /// Keeps the lobby readable on desktop instead of stretching edge to edge.
-  static const double _maxContentWidth = 1180;
+  static const double maxContentWidth = 1180;
+}
+
+class _GameLobbyScreenState extends State<GameLobbyScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // The lobby is silent: stop any game's music or ambience still playing.
+    AudioEngine.silenceForLobby();
+  }
+
+  /// Keeps the lobby readable on desktop instead of stretching edge to edge.
+  static const double _maxContentWidth = GameLobbyScreen.maxContentWidth;
 
   static bool get _online => Firebase.apps.isNotEmpty;
 

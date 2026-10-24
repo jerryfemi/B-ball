@@ -247,7 +247,9 @@ class IncomingChallengeDialog extends HookConsumerWidget {
                 child: Text(
                   invite.isArchery
                       ? 'ARCHERY • SETS OF 3 ARROWS • FIRST TO 6'
-                      : '${invite.totalRounds} ROUNDS • ${invite.roundDurationSeconds}s • ${invite.difficulty.toUpperCase()}',
+                      : invite.isDarts
+                          ? 'DARTS 301 • 3 DARTS A TURN • DOWN TO ZERO'
+                          : '${invite.totalRounds} ROUNDS • ${invite.roundDurationSeconds}s • ${invite.difficulty.toUpperCase()}',
                   style: const TextStyle(
                     color: AppColors.textMuted,
                     fontSize: 10.5,

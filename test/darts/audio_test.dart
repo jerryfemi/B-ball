@@ -44,6 +44,22 @@ void main() {
       expect(() => AudioEngine.playDartPull(), returnsNormally);
     });
 
+    test('Count-up tings: 1-6 points tick that many times, more is a burst of 8', () {
+      expect(Sfx.values, contains(Sfx.dartTick));
+      expect(DartsAudio.tickCountFor(0), 0);
+      for (int p = 1; p <= 6; p++) {
+        expect(DartsAudio.tickCountFor(p), p);
+      }
+      expect(DartsAudio.tickCountFor(7), 8);
+      expect(DartsAudio.tickCountFor(57), 8);
+      expect(DartsAudio.tickCountFor(60), 8);
+      // pitch climbs, gaps shrink
+      expect(DartsAudio.tickRate(5), greaterThan(DartsAudio.tickRate(0)));
+      expect(DartsAudio.tickGap(5), lessThan(DartsAudio.tickGap(0)));
+      expect(() => DartsAudio.playScoreTicks(20), returnsNormally);
+      DartsAudio.cancelTicks();
+    });
+
     test('DartsAudio claim and release lifecycle runs cleanly', () {
       final owner = Object();
       expect(() => DartsAudio.init(owner), returnsNormally);
