@@ -43,7 +43,6 @@ class BoardBackdrop extends Component {
         _wood = (await codec.getNextFrame()).image;
         break;
       } catch (_) {
-      } catch (_) {
         // Not there: try the next one, else paint the planks.
       }
     }
