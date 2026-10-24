@@ -417,6 +417,14 @@ class AudioEngine {
     unawaited(useGameAmbience(null));
   }
 
+  /// Forces silence for the lobby: clears any soundtrack owner, unloads game music,
+  /// and stops ambience so the lobby stays quiet.
+  static void silenceForLobby() {
+    _soundtrackOwner = null;
+    unawaited(useGameSoundtrack(''));
+    unawaited(useGameAmbience(null));
+  }
+
   /// Switches the soundtrack when a game opens. Basketball passes null;
   /// archery passes its own track (or '' for silence). Settings (MUSIC on/off,
   /// volume, mute) stay app-wide.
