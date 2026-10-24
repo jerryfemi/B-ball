@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import '../darts_constants.dart';
 import '../physics/flick_solver.dart';
 import '../scene/board_projection.dart';
@@ -15,8 +13,13 @@ class _PointerSample {
 /// 1. Touching the lower part of the screen picks the dart up; it follows the
 ///    finger ([isHolding], [fingerX], [fingerY]).
 /// 2. Swiping up and letting go throws it. There is no aim preview: the
-///    landing spot comes only from the flick ([FlickSolver.targetForFlick]):
-///    release position → left/right, swipe angle → drift, swipe speed → height.
+///    landing spot comes only from the flick:
+///    - left/right: where the swipe points. The stroke (its last
+///      [DartsK.flickStrokeWindow]) is extended up the screen to the board's
+///      centre row, so swiping at the 20 sends the dart to the 20;
+///    - height: swipe speed over the last [DartsK.flickSpeedWindow]
+///      ([FlickSolver.targetForFlick]);
+///    - then a light aim assist ([FlickSolver.assist]).
 /// 3. Letting go without an upward swipe puts the dart back down.
 ///
 /// Zero heap allocations while the finger moves (fixed ring buffer).
@@ -57,7 +60,7 @@ class FlickController {
   // ─── Pointer Tracking & Ring Buffer ────────────────────────────────────────
   int? _activePointerId;
 
-  static const int _sampleCapacity = 12;
+  static const int _sampleCapacity = 40; // ~0.3 s at 120 Hz
   final List<_PointerSample> _samples = List.generate(
     _sampleCapacity,
     (_) => _PointerSample(),
@@ -134,33 +137,48 @@ class FlickController {
     final int latestIdx = (_sampleHead - 1 + _sampleCapacity) % _sampleCapacity;
     final _PointerSample latest = _samples[latestIdx];
 
-    // A sample ~60 ms before release, for a steady velocity estimate.
+    final _PointerSample speedFrom = _sampleBefore(latest, DartsK.flickSpeedWindow);
+    final _PointerSample strokeFrom = _sampleBefore(latest, DartsK.flickStrokeWindow);
+
+    final double dt = latest.time - speedFrom.time;
+    if (dt < 0.012) return false;
+
+    // Height: average upward speed over the speed window.
+    final double upwardSpeed = -(latest.y - speedFrom.y) / (screenH * dt); // screen heights / s
+    if (upwardSpeed < DartsK.minFlick) return false;
+
+    // Left/right: extend the stroke up to the board's centre row and read
+    // where it crosses, in board mm. A short or flat stroke falls back to
+    // straight up from the release point.
+    final double sdx = latest.x - strokeFrom.x;
+    final double sdy = latest.y - strokeFrom.y; // negative = upward
+    double crossX = latest.x;
+    if (sdy < -8.0) {
+      final double toBoard = projection.boardCenterY - latest.y; // negative
+      crossX = latest.x + sdx / sdy * toBoard;
+    }
+    final double pointMmX = (crossX - projection.boardCenterX) * projection.pxToMm;
+
+    final target = FlickSolver.targetForFlick(
+      releaseMmX: pointMmX,
+      upwardSpeed: upwardSpeed,
+      angleDeg: 0.0, // direction is already in pointMmX
+    );
+    final assisted = FlickSolver.assist(target.x, target.y);
+    lastTargetMmX = assisted.x;
+    lastTargetMmY = assisted.y;
+    return true;
+  }
+
+  /// The newest sample at least [window] seconds older than [latest] (or the
+  /// oldest one kept).
+  _PointerSample _sampleBefore(_PointerSample latest, double window) {
     _PointerSample past = latest;
     for (int i = 1; i < _sampleCount; i++) {
       final int idx = (_sampleHead - 1 - i + _sampleCapacity) % _sampleCapacity;
       past = _samples[idx];
-      if (latest.time - past.time >= 0.060) break;
+      if (latest.time - past.time >= window) break;
     }
-
-    final double dt = latest.time - past.time;
-    if (dt < 0.012) return false;
-
-    final double dx = latest.x - past.x;
-    final double dy = latest.y - past.y; // negative = upward on screen
-    final double upwardSpeed = -dy / (screenH * dt); // screen heights / s
-    if (upwardSpeed < DartsK.minFlick) return false;
-
-    final double angleDeg = math.atan2(dx, -dy) * 180.0 / math.pi;
-    // Pure flick (GamePigeon): release starts from center; horizontal aim is driven by flick angle
-    const double releaseMmX = 0.0;
-
-    final target = FlickSolver.targetForFlick(
-      releaseMmX: releaseMmX,
-      upwardSpeed: upwardSpeed,
-      angleDeg: angleDeg,
-    );
-    lastTargetMmX = target.x;
-    lastTargetMmY = target.y;
-    return true;
+    return past;
   }
 }
