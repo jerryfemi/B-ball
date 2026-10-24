@@ -213,6 +213,10 @@ class DartsGameScreen extends HookConsumerWidget {
 
     final g = game.value;
 
+    final matchState = ref.watch(dartsMatchProvider);
+    final bool isModalActive =
+        paused.value || showTour.value || matchState.matchOver;
+
     return Scaffold(
       backgroundColor: const Color(DartsK.surfaceDark),
       body: SafeArea(
@@ -259,12 +263,16 @@ class DartsGameScreen extends HookConsumerWidget {
                   // 2. Translucent Glass HUD (Remaining scores, Round, Darts Left, Pause Button)
                   DartsHud(onOpenPause: openPause),
 
-                  // 3. Quick Lobby Navigation Pill under Top Bar
-                  Positioned(
-                    top: 56.0,
-                    left: 16.0,
-                    child: LobbyPill(onTap: goToLobbyAsync),
-                  ),
+                  // 3. Quick Lobby Navigation Pill under Top Bar (hidden during modals)
+                  if (!isModalActive)
+                    Positioned(
+                      top: 54.0,
+                      left: 16.0,
+                      child: LobbyPill(
+                        onTap: goToLobbyAsync,
+                        compact: true,
+                      ),
+                    ),
 
                   // 3b. Online status pill (shot clock / opponent status)
                   if (isOnline)
