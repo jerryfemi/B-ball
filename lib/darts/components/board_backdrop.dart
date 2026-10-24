@@ -25,6 +25,7 @@ class BoardBackdrop extends Component {
   double _h = 0.0;
 
   static const List<String> _texturePaths = [
+    'assets/darts/wall_walnut.jpg',
     'assets/darts/floor.jpg',
     'assets/darts/wood.png',
   ];
