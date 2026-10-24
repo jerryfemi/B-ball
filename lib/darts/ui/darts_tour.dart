@@ -83,7 +83,7 @@ class _DartsTourState extends State<DartsTour> {
       icon: Icons.people_alt_rounded,
       title: 'PLAY A FRIEND',
       body:
-          'Challenge friends live with a 6-digit match code, or practice your precision against DartBot in solo play.',
+          'Challenge friends live with a 6-digit match code, or practice your precision against the bot in solo play.',
       footer: 'Dart 3D model by oxxycodone (Sketchfab), CC-BY 4.0.',
     ),
   ];
