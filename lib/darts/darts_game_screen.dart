@@ -10,6 +10,10 @@ import '../game/ui/common/clean_ui.dart';
 import '../game/ui/common/lobby_pill.dart';
 import '../game/ui/match/match_lobby_dialog.dart';
 import '../game/ui/match/match_setup_dialog.dart';
+import '../archery/ui/archery_match_bar.dart'
+    show ArcheryInbox, ArcheryMatchesButton, ArcheryRoundButton;
+import '../notifications/notice_stack.dart';
+import '../notifications/profile_drawer.dart';
 import '../models/cloud_match.dart';
 import '../models/friend_profile.dart';
 import '../models/player_descriptor.dart';
@@ -204,6 +208,25 @@ class DartsGameScreen extends HookConsumerWidget {
       paused.value = true;
     }
 
+    // Before a sheet opens over the game: drop any dart held in hand (no menu).
+    void openPauseSilently() {
+      game.value?.flickController.onPointerCancel();
+    }
+
+    void openProfile() {
+      openPauseSilently();
+      ProfileDrawer.show(
+        context,
+        onOpenMatch: (m) => GoRouter.maybeOf(context)?.go('/match/${m.id}'),
+        onOpenMatches: () => ArcheryInbox.open(
+          context,
+          onCreateMatch: () => DartsChallenge.start(context, showGamePicker: true),
+        ),
+        onPlayFriend: () => DartsChallenge.start(context),
+        onHowToPlay: isOnline ? null : () => showTour.value = true,
+      );
+    }
+
     void resume() {
       final g = game.value;
       if (g == null) return;
@@ -213,9 +236,11 @@ class DartsGameScreen extends HookConsumerWidget {
 
     final g = game.value;
 
-    final matchState = ref.watch(dartsMatchProvider);
+    // Only rebuild the screen when the match ends, not on every dart (the
+    // HUD, banner and result card watch what they need themselves).
+    final bool matchOver = ref.watch(dartsMatchProvider.select((s) => s.matchOver));
     final bool isModalActive =
-        paused.value || showTour.value || matchState.matchOver;
+        paused.value || showTour.value || matchOver;
 
     return Scaffold(
       backgroundColor: const Color(DartsK.surfaceDark),
@@ -271,6 +296,45 @@ class DartsGameScreen extends HookConsumerWidget {
                       child: LobbyPill(
                         onTap: goToLobbyAsync,
                         compact: true,
+                      ),
+                    ),
+
+                  // 3a. Right column under pause: your profile drawer
+                  //     (invites, friends, matches) and, in solo, PLAY A FRIEND.
+                  if (_firebaseReady && !isModalActive)
+                    Positioned(
+                      top: 58.0,
+                      right: 16.0,
+                      child: Column(
+                        children: [
+                          ArcheryMatchesButton(onTap: openProfile),
+                          if (!isOnline) ...[
+                            const SizedBox(height: 8.0),
+                            ArcheryRoundButton(
+                              icon: Icons.people_alt_rounded,
+                              tooltip: 'Challenge a friend',
+                              onTap: () {
+                                openPauseSilently();
+                                DartsChallenge.start(context);
+                              },
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+
+                  // 3c. Notifications from any game (invites, friend
+                  //     requests). In a live 1v1 they shrink to bubbles on
+                  //     the right edge so nothing covers the board.
+                  if (_firebaseReady && !isModalActive)
+                    Positioned(
+                      left: isOnline ? 16.0 : 64.0,
+                      right: isOnline ? 16.0 : 64.0,
+                      top: isOnline ? 140.0 : 100.0,
+                      child: NoticeStack(
+                        live: isOnline,
+                        onBeforeOpen: openPauseSilently,
+                        onOpenMatch: (m) => GoRouter.maybeOf(context)?.go('/match/${m.id}'),
                       ),
                     ),
 
