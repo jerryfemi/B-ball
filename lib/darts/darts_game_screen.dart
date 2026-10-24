@@ -27,7 +27,6 @@ import 'state/darts_match_notifier.dart';
 import 'state/darts_players.dart';
 import 'state/darts_rules.dart';
 import 'ui/darts_hud.dart';
-import 'ui/darts_live_pill.dart';
 import 'ui/darts_pause_menu.dart';
 import 'ui/darts_result_card.dart';
 import 'ui/darts_tour.dart';
@@ -130,7 +129,7 @@ class DartsGameScreen extends HookConsumerWidget {
         final owner = audioOwner.value;
         if (owner != null) DartsAudio.leave(owner);
       };
-    }, const []);
+    }, [match?.id]);
 
     // Tour display check on solo open
     useEffect(() {
@@ -285,8 +284,11 @@ class DartsGameScreen extends HookConsumerWidget {
                     child: GameWidget(game: g),
                   ),
 
-                  // 2. Translucent Glass HUD (Remaining scores, Round, Darts Left, Pause Button)
-                  DartsHud(onOpenPause: openPause),
+                  // 2. Translucent Glass HUD (Remaining scores, Round, Darts Left, Live Status, Pause)
+                  DartsHud(
+                    onOpenPause: openPause,
+                    online: online.value,
+                  ),
 
                   // 3. Quick Lobby Navigation Pill under Top Bar (hidden during modals)
                   if (!isModalActive)
@@ -335,17 +337,6 @@ class DartsGameScreen extends HookConsumerWidget {
                         live: isOnline,
                         onBeforeOpen: openPauseSilently,
                         onOpenMatch: (m) => GoRouter.maybeOf(context)?.go('/match/${m.id}'),
-                      ),
-                    ),
-
-                  // 3b. Online status pill (shot clock / opponent status)
-                  if (isOnline)
-                    Positioned(
-                      top: 96.0,
-                      left: 16.0,
-                      right: 16.0,
-                      child: Center(
-                        child: DartsLivePill(online: online.value),
                       ),
                     ),
 
