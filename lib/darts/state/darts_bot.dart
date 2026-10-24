@@ -62,7 +62,7 @@ class BotAim {
 ///   4. Treble (3..60 divisible by 3)
 ///   5. Inner bull (50)
 /// - No 1-dart finish possible: aim the fat single leaving <= 40 (prefer <= 20).
-/// - Accuracy: 2D Gaussian scatter with σ = 20 mm, seeded via Box–Muller transform
+/// - Accuracy: 2D Gaussian scatter with σ = [DartsK.botSigmaMm], seeded via Box–Muller transform
 ///   matching the Archery botShot pattern.
 abstract final class DartsBot {
   /// Determines the optimal aiming target point given the player's [remaining] score.
@@ -217,7 +217,7 @@ abstract final class DartsBot {
   /// - [dartIndex]: 0, 1, or 2 (dart number within this turn).
   /// - [remaining]: Current points remaining before this throw.
   ///
-  /// Uses a Box–Muller 2D Gaussian scatter with σ = [DartsK.botSigmaMm] (20 mm).
+  /// Uses a Box–Muller 2D Gaussian scatter with σ = [DartsK.botSigmaMm].
   static DartHit dart(int seed, int round, int dartIndex, int remaining) {
     int h = seed;
     h = (h * 31 + round) & 0x7FFFFFFF;
