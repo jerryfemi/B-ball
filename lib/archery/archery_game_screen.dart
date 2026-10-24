@@ -16,6 +16,7 @@ import '../services/auth_service.dart';
 import '../services/firestore_match_service.dart';
 import 'archery_game.dart';
 import 'audio/archery_audio.dart';
+import 'camera/camera_rig.dart';
 import 'online/archery_online_controller.dart';
 import 'state/archery_match_notifier.dart';
 import 'state/archery_players.dart';
@@ -218,6 +219,13 @@ class ArcheryGameScreen extends HookConsumerWidget {
       paused.value = false;
     }
 
+    final matchState = ref.watch(archeryMatchProvider);
+    final bool isModalActive = paused.value ||
+        showTour.value ||
+        matchState.matchOver ||
+        matchState.setOver ||
+        matchState.phase == ShotPhase.setEnd;
+
     return Scaffold(
       backgroundColor: const Color(0xFF060913),
       body: SafeArea(
@@ -281,13 +289,13 @@ class ArcheryGameScreen extends HookConsumerWidget {
                         },
                       ),
                     ),
-                  // "‹ Lobby" under the scoreboard's left edge. In a live
-                  // match it asks first (leaving is a forfeit).
-                  Positioned(
-                    top: 108.0,
-                    left: 12.0,
-                    child: LobbyPill(onTap: goToLobby),
-                  ),
+                  // "‹ Lobby" under the scoreboard's left edge (hidden during modals).
+                  if (!isModalActive)
+                    Positioned(
+                      top: 108.0,
+                      left: 12.0,
+                      child: LobbyPill(onTap: goToLobby),
+                    ),
                   Positioned(
                     top: 8.0,
                     right: 12.0,
