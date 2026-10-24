@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
+
 import '../archery_constants.dart';
 import '../camera/archery_camera.dart';
 import '../camera/camera_rig.dart';
@@ -185,10 +187,12 @@ class BowOverlay {
     _applyAlpha((1.0 - t).clamp(0.0, 1.0));
 
     // Grip centre (anchor) with a slow hand sway.
-    final double gx = screenW * 0.5 + _gripFromTarget * r +
+    final double gx =
+        screenW * 0.5 +
+        _gripFromTarget * r +
         _swayX * r * math.sin(_time * 1.1);
-    final double gy = screenH * _anchorY +
-        _swayY * screenH * math.sin(_time * 1.7 + 1.0);
+    final double gy =
+        screenH * _anchorY + _swayY * screenH * math.sin(_time * 1.7 + 1.0);
 
     // Arrow front end, relative to the anchor.
     final double tipX = _tipFromGrip * r;
