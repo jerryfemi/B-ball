@@ -46,6 +46,7 @@ extension type _BufferSource._(JSObject _) implements _AudioNode {
   external set loop(bool v);
   external set loopStart(num seconds);
   external set loopEnd(num seconds);
+  external _AudioParam get playbackRate;
   external void start([num when, num offset]);
   external void stop();
 }
@@ -189,7 +190,7 @@ class WebAudioBackend implements AudioBackend {
   }
 
   @override
-  void playSfx(Sfx sfx, double volume) {
+  void playSfx(Sfx sfx, double volume, {double rate = 1.0}) {
     final ctx = _ctx;
     final out = _sfxOut;
     final buffer = _buffers[sfx];
@@ -202,6 +203,7 @@ class WebAudioBackend implements AudioBackend {
       gain.connect(out);
       final source = ctx.createBufferSource();
       source.buffer = buffer;
+      if (rate != 1.0) source.playbackRate.value = rate;
       source.connect(gain);
       source.start();
     } catch (_) {}
