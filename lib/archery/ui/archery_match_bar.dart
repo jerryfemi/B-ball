@@ -139,7 +139,8 @@ class ArcheryChallengePill extends ConsumerWidget {
     final challenges = ref.watch(incomingMatchChallengesProvider).value ?? const [];
     if (challenges.isEmpty) return const SizedBox.shrink();
     final invite = challenges.first;
-    final String what = invite.isArchery ? 'Archery' : 'Basketball';
+    final String what =
+        invite.isArchery ? 'Archery' : (invite.isDarts ? 'Darts' : 'Basketball');
 
     return Material(
       color: Colors.transparent,
@@ -174,7 +175,7 @@ class ArcheryChallengePill extends ConsumerWidget {
               const SizedBox(width: 7),
               Flexible(
                 child: Text(
-                  '${invite.isArchery ? '🎯' : '🏀'} ${invite.hostName} challenged you to $what',
+                  '${invite.isArchery ? '🏹' : (invite.isDarts ? '🎯' : '🏀')} ${invite.hostName} challenged you to $what',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
