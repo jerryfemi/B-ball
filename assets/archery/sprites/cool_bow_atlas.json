@@ -1,0 +1,92 @@
+{
+  "name": "cool_bow",
+  "image": "cool_bow_atlas.png",
+  "cellWidth": 95,
+  "cellHeight": 400,
+  "columns": 12,
+  "rows": 1,
+  "layout": "Each row is one color version (p1, p2). Columns: rest, spin_0..spin_7, stuck_0..stuck_2 (leaning left to right)",
+  "spinFrames": 8,
+  "spinDegrees": 90,
+  "stuckFrames": 3,
+  "animFrames": 0,
+  "animClip": null,
+  "animSeconds": 0,
+  "naturalColors": true,
+  "colors": [],
+  "frames": {
+    "p1_rest": {
+      "x": 0,
+      "y": 0,
+      "w": 95,
+      "h": 400
+    },
+    "p1_spin_0": {
+      "x": 95,
+      "y": 0,
+      "w": 95,
+      "h": 400
+    },
+    "p1_spin_1": {
+      "x": 190,
+      "y": 0,
+      "w": 95,
+      "h": 400
+    },
+    "p1_spin_2": {
+      "x": 285,
+      "y": 0,
+      "w": 95,
+      "h": 400
+    },
+    "p1_spin_3": {
+      "x": 380,
+      "y": 0,
+      "w": 95,
+      "h": 400
+    },
+    "p1_spin_4": {
+      "x": 475,
+      "y": 0,
+      "w": 95,
+      "h": 400
+    },
+    "p1_spin_5": {
+      "x": 570,
+      "y": 0,
+      "w": 95,
+      "h": 400
+    },
+    "p1_spin_6": {
+      "x": 665,
+      "y": 0,
+      "w": 95,
+      "h": 400
+    },
+    "p1_spin_7": {
+      "x": 760,
+      "y": 0,
+      "w": 95,
+      "h": 400
+    },
+    "p1_stuck_0": {
+      "x": 855,
+      "y": 0,
+      "w": 95,
+      "h": 400
+    },
+    "p1_stuck_1": {
+      "x": 950,
+      "y": 0,
+      "w": 95,
+      "h": 400
+    },
+    "p1_stuck_2": {
+      "x": 1045,
+      "y": 0,
+      "w": 95,
+      "h": 400
+    }
+  },
+  "credit": "Model: Cool Bow by Incg5764 (https://sketchfab.com/incg5764) · CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). If the license is CC-BY, credit the author in the game."
+}
