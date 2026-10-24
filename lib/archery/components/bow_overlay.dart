@@ -29,26 +29,11 @@ class BowOverlay {
 
   BowOverlay({required this.camera, required this.cameraRig});
 
-  // ── Bow sprite (`sprites/cool_bow_atlas.png`) ────────────────────────────
-  // Rendered from the "Cool Bow" model (Incg5764, CC-BY 4.0) in glb2sprite:
-  // upright with 3D curvature and natural perspective (Yaw -22°, Pitch -6°).
-  // Measured in the 148x578 image: the rope grip is centred at (18, 315).
-  // The string is drawn by the game from tip to tip across the nocked arrow.
-  static const String _bowAsset = 'assets/archery/sprites/cool_bow_atlas.png';
-  static const double _tipTopImgX = 138.0, _tipTopImgY = 16.0;
-  static const double _tipBotImgX = 84.0, _tipBotImgY = 565.0;
-  static const double _gripImgX = 18.0;
-  static const double _gripImgY = 315.0;
-
-  /// Rendered in natural first-person orientation, no mirroring needed.
-  static const bool _mirror = false;
-
-  /// Whole bow length on screen, in screen heights (before [_scale]). Big
-  /// enough that both tips run off the screen like GamePigeon's framing.
-  static const double _bowLengthH = 1.45;
-
-  /// Grip centre height on screen (screen heights), as before.
-  static const double _gripCentreY = 0.6025;
+  // ── Bow image placement (must match make_bow_view.py) ───────────────────
+  static const double _imgXMin = -0.10; // refW, from the grip centre line
+  static const double _imgXMax = 0.24;
+  static const double _imgYMin = -0.27; // screen heights, from the top
+  static const double _imgYMax = 1.23;
 
   /// Overall size of the bow + arrow, scaled evenly about the grip.
   /// 1.0 = GamePigeon's measured size; 0.75 = 25% smaller.
@@ -57,8 +42,8 @@ class BowOverlay {
   static const double _anchorY = 0.60; // pivot for the slide-out (screen h)
 
   // ── Arrow (refW units unless noted) ─────────────────────────────────────
-  static const double _tipFromGrip = -0.095; // tip x, from the grip centre
-  static const double _tipY = 0.588; // rests on the shelf just above the grip wrap
+  static const double _tipFromGrip = -0.102; // tip x, from the grip centre
+  static const double _tipY = 0.623; // screen heights
   static const double _shaftAtTip = 0.045; // shaft width at the front end
   static const double _shaftGrowth = 0.053; // extra width per refW of length
   static const double _capRadius = 0.022;
@@ -71,18 +56,9 @@ class BowOverlay {
   static const double _swayY = 0.004; // screen heights
 
   ui.Image? _bow;
-  // High: the sprite is scaled up about 2x on phones.
-  final Paint _bowPaint = Paint()..filterQuality = FilterQuality.high;
+  final Paint _bowPaint = Paint()..filterQuality = FilterQuality.medium;
   Rect _src = Rect.zero;
   Rect _dst = Rect.zero; // relative to the anchor
-
-  // String ends (limb tips), relative to the anchor, mirror applied.
-  Offset _stringTop = Offset.zero;
-  Offset _stringBot = Offset.zero;
-  final Path _string = Path();
-  final Paint _stringPaint = Paint()
-    ..style = PaintingStyle.stroke
-    ..strokeCap = StrokeCap.round;
 
   final Path _shaft = Path();
   final Path _bladeLight = Path();
@@ -107,7 +83,7 @@ class BowOverlay {
   double slideProgress = 0.0; // 0 = held up at the line, 1 = slid away
 
   Future<void> load() async {
-    _bow = await loadArcheryImage(_bowAsset);
+    _bow = await loadArcheryImage('assets/archery/bow_view.webp');
     _layout();
   }
 
@@ -123,20 +99,14 @@ class BowOverlay {
     final double r = math.min(screenW, screenH * ArcheryK.refAspect);
     _refW = r;
 
-    // Anchor = grip centre line at _anchorY. The sprite keeps its own
-    // proportions (uniform scale) with its grip on the anchor line.
+    // Anchor = grip centre line at _anchorY. Bow image relative to it.
     _src = Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble());
-    final double px = _bowLengthH * screenH / img.height; // screen px per image px
-    _dst = Rect.fromLTWH(
-      -_gripImgX * px,
-      (_gripCentreY - _anchorY) * screenH - _gripImgY * px,
-      img.width * px,
-      img.height * px,
+    _dst = Rect.fromLTRB(
+      _imgXMin * r,
+      (_imgYMin - _anchorY) * screenH,
+      _imgXMax * r,
+      (_imgYMax - _anchorY) * screenH,
     );
-    final double sx = _mirror ? -1.0 : 1.0;
-    _stringTop = Offset(sx * (_dst.left + _tipTopImgX * px), _dst.top + _tipTopImgY * px);
-    _stringBot = Offset(sx * (_dst.left + _tipBotImgX * px), _dst.top + _tipBotImgY * px);
-    _stringPaint.strokeWidth = math.max(1.2, 0.0045 * r);
 
     // Shaft frame: origin at the vanishing point of its two edges, shaft
     // along +y. Half width = k·y, so a sweep gradient around the origin wraps
@@ -203,7 +173,6 @@ class BowOverlay {
     _bladeLightPaint.color = Color.fromRGBO(0xE6, 0xE9, 0xEF, a);
     _bladeDarkPaint.color = Color.fromRGBO(0x93, 0x9A, 0xA6, a);
     _capFill.color = Color.fromRGBO(0xC8, 0x86, 0x5C, a);
-    _stringPaint.color = Color.fromRGBO(0x2B, 0x22, 0x1A, a * 0.9);
     _capRing.color = Color.fromRGBO(0xFA, 0xFA, 0xFA, a);
   }
 
@@ -240,15 +209,8 @@ class BowOverlay {
     final double scale = (1.0 + t * 0.15) * _scale;
     canvas.scale(scale, scale);
 
-    // 1. Bow (mirrored about the grip line, see [_mirror])
-    if (_mirror) {
-      canvas.save();
-      canvas.scale(-1.0, 1.0);
-      canvas.drawImageRect(img, _src, _dst, _bowPaint);
-      canvas.restore();
-    } else {
-      canvas.drawImageRect(img, _src, _dst, _bowPaint);
-    }
+    // 1. Bow
+    canvas.drawImageRect(img, _src, _dst, _bowPaint);
 
     // 2. Arrow: blade (behind), shaft, then the shaft's round front end.
     canvas.save();
@@ -264,18 +226,9 @@ class BowOverlay {
     canvas.drawPath(_shaft, _shaftPaint);
     canvas.restore();
 
-    canvas.save();
     canvas.translate(tipX, tipY);
     canvas.drawCircle(Offset.zero, _capR, _capFill);
     canvas.drawCircle(Offset.zero, _capR, _capRing);
-    canvas.restore();
-
-    // 3. String: taut bowstring running from upper tip to lower tip across the nocked arrow.
-    _string
-      ..reset()
-      ..moveTo(_stringTop.dx, _stringTop.dy)
-      ..lineTo(_stringBot.dx, _stringBot.dy);
-    canvas.drawPath(_string, _stringPaint);
 
     canvas.restore();
   }
