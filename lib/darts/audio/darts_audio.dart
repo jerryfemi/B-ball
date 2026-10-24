@@ -8,9 +8,9 @@ import '../../game/audio/audio_engine.dart';
 /// Follows identical volume, mute, and soundtrack claiming patterns as
 /// Archery and Basketball. Zero heap allocations during hot loops.
 abstract final class DartsAudio {
-  /// Darts background soundtrack loop. Uses archery plum blossom until a
-  /// dedicated darts pub soundtrack is provided.
-  static const String musicTrack = 'assets/music/short/archery_plum_blossom.mp3';
+  /// Darts background soundtrack loop (first 90 s of the track, faded out
+  /// at the end so the loop restarts cleanly).
+  static const String musicTrack = 'assets/music/short/darts_theme.mp3';
 
   /// Background ambient loop (e.g. pub chatter). Empty string for silence until
   /// dedicated pub ambience is supplied.
