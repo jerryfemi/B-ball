@@ -78,11 +78,19 @@ class DartsResultCard extends ConsumerWidget {
       outcomeDesc = 'Equal remaining points after 20 rounds.';
     }
 
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 380.0),
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 20.0),
+    return Stack(
+      children: [
+        // Full screen modal dimming backdrop
+        const Positioned.fill(
+          child: ColoredBox(color: Color(0x99000000)),
+        ),
+        Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(vertical: 20.0),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 380.0),
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 20.0),
           padding: const EdgeInsets.all(24.0),
           decoration: BoxDecoration(
             color: const Color(DartsK.surfaceMid).withValues(alpha: 0.96),
@@ -281,6 +289,9 @@ class DartsResultCard extends ConsumerWidget {
           ),
         ),
       ),
-    );
+    ),
+  ),
+],
+);
   }
 }
