@@ -36,7 +36,11 @@ abstract final class DartsK {
   static const double throwDistanceM = 2.37;
 
   /// Earth gravity (m/s²).
-  static const double gravity = 9.81;
+  /// Arcade gravity (m/s²), not Earth's 9.81. With the slow 6 m/s throw,
+  /// real gravity forces a 20° lob that rises ~22 cm: on screen the dart
+  /// shot up past the top of the board and fell back onto it. A quarter of
+  /// g keeps the long, watchable flight but the flat 12 m/s path shape.
+  static const double gravity = 2.45;
 
   /// Launch speed used by the ballistic solver (m/s). 6 m/s gives a
   /// visible, slightly floating arc of roughly 0.4 s to the board, so
@@ -144,7 +148,9 @@ abstract final class DartsK {
   static const int onlineTurnSeconds = 90;
 
   /// Bot accuracy standard deviation (mm) for 2D Gaussian scatter.
-  static const double botSigmaMm = 20.0;
+  /// Tuned so the bot plays like a balanced casual/intermediate opponent
+  /// (averaging ~32 pts/turn and finishing around rounds 9–11 instead of 7).
+  static const double botSigmaMm = 36.0;
 
   /// Delay between completing a turn and starting the dart retrieval / fade (seconds).
   static const double turnEndPauseSec = 0.8;
