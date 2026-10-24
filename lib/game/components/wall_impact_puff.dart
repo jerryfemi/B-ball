@@ -93,22 +93,11 @@ class WallImpactPuff extends PositionComponent {
     // 1. Soft chalky rubber scuff mark on the brick wall
     final scuffRadius = baseRadius * (0.85 + progress * 0.20);
     _sharedSpritePaint.color = Color.fromRGBO(255, 255, 255, (0.35 * fade).clamp(0.0, 1.0));
-    canvas.drawImageRect(
-      _cachedWhitePuff!,
-      _srcRect,
-      Rect.fromCircle(center: Offset.zero, radius: scuffRadius),
-      _sharedSpritePaint,
-    );
+    _drawPuff(canvas, _cachedWhitePuff!, 0.0, 0.0, scuffRadius);
 
     // 2. Faint darker impact core
-    final coreRadius = scuffRadius * 0.60;
     _sharedSpritePaint.color = Color.fromRGBO(255, 255, 255, (0.22 * fade).clamp(0.0, 1.0));
-    canvas.drawImageRect(
-      _cachedCorePuff!,
-      _srcRect,
-      Rect.fromCircle(center: Offset.zero, radius: coreRadius),
-      _sharedSpritePaint,
-    );
+    _drawPuff(canvas, _cachedCorePuff!, 0.0, 0.0, scuffRadius * 0.60);
 
     // 3. Subtle micro dust puff particles radiating outward
     final particleDistance = baseRadius * 0.65 * progress;
@@ -119,12 +108,21 @@ class WallImpactPuff extends PositionComponent {
       final angle = (i * 2.0 * math.pi / 5.0) + 0.35;
       final px = math.cos(angle) * particleDistance;
       final py = math.sin(angle) * particleDistance * 0.85; // Slight perspective squash
-      canvas.drawImageRect(
-        _cachedWhitePuff!,
-        _srcRect,
-        Rect.fromCircle(center: Offset(px, py), radius: particleRadius),
-        _sharedSpritePaint,
-      );
+      _drawPuff(canvas, _cachedWhitePuff!, px, py, particleRadius);
     }
+  }
+
+  /// A unit circle's bounding box, reused for every puff: each one is drawn
+  /// by moving and scaling the canvas instead of building a new Rect (seven
+  /// fewer allocations per frame while a puff is showing).
+  static const Rect _unitCircle = Rect.fromLTRB(-1.0, -1.0, 1.0, 1.0);
+
+  void _drawPuff(Canvas canvas, ui.Image image, double cx, double cy, double radius) {
+    if (radius <= 0.0) return;
+    canvas.save();
+    canvas.translate(cx, cy);
+    canvas.scale(radius);
+    canvas.drawImageRect(image, _srcRect, _unitCircle, _sharedSpritePaint);
+    canvas.restore();
   }
 }
