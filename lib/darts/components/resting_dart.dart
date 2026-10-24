@@ -35,8 +35,8 @@ class RestingDart extends Component {
   double tipY = 0.0;
   bool _placed = false;
 
-  /// Spin frame shown in hand: locked to frame 2 (matching reference pose).
-  int spinColumn = 2;
+  /// Spin frame shown in hand: locked to frame 7 (last column).
+  int spinColumn = 7;
 
   RestingDart({
     required this.projection,
@@ -72,7 +72,7 @@ class RestingDart extends Component {
     tipX = projection.handX;
     tipY = projection.handY;
     _placed = true;
-    spinColumn = 2; // Locked to constant reference frame
+    spinColumn = 7; // Locked to constant reference frame (last column)
   }
 
   @override
@@ -118,7 +118,7 @@ class RestingDart extends Component {
       -cp,
       spinColumn,
       scaleMultiplier: DartsK.handDartScale,
-      fixedRow: 6, // Row 6 (50.91°) permanently matches user's reference dart image
+      fixedRow: 8, // Row 8, column 7 (last in row 8)
     );
   }
 }
