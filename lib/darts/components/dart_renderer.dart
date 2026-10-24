@@ -36,6 +36,10 @@ abstract final class DartRenderer {
 
   static const double _radToDeg = 180.0 / math.pi;
 
+  /// Alpha currently set on each paint (-1 = not set yet).
+  static int _paintAlpha = -1;
+  static int _shadowAlpha = -1;
+
   /// Draws the dart with its tip at (`tx`, `ty`, `tz`) and unit axis
   /// (`ax`, `ay`, `az`) pointing from tail to tip. [column] is the spin frame.
   /// [extraRotation] (radians) rotates about the tip (impact wobble).
@@ -91,7 +95,13 @@ abstract final class DartRenderer {
     if (depth < 0.05) depth = 0.05;
     final double scale = len * p.focalPx / depth / s.fullLengthPx;
 
-    _paint.color = ui.Color.fromARGB((opacity.clamp(0.0, 1.0) * 255.0).round(), 255, 255, 255);
+    // Only build a new Color when the opacity actually changes (stuck darts
+    // fading out); the normal case reuses the paint as it is.
+    final int a = (opacity.clamp(0.0, 1.0) * 255.0).round();
+    if (a != _paintAlpha) {
+      _paintAlpha = a;
+      _paint.color = ui.Color.fromARGB(a, 255, 255, 255);
+    }
     c.save();
     c.translate(stx, sty);
     c.rotate(rot + extraRotation);
@@ -148,8 +158,11 @@ abstract final class DartRenderer {
     final double drawLen = math.max(l, len * k * 0.55);
 
     final int row = s.sideRow;
-    _shadowPaint.color =
-        ui.Color.fromARGB((alpha.clamp(0.0, 1.0) * 255.0).round(), 0, 0, 0);
+    final int sa = (alpha.clamp(0.0, 1.0) * 255.0).round();
+    if (sa != _shadowAlpha) {
+      _shadowAlpha = sa;
+      _shadowPaint.color = ui.Color.fromARGB(sa, 0, 0, 0);
+    }
     c.save();
     c.translate(px, py);
     c.rotate(math.atan2(dx, -dy) + extraRotation);
