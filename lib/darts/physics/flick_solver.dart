@@ -27,7 +27,7 @@ abstract final class FlickSolver {
     final double targetX = aimX / 1000.0 - startXm; // metres, relative to the hand
     final double targetY = aimY / 1000.0 - startYm;
     const double d = DartsK.throwDistanceM; // 2.37 m
-    const double g = DartsK.gravity; // 9.81 m/s²
+    const double g = DartsK.gravity; // arcade gravity, see DartsK
     final double v2 = speed * speed;
 
     // Solve for flight time T from: v² = (x/T)² + (y/T + 0.5*g*T)² + (d/T)²
