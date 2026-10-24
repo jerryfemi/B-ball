@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -154,12 +153,12 @@ class _RoundAndDartsPill extends StatelessWidget {
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(20.0),
-      child: BackdropFilter(
-        filter: ui.ImageFilter.blur(sigmaX: 16.0, sigmaY: 16.0),
+      child: SizedBox(
+        // No backdrop blur here: over the live game it re-blurs every frame.
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 7.0),
           decoration: BoxDecoration(
-            color: const Color(0xB30F172A),
+            color: const Color(0xE00F172A),
             borderRadius: BorderRadius.circular(20.0),
             border: Border.all(
               color: const Color(0x26FFFFFF),
@@ -401,15 +400,15 @@ class _PauseButtonState extends State<_PauseButton> {
           curve: Curves.easeOutCubic,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(20.0),
-            child: BackdropFilter(
-              filter: ui.ImageFilter.blur(sigmaX: 16.0, sigmaY: 16.0),
+            child: SizedBox(
+              // No backdrop blur here: over the live game it re-blurs every frame.
               child: Container(
                 width: 38.0,
                 height: 38.0,
                 decoration: BoxDecoration(
                   color: _pressed
                       ? const Color(0xE61E293B)
-                      : const Color(0xB30F172A),
+                      : const Color(0xE00F172A),
                   borderRadius: BorderRadius.circular(20.0),
                   border: Border.all(
                     color: _pressed
@@ -491,8 +490,8 @@ class _ScoreBadge extends StatelessWidget {
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(20.0 * scale),
-            child: BackdropFilter(
-              filter: ui.ImageFilter.blur(sigmaX: 18.0, sigmaY: 18.0),
+            child: SizedBox(
+              // No backdrop blur here: over the live game it re-blurs every frame.
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 250),
                 curve: Curves.easeOutCubic,
@@ -502,8 +501,8 @@ class _ScoreBadge extends StatelessWidget {
                 ),
                 decoration: BoxDecoration(
                   color: isActive
-                      ? const Color(0xD90F172A)
-                      : const Color(0x990F172A),
+                      ? const Color(0xEB0F172A)
+                      : const Color(0xCC0F172A),
                   borderRadius: BorderRadius.circular(20.0 * scale),
                   border: Border.all(
                     color: isActive
