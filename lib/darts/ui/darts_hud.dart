@@ -6,24 +6,29 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../game/ui/common/app_avatar.dart';
 import '../darts_constants.dart';
+import '../online/darts_online_controller.dart';
 import '../state/darts_match_notifier.dart';
 import '../state/darts_match_state.dart';
 import '../state/darts_players.dart';
+import 'darts_live_pill.dart';
 
 /// Flutter HUD overlay over the Darts Flame canvas.
 ///
 /// Implements §1.5 GamePigeon layout with Apple-standard translucent materials,
 /// optical typography tracking, and direct interaction feedback:
 /// - Top-left: Round indicator pill and 3 remaining dart icons.
+/// - Top-center: Live match status / shot clock pill in online play.
 /// - Top-right: Translucent frosted glass pause menu button.
 /// - Bottom-left: Player 1 avatar, name, glowing badge, remaining score, and active turn points.
 /// - Bottom-right: Opponent avatar, name, glowing badge, remaining score, and active turn points.
 class DartsHud extends ConsumerWidget {
   final VoidCallback onOpenPause;
+  final DartsOnlineController? online;
 
   const DartsHud({
     super.key,
     required this.onOpenPause,
+    this.online,
   });
 
   /// HUD scale for this screen: 1.0 on a ~420×860 phone, smaller on small
@@ -47,7 +52,7 @@ class DartsHud extends ConsumerWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            // ── Top Bar: Round & Darts Left | Pause Button ──────────────────
+            // ── Top Bar: Round & Darts Left | Live Pill | Pause Button ─────
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -65,6 +70,18 @@ class DartsHud extends ConsumerWidget {
                     ),
                   ),
                 ),
+                if (online != null)
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 6.0),
+                      child: Center(
+                        child: Transform.scale(
+                          scale: s,
+                          child: DartsLivePill(online: online),
+                        ),
+                      ),
+                    ),
+                  ),
                 Transform.scale(
                   scale: s,
                   alignment: Alignment.centerRight,
