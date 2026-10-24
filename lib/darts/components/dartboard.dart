@@ -2,12 +2,18 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../darts_constants.dart';
 import '../physics/dart_scoring.dart';
 import '../scene/board_projection.dart';
 
 /// Renders the regulation dartboard and hit-area flash.
+///
+/// The board face is the pre-rendered `assets/darts/board.png` (1536 px,
+/// drawn to exactly the board's radius: its rings sit on the same
+/// millimetre radii the scoring uses). If the image can't load, the board is
+/// painted in code instead. Either way the hit flash is drawn on top.
 ///
 /// Follows DARTS_PLAN.md Step 9:
 /// - Recorded into a single [ui.Picture] on resize.
@@ -22,6 +28,17 @@ class Dartboard extends Component {
 
   ui.Picture? _boardPicture;
 
+  /// Pre-rendered board face; null until loaded (or if missing).
+  ui.Image? _boardImage;
+  static const String boardImagePath = 'assets/darts/board.png';
+
+  /// The image's radius relative to the board's outer radius.
+  static const double _imageRadiusFrac = 1.004;
+
+  final Paint _imagePaint = Paint()
+    ..filterQuality = FilterQuality.medium
+    ..isAntiAlias = true;
+
   // ─── 82 Precomputed Scoring Area Paths ─────────────────────────────────────
   final Map<String, Path> _flashPaths = <String, Path>{};
   Path? _activeFlashPath;
@@ -31,6 +48,21 @@ class Dartboard extends Component {
   final Paint _flashPaint = Paint()..style = PaintingStyle.fill;
 
   Dartboard({required this.projection}) : super(priority: 1);
+
+  @override
+  Future<void> onLoad() async {
+    await super.onLoad();
+    try {
+      final data = await rootBundle.load(boardImagePath);
+      final ui.Codec codec = await ui.instantiateImageCodec(
+        data.buffer.asUint8List(),
+      );
+      _boardImage = (await codec.getNextFrame()).image;
+      if (projection.screenWidth > 0.0) _recordBoard();
+    } catch (_) {
+      // No image: keep the painted board.
+    }
+  }
 
   @override
   void onGameResize(Vector2 size) {
@@ -111,9 +143,16 @@ class Dartboard extends Component {
         ),
     );
 
+    // With the image, the painted board is only needed for its flash paths,
+    // so it's drawn into a scratch canvas that is thrown away.
+    final ui.Image? boardImage = _boardImage;
+    final ui.PictureRecorder? scratch =
+        boardImage != null ? ui.PictureRecorder() : null;
+    final Canvas pc = scratch != null ? Canvas(scratch) : c;
+
     // 1. Pure black board surround / number ring
     fillPaint.color = colorSurround;
-    c.drawCircle(center, rBoard, fillPaint);
+    pc.drawCircle(center, rBoard, fillPaint);
 
     // 2. 20 Radial segments & beds
     const double degToRad = math.pi / 180.0;
@@ -137,7 +176,7 @@ class Dartboard extends Component {
         sweepAngleRad,
       );
       fillPaint.color = ringColor;
-      c.drawPath(doublePath, fillPaint);
+      pc.drawPath(doublePath, fillPaint);
       _flashPaths['D$segment'] = doublePath;
 
       // Bed 2: Outer single bed (fat single)
@@ -149,7 +188,7 @@ class Dartboard extends Component {
         sweepAngleRad,
       );
       fillPaint.color = singleColor;
-      c.drawPath(outerSinglePath, fillPaint);
+      pc.drawPath(outerSinglePath, fillPaint);
       _flashPaths['S${segment}_outer'] = outerSinglePath;
 
       // Bed 3: Treble bed
@@ -161,7 +200,7 @@ class Dartboard extends Component {
         sweepAngleRad,
       );
       fillPaint.color = ringColor;
-      c.drawPath(treblePath, fillPaint);
+      pc.drawPath(treblePath, fillPaint);
       _flashPaths['T$segment'] = treblePath;
 
       // Bed 4: Inner single bed
@@ -173,7 +212,7 @@ class Dartboard extends Component {
         sweepAngleRad,
       );
       fillPaint.color = singleColor;
-      c.drawPath(innerSinglePath, fillPaint);
+      pc.drawPath(innerSinglePath, fillPaint);
       _flashPaths['S${segment}_inner'] = innerSinglePath;
     }
 
@@ -185,14 +224,14 @@ class Dartboard extends Component {
       ..fillType = PathFillType.evenOdd;
 
     fillPaint.color = colorGreen;
-    c.drawCircle(center, rOuterBull, fillPaint);
+    pc.drawCircle(center, rOuterBull, fillPaint);
     _flashPaths['bull_outer'] = outerBullPath;
 
     // Inner bull: 50 pts (Red)
     final Path innerBullPath = Path()
       ..addOval(Rect.fromCircle(center: center, radius: rInnerBull));
     fillPaint.color = colorRed;
-    c.drawCircle(center, rInnerBull, fillPaint);
+    pc.drawCircle(center, rInnerBull, fillPaint);
     _flashPaths['bull_inner'] = innerBullPath;
 
     // 4. Thin silver spider wires
@@ -202,12 +241,12 @@ class Dartboard extends Component {
       ..strokeWidth = math.max(1.2, rBoard * 0.006);
 
     // Concentric wire rings
-    c.drawCircle(center, rInnerBull, wirePaint);
-    c.drawCircle(center, rOuterBull, wirePaint);
-    c.drawCircle(center, rTrebleIn, wirePaint);
-    c.drawCircle(center, rTrebleOut, wirePaint);
-    c.drawCircle(center, rDoubleIn, wirePaint);
-    c.drawCircle(center, rDoubleOut, wirePaint);
+    pc.drawCircle(center, rInnerBull, wirePaint);
+    pc.drawCircle(center, rOuterBull, wirePaint);
+    pc.drawCircle(center, rTrebleIn, wirePaint);
+    pc.drawCircle(center, rTrebleOut, wirePaint);
+    pc.drawCircle(center, rDoubleIn, wirePaint);
+    pc.drawCircle(center, rDoubleOut, wirePaint);
 
     // 20 Radial wires
     for (int i = 0; i < DartsK.segmentOrder.length; i++) {
@@ -215,7 +254,7 @@ class Dartboard extends Component {
       final double cosA = math.cos(wireAngleRad);
       final double sinA = math.sin(wireAngleRad);
 
-      c.drawLine(
+      pc.drawLine(
         Offset(cx + rOuterBull * cosA, cy + rOuterBull * sinA),
         Offset(cx + rDoubleOut * cosA, cy + rDoubleOut * sinA),
         wirePaint,
@@ -223,7 +262,17 @@ class Dartboard extends Component {
     }
 
     // 5. White regulation numbers around the pure black surround
-    _drawNumbers(c, center, (rDoubleOut + rBoard) * 0.5, mmToPx);
+    _drawNumbers(pc, center, (rDoubleOut + rBoard) * 0.5, mmToPx);
+
+    if (scratch != null && boardImage != null) {
+      scratch.endRecording().dispose();
+      c.drawImageRect(
+        boardImage,
+        Rect.fromLTWH(0, 0, boardImage.width.toDouble(), boardImage.height.toDouble()),
+        Rect.fromCircle(center: center, radius: rBoard * _imageRadiusFrac),
+        _imagePaint,
+      );
+    }
 
     _boardPicture = recorder.endRecording();
   }
@@ -305,6 +354,8 @@ class Dartboard extends Component {
   void onRemove() {
     _boardPicture?.dispose();
     _boardPicture = null;
+    _boardImage?.dispose();
+    _boardImage = null;
     _flashPaths.clear();
     super.onRemove();
   }
