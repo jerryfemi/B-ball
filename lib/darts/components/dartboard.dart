@@ -92,40 +92,26 @@ class Dartboard extends Component {
     const Color colorCreamSingle = Color(0xFFF7F3E8);
     const Color colorRed = Color(0xFFE3262B);
     const Color colorGreen = Color(0xFF13A048);
-    const Color colorSurround = Color(0xFF101010);
+    const Color colorSurround = Color(0xFF000000);
     const Color colorWire = Color(0xFFC9CED6);
 
     final Paint fillPaint = Paint()..style = PaintingStyle.fill;
 
     // 0. Drop shadow on the wall (a soft offset gradient, no blur filter).
-    final double rimOuter = rBoard * 1.035;
     final Offset shadowC = Offset(cx + rBoard * 0.035, cy + rBoard * 0.07);
     c.drawCircle(
       shadowC,
-      rimOuter * 1.12,
+      rBoard * 1.12,
       Paint()
         ..shader = ui.Gradient.radial(
           shadowC,
-          rimOuter * 1.12,
+          rBoard * 1.12,
           const [Color(0x99000000), Color(0x66000000), Color(0x00000000)],
           const [0.0, 0.86, 1.0],
         ),
     );
 
-    // 0b. Metal rim around the board.
-    c.drawCircle(
-      center,
-      rimOuter,
-      Paint()
-        ..shader = ui.Gradient.linear(
-          Offset(cx, cy - rimOuter),
-          Offset(cx, cy + rimOuter),
-          const [Color(0xFF9AA3AE), Color(0xFF4B525C), Color(0xFF2A2F36)],
-          const [0.0, 0.55, 1.0],
-        ),
-    );
-
-    // 1. Black board surround / number ring
+    // 1. Pure black board surround / number ring
     fillPaint.color = colorSurround;
     c.drawCircle(center, rBoard, fillPaint);
 
@@ -236,14 +222,7 @@ class Dartboard extends Component {
       );
     }
 
-    // Outer board boundary wire
-    final Paint rimPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..color = const Color(0xFF2A2F36)
-      ..strokeWidth = math.max(1.5, rBoard * 0.008);
-    c.drawCircle(center, rBoard, rimPaint);
-
-    // 5. White regulation numbers around the surround
+    // 5. White regulation numbers around the pure black surround
     _drawNumbers(c, center, (rDoubleOut + rBoard) * 0.5, mmToPx);
 
     _boardPicture = recorder.endRecording();
@@ -267,7 +246,8 @@ class Dartboard extends Component {
   }
 
   void _drawNumbers(Canvas c, Offset center, double numberRadiusPx, double mmToPx) {
-    final double fontSize = (34.0 * mmToPx).clamp(12.0, 48.0);
+    // Reduced from 34 mm to 24 mm for refined GamePigeon proportions
+    final double fontSize = (24.0 * mmToPx).clamp(10.0, 32.0);
     const double degToRad = math.pi / 180.0;
 
     for (int i = 0; i < DartsK.segmentOrder.length; i++) {
@@ -283,7 +263,8 @@ class Dartboard extends Component {
           style: TextStyle(
             color: const Color(0xFFFFFFFF),
             fontSize: fontSize,
-            fontWeight: FontWeight.w900,
+            fontWeight: FontWeight.w700,
+            fontFamily: 'Inter',
             height: 1.0,
           ),
         ),
