@@ -158,6 +158,8 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
     hitPopup.showHit(hit, isBust: result.bust, isCheckout: result.checkout);
     if (result.bust) {
       DartsAudio.playBust();
+    } else if (!hit.isMiss && !hit.isBull) {
+      DartsAudio.playScoreTicks(hit.points);
     }
 
     if (!result.turnOver && events.isMyTurn) {
@@ -296,6 +298,8 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
           hitPopup.showHit(hit, isBust: res.bust, isCheckout: res.checkout);
           if (res.bust) {
             DartsAudio.playBust();
+          } else if (!hit.isMiss && !hit.isBull) {
+            DartsAudio.playScoreTicks(hit.points);
           }
 
           botTurnPoints += hit.points;
@@ -323,6 +327,7 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
 
   /// Resets board and restarts a solo match for a rematch.
   void restartGame() {
+    DartsAudio.cancelTicks();
     pullDarts();
     events.restartMatch();
     restingDart.playerIndex = 0;
@@ -422,6 +427,8 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
         hitPopup.showHit(hit, isBust: result.bust, isCheckout: result.checkout);
         if (result.bust) {
           DartsAudio.playBust();
+        } else if (!hit.isMiss && !hit.isBull) {
+          DartsAudio.playScoreTicks(hit.points);
         }
 
         if (!result.turnOver && events.isMyTurn) {
@@ -524,6 +531,8 @@ class DartsGame extends FlameGame implements DartsOnlineGame {
     hitPopup.showHit(hit, isBust: res.bust, isCheckout: res.checkout);
     if (res.bust) {
       DartsAudio.playBust();
+    } else if (!hit.isMiss && !hit.isBull) {
+      DartsAudio.playScoreTicks(hit.points);
     }
     if (res.turnOver) {
       _handlePlayerTurnOver();
