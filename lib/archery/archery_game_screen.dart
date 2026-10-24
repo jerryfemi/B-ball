@@ -113,7 +113,7 @@ class ArcheryGameScreen extends HookConsumerWidget {
         final owner = audioOwner.value;
         if (owner != null) ArcheryAudio.leave(owner);
       };
-    }, const []);
+    }, [match?.id]);
 
     void leaveScreen() {
       final router = GoRouter.maybeOf(context);
