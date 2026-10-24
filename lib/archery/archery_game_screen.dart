@@ -292,7 +292,7 @@ class ArcheryGameScreen extends HookConsumerWidget {
                   // "‹ Lobby" under the scoreboard's left edge (hidden during modals).
                   if (!isModalActive)
                     Positioned(
-                      top: 108.0,
+                      top: 54.0, // just under the profile button (8 + 38 + 8)
                       left: 12.0,
                       child: LobbyPill(onTap: goToLobby),
                     ),
@@ -326,8 +326,8 @@ class ArcheryGameScreen extends HookConsumerWidget {
                     Positioned(
                       left: isOnline ? 12.0 : 60.0,
                       right: isOnline ? 12.0 : 60.0,
-                      // Solo: below the Lobby pill. Live: bubbles on the right.
-                      top: isOnline ? 104.0 : 158.0,
+                      // Below the Lobby pill (solo); bubbles on the right (live).
+                      top: 104.0,
                       child: NoticeStack(
                         live: isOnline,
                         onBeforeOpen: openPauseSilently,
