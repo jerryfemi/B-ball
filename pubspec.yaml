@@ -87,6 +87,7 @@ flutter:
     - assets/music/short/
     - assets/archery/
     - assets/archery/park/
+    - assets/archery/sprites/
     - assets/lobby/
     - assets/darts/sprites/
     - assets/darts/
