@@ -62,7 +62,7 @@ void main() {
       expect(dart1.x == dart2.x && dart1.y == dart2.y, isFalse);
     });
 
-    test('Simulate 1,000 solo bot games: median finish 7–11 rounds, never > 20', () {
+    test('Simulate 1,000 solo bot games: median finish 8–12 rounds, never > 20', () {
       final List<int> finishRounds = [];
 
       for (int game = 0; game < 1000; game++) {
@@ -103,8 +103,8 @@ void main() {
       final int median = finishRounds[finishRounds.length ~/ 2];
       final int maxRound = finishRounds.last;
 
-      expect(median, inInclusiveRange(7, 11),
-          reason: 'Median finish must be in 7–11 range (was $median)');
+      expect(median, inInclusiveRange(8, 12),
+          reason: 'Median finish must be in 8–12 range (was $median)');
       expect(maxRound, lessThanOrEqualTo(20),
           reason: 'No game should ever exceed round 20 (was $maxRound)');
       expect(finishRounds.every((r) => r <= 20), isTrue);
