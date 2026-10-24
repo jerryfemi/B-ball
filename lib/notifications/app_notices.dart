@@ -6,10 +6,10 @@ import '../models/match_invite.dart';
 import '../providers/app_providers.dart';
 
 /// Where a notice came from; picks its colour and its bubble during a live 1v1.
-enum NoticeSource { basketball, archery, friends }
+enum NoticeSource { basketball, archery, darts, friends }
 
 /// One thing waiting for the player, from any game: a match invite or a
-/// friend request. Every screen (lobby, Hoops, Archery) reads the same list,
+/// friend request. Every screen (lobby, Hoops, Archery, Darts) reads the same list,
 /// so an invite shows up wherever the player happens to be.
 class AppNotice {
   final String id;
@@ -32,7 +32,9 @@ class AppNotice {
 
   factory AppNotice.match(MatchInvite i) => AppNotice._(
         id: 'm:${i.matchId}',
-        source: i.isArchery ? NoticeSource.archery : NoticeSource.basketball,
+        source: i.isArchery
+            ? NoticeSource.archery
+            : (i.isDarts ? NoticeSource.darts : NoticeSource.basketball),
         name: i.hostName,
         avatar: i.hostAvatar,
         createdAt: i.createdAt,
@@ -54,6 +56,7 @@ class AppNotice {
 
   String get subtitle => switch (source) {
         NoticeSource.archery => 'Archery · 1v1',
+        NoticeSource.darts => 'Darts 301 · 1v1',
         NoticeSource.basketball => 'Hoops · 1v1',
         NoticeSource.friends => 'Friend request',
       };
