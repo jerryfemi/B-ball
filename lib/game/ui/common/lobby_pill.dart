@@ -14,7 +14,7 @@ class LobbyPill extends StatefulWidget {
   const LobbyPill({
     super.key,
     required this.onTap,
-    this.compact = false,
+    this.compact = true,
   });
 
   @override
