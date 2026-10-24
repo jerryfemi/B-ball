@@ -38,9 +38,10 @@ abstract final class DartsK {
   /// Earth gravity (m/s²).
   static const double gravity = 9.81;
 
-  /// Launch speed used by the ballistic solver (m/s). About 0.20 s to the
-  /// board, matching GamePigeon's throw.
-  static const double idealSpeed = 12.0;
+  /// Launch speed used by the ballistic solver (m/s). 6 m/s gives a
+  /// visible, slightly floating arc of roughly 0.4 s to the board, so
+  /// players can watch the dart travel.
+  static const double idealSpeed = 6.0;
 
   /// Fixed physics integration timestep (240 Hz).
   static const double fixedDt = 1.0 / 240.0;
@@ -63,7 +64,19 @@ abstract final class DartsK {
   /// Board millimetres of height per 1.0 of flick speed relative to
   /// [flickRefSpeed]. Allows a wide playable range where deliberate hard
   /// snaps reach Treble/Double 20 without overshooting the board on normal flicks.
-  static const double flickHeightMmPerUnit = 240.0;
+  static const double flickHeightMmPerUnit = 170.0;
+
+  /// Swipe direction and speed are read over this much of the end of the
+  /// swipe (seconds). Long enough to ignore the thumb's curl at release.
+  static const double flickStrokeWindow = 0.15;
+  static const double flickSpeedWindow = 0.12;
+
+  /// Aim assist: a throw that lands within [assistReachMm] of a treble or
+  /// double band (or inside [assistBullReachMm] of the centre) is pulled
+  /// this fraction of the way in. Near misses become hits; wild ones don't.
+  static const double assistPull = 0.4;
+  static const double assistReachMm = 6.0;
+  static const double assistBullReachMm = 24.0;
 
   /// Sideways drift: board mm per tan(angle) of the swipe away from straight
   /// up (5° past the dead zone ≈ 26 mm).
